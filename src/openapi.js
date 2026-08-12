@@ -1,7 +1,7 @@
 module.exports = function openapi(config) {
   return {
     openapi: "3.0.3",
-    info: { title: "KDA 金蝶数据查询 API", version: "0.1.0", description: "供 Dify 调用的受控只读查询接口。请求必须携带 Bearer API Key 和最终用户金蝶账号。" },
+    info: { title: "Kingdee Query Hub API", version: "0.1.0", description: "供 Dify 调用的受控只读查询接口。请求必须携带 Bearer API Key 和最终用户金蝶账号。" },
     servers: [{ url: config.appBaseUrl }],
     paths: {
       "/api/dify/v1/query": {

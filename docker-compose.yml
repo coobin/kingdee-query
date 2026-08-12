@@ -1,8 +1,8 @@
 services:
-  kda-query-hub:
-    image: kda-query-hub:latest
+  kingdee-query-hub:
+    image: kingdee-query-hub:latest
     build: .
-    container_name: kda-query-hub
+    container_name: kingdee-query-hub
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-8092}:8092"

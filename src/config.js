@@ -44,7 +44,7 @@ module.exports = {
   kingdeeUsernameSource: process.env.KINGDEE_USERNAME_SOURCE || "auto",
   difyApiKeys: new Set((process.env.DIFY_API_KEYS || "").split(",").map((x) => x.trim()).filter(Boolean)),
   difyUserHeader: (process.env.DIFY_USER_HEADER || "x-end-user").toLowerCase(),
-  scopeAdmins: new Set((process.env.KDA_SCOPE_ADMINS || "").split(",").map((x) => x.trim()).filter(Boolean)),
+  scopeAdmins: new Set((process.env.KINGDEE_QUERY_SCOPE_ADMINS || "").split(",").map((x) => x.trim()).filter(Boolean)),
   kingdee: {
     baseUrl: required("KINGDEE_BASE_URL"),
     dbId: required("KINGDEE_DBID"),

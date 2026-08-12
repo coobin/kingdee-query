@@ -30,8 +30,8 @@ Dify ───── Bearer API ─────────┘
 要求 Node.js 20 或更高版本。
 
 ```bash
-git clone git@github.com:coobin/kingdee-query.git
-cd kingdee-query
+git clone git@github.com:coobin/kingdee-query.git kingdee-query-hub
+cd kingdee-query-hub
 cp .env.example .env
 npm install
 npm run check
@@ -58,7 +58,7 @@ AUTH_MODE=dev
 | `AUTH_TRUSTED_PROXY_TOKEN` | Query Hub 与反向代理共享的随机密钥 |
 | `REMOTE_*_HEADER` | SSO 身份请求头名称 |
 | `KINGDEE_USERNAME_SOURCE` | 金蝶登录名取值来源 |
-| `KDA_SCOPE_ADMINS` | 可查询授权范围的管理员账号，逗号分隔 |
+| `KINGDEE_QUERY_SCOPE_ADMINS` | 可查询授权范围的管理员账号，逗号分隔 |
 | `DIFY_API_KEYS` | Dify 调用使用的 Bearer Key，逗号分隔 |
 | `KINGDEE_BASE_URL` | 金蝶 K3Cloud WebAPI 根地址 |
 | `KINGDEE_DBID` | 数据中心或账套 ID |

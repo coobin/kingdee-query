@@ -31,7 +31,7 @@ class KingdeeClient {
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     const envelope = {
       format: 1,
-      useragent: "KDA-Query-Hub",
+      useragent: "Kingdee-Query-Hub",
       rid: crypto.randomUUID(),
       parameters: JSON.stringify(parameters),
       timestamp: new Date().toISOString(),

@@ -27,7 +27,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/healthz", (req, res) => res.json({ ok: true, service: "kda-query-hub", workflowQuery: Boolean(config.kingdee.workflowMethod) }));
+app.get("/healthz", (req, res) => res.json({ ok: true, service: "kingdee-query-hub", workflowQuery: Boolean(config.kingdee.workflowMethod) }));
 app.use(express.static(path.join(__dirname, "public"), { index: false, maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
