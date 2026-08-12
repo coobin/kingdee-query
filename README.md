@@ -53,6 +53,7 @@ AUTH_MODE=dev
 | 变量 | 用途 |
 | --- | --- |
 | `APP_BASE_URL` | 对外访问地址，也用于生成 OpenAPI Server URL |
+| `DOCKER_SUBNET` | Query Hub 专用 Docker 网段；部署前确认不与公司网络重叠 |
 | `AUTH_MODE` | `trusted_headers` 或仅限开发的 `dev` |
 | `AUTH_TRUSTED_PROXY_TOKEN` | Query Hub 与反向代理共享的随机密钥 |
 | `REMOTE_*_HEADER` | SSO 身份请求头名称 |
@@ -157,6 +158,8 @@ curl http://127.0.0.1:8092/healthz
 ```
 
 容器以非 root 用户运行，审计日志默认写入 `data/audit.ndjson`。该目录已被 Git 忽略。
+
+Compose 默认使用 `172.16.240.0/24`，避免 Docker 自动从 `192.168.0.0/16` 分配网络而与企业内网冲突。若该网段在你的环境中已被使用，请在 `.env` 中把 `DOCKER_SUBNET` 改为经过网络管理员确认的空闲私有网段；不要使用与公司路由重叠的地址段。
 
 服务器无法访问 npm registry、但已经缓存 `node:20` 镜像时，可以使用 `Dockerfile.offline`。离线构建会复制本机安装好的 `node_modules`，部署包中不要包含 `.env` 或业务数据。
 

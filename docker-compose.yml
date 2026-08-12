@@ -12,3 +12,12 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./data:/app/data
+    networks:
+      - query_net
+
+networks:
+  query_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.16.240.0/24}
