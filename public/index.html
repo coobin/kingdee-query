@@ -6,10 +6,10 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260812-2">
+  <link rel="stylesheet" href="/styles.css?v=20260812-3">
 </head>
 <body>
-  <a class="skip-link" href="#query-input">跳到查询输入框</a>
+  <a class="skip-link" href="#query-form">跳到查询条件</a>
   <header class="topbar">
     <a class="brand" href="/" aria-label="Kingdee Query Hub 金蝶数据查询台首页">
       <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -24,37 +24,85 @@
   <main>
     <section class="workspace" aria-labelledby="page-title">
       <div class="intro">
-        <p class="eyebrow">READ-ONLY · 权限随行</p>
-        <h1 id="page-title">把一句业务问题，<br><em>落成一条有权限的查询。</em></h1>
-        <p class="lede">库存、订单、报销与审批进度，都从你的金蝶权限范围内取数。系统只读，并记录每次查询。</p>
+        <p class="eyebrow">STRUCTURED QUERY · 无需猜测</p>
+        <h1 id="page-title">选择业务，填入条件，<br><em>直接查询金蝶。</em></h1>
+        <p class="lede">不依赖自然语言理解。每种查询只开放必要条件，结果仍受你的金蝶权限约束，并记录查询审计。</p>
       </div>
 
-      <div class="query-card">
-        <div class="ledger-rule" aria-hidden="true"><span>QUERY / 001</span></div>
-        <label for="query-input">你想查什么？</label>
-        <div class="composer">
-          <textarea id="query-input" rows="3" maxlength="1000" placeholder="例如：查询物料编码 A100 的即时库存" autocomplete="off"></textarea>
-          <button id="query-button" type="button">
-            <span>开始查询</span>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      <section class="query-card" aria-labelledby="query-title">
+        <div class="ledger-rule" aria-hidden="true"><span>QUERY FORM / 001</span></div>
+        <div class="query-card-head">
+          <div>
+            <p class="eyebrow">选择查询类型</p>
+            <h2 id="query-title">你要查哪类数据？</h2>
+          </div>
+          <span class="read-only-stamp">只读</span>
+        </div>
+
+        <div class="query-tabs" role="tablist" aria-label="查询类型">
+          <button type="button" role="tab" aria-selected="true" aria-controls="panel-inventory" id="tab-inventory" data-tool="inventory">
+            <span>物料</span><strong>即时库存</strong>
+          </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-sales_orders" id="tab-sales_orders" data-tool="sales_orders">
+            <span>销售</span><strong>销售订单</strong>
+          </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-purchase_orders" id="tab-purchase_orders" data-tool="purchase_orders">
+            <span>采购</span><strong>采购订单</strong>
+          </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-expense_claims" id="tab-expense_claims" data-tool="expense_claims">
+            <span>个人</span><strong>费用报销</strong>
           </button>
         </div>
-        <div class="examples" aria-label="查询示例">
-          <span>试着问</span>
-          <button type="button" data-query="查询物料编码 A100 的库存">物料 A100 的库存</button>
-          <button type="button" data-query="我今年的报销总金额是多少">今年报销总额</button>
-          <button type="button" data-query="查询采购订单 CGDD000123">采购订单状态</button>
-          <button type="button" data-query="报销单 BX202608120001 审批到哪里">报销审批进度</button>
-        </div>
-        <p class="query-hint" id="query-hint">系统不会执行 SQL，也不会展示超出当前用户权限的数据。</p>
-      </div>
+
+        <form id="query-form" novalidate>
+          <section class="query-panel" id="panel-inventory" role="tabpanel" aria-labelledby="tab-inventory" data-panel="inventory">
+            <div class="panel-copy"><h3>查询物料库存</h3><p>输入完整物料编码，返回各库存组织、仓库和批号的即时库存。</p></div>
+            <div class="field-grid one-column">
+              <label class="field"><span>物料编码 <b>必填</b></span><input name="materialNumber" type="text" maxlength="40" placeholder="例如：1.02.00.032" autocomplete="off" required></label>
+            </div>
+          </section>
+
+          <section class="query-panel" id="panel-sales_orders" role="tabpanel" aria-labelledby="tab-sales_orders" data-panel="sales_orders" hidden>
+            <div class="panel-copy"><h3>查询销售订单</h3><p>单据编号、客户名称或日期范围至少填写一项。</p></div>
+            <div class="field-grid">
+              <label class="field"><span>销售订单编号</span><input name="billNumber" type="text" maxlength="40" placeholder="完整单据编号" autocomplete="off"></label>
+              <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
+              <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
+            </div>
+          </section>
+
+          <section class="query-panel" id="panel-purchase_orders" role="tabpanel" aria-labelledby="tab-purchase_orders" data-panel="purchase_orders" hidden>
+            <div class="panel-copy"><h3>查询采购订单</h3><p>单据编号、供应商名称或日期范围至少填写一项。</p></div>
+            <div class="field-grid">
+              <label class="field"><span>采购订单编号</span><input name="billNumber" type="text" maxlength="40" placeholder="完整单据编号" autocomplete="off"></label>
+              <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
+              <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
+            </div>
+          </section>
+
+          <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>
+            <div class="panel-copy"><h3>查询我的报销单</h3><p>只查询当前登录人的单据，选择要查看的申请日期范围。</p></div>
+            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人</strong><small>申请人由 SSO 身份确定，页面无法修改。</small></div></div>
+            <div class="field-grid">
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+            </div>
+            <label class="check-field"><input name="aggregation" type="checkbox" value="sum_amount" checked><span><strong>计算区间总金额</strong><small>同时展示报销单数量与整单金额合计</small></span></label>
+          </section>
+
+          <div class="form-error" id="form-error" role="alert" hidden></div>
+          <div class="query-actions">
+            <p>系统不会执行 SQL，也不会返回未登记字段。</p>
+            <button id="query-button" type="submit"><span>查询即时库存</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </form>
+      </section>
 
       <section class="result-panel" id="result-panel" aria-live="polite" hidden>
         <div class="result-heading">
-          <div>
-            <p class="eyebrow" id="result-tool">查询结果</p>
-            <h2 id="result-summary">正在读取数据</h2>
-          </div>
+          <div><p class="eyebrow" id="result-tool">查询结果</p><h2 id="result-summary">正在读取数据</h2></div>
           <button id="export-button" class="quiet-button" type="button" hidden>导出 CSV</button>
         </div>
         <div class="plan-strip" id="plan-strip"></div>
@@ -63,24 +111,17 @@
     </section>
 
     <aside class="scope" aria-labelledby="scope-title">
-      <div class="scope-head">
-        <p class="eyebrow">AVAILABLE SCOPE</p>
-        <h2 id="scope-title">当前可查询</h2>
-      </div>
-      <div class="tool-list" id="tool-list">
-        <div class="tool-skeleton"></div><div class="tool-skeleton"></div><div class="tool-skeleton"></div>
-      </div>
+      <div class="scope-head"><p class="eyebrow">QUERY BOUNDARY</p><h2 id="scope-title">查询边界</h2></div>
+      <div class="tool-list" id="tool-list"><div class="tool-skeleton"></div><div class="tool-skeleton"></div><div class="tool-skeleton"></div></div>
       <div class="boundary-note">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.8 2.8 8.1 7 10 4.2-1.9 7-5.2 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-        <div><strong>权限在查询前生效</strong><p>身份来自 SSO，服务端再叠加金蝶用户权限与查询范围，不依赖 AI 作授权判断。</p></div>
+        <div><strong>填写条件不等于扩大权限</strong><p>服务端会再次校验字段和范围；报销查询始终绑定当前用户。</p></div>
       </div>
       <footer><span>服务状态</span><strong id="service-status">连接中</strong></footer>
     </aside>
   </main>
 
-  <template id="empty-template">
-    <div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>可以换一个编码、日期或组织范围后再查。</p></div>
-  </template>
-  <script src="/app.js?v=20260812-2" defer></script>
+  <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
+  <script src="/app.js?v=20260812-3" defer></script>
 </body>
 </html>
