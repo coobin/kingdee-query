@@ -85,7 +85,7 @@ async function runQuery(event) {
 }
 
 function collectArguments(panel) {
-  const args = { limit: 50 };
+  const args = { limit: 100 };
   panel.querySelectorAll("input[name]").forEach((input) => {
     if (input.type === "checkbox") { if (input.checked) args[input.name] = input.value; return; }
     const value = input.value.trim(); if (value) args[input.name] = value;

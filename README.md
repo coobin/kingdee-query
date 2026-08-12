@@ -129,6 +129,8 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 - `expense_claims`：本人费用报销单
 - `workflow_progress`：审批进度，需要自定义 WebAPI
 
+网页每次最多展示 100 条结果。销售和采购订单只返回业务可读字段，不展示金蝶内部主键；销售订单也不展示客户编码。
+
 如需增加其他业务对象，请在查询目录中明确登记表单、返回字段、允许的筛选条件和必要的用户范围限制。不要开放调用方直接传 SQL 或金蝶过滤表达式。
 
 ## Dify

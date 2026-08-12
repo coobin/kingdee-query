@@ -32,11 +32,9 @@
     "description": "查询销售订单编号、客户、组织、金额和状态",
     "formId": "SAL_SaleOrder",
     "fields": [
-      ["FID", "内码"],
       ["FBillNo", "单据编号"],
       ["FDate", "业务日期"],
       ["FSaleOrgId.FName", "销售组织"],
-      ["FCustId.FNumber", "客户编码"],
       ["FCustId.FName", "客户"],
       ["FDocumentStatus", "审核状态"],
       ["FCloseStatus", "关闭状态"],
@@ -69,7 +67,6 @@
     "description": "查询采购订单编号、供应商、组织、金额和状态",
     "formId": "PUR_PurchaseOrder",
     "fields": [
-      ["FID", "内码"],
       ["FBillNo", "单据编号"],
       ["FDate", "业务日期"],
       ["FPurchaseOrgId.FName", "采购组织"],
