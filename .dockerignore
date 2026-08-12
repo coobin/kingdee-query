@@ -1,0 +1,6 @@
+.git
+.env
+database_exports
+*.xlsx
+*.py
+*.js.map

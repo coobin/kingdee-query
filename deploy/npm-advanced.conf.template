@@ -1,0 +1,43 @@
+# Nginx Proxy Manager "Advanced" configuration template.
+# Render only the named deployment variables so Nginx variables such as
+# $scheme and $request_uri remain intact:
+#
+# envsubst '${AUTHELIA_URL} ${APP_UPSTREAM} ${AUTH_TRUSTED_PROXY_TOKEN}' \
+#   < deploy/npm-advanced.conf.template \
+#   > deploy/npm-advanced.generated.conf
+
+location / {
+    auth_request /authelia;
+    auth_request_set $target_url $scheme://$http_host$request_uri;
+    auth_request_set $kda_user $upstream_http_remote_user;
+    auth_request_set $kda_name $upstream_http_remote_name;
+    auth_request_set $kda_email $upstream_http_remote_email;
+    auth_request_set $kda_kingdee_user $upstream_http_remote_kingdee_username;
+
+    error_page 401 =302 ${AUTHELIA_URL}/?rd=$target_url;
+
+    proxy_pass ${APP_UPSTREAM};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_set_header Remote-User $kda_user;
+    proxy_set_header Remote-Name $kda_name;
+    proxy_set_header Remote-Email $kda_email;
+    proxy_set_header Remote-Kingdee-Username $kda_kingdee_user;
+    proxy_set_header X-Auth-Proxy-Token "${AUTH_TRUSTED_PROXY_TOKEN}";
+}
+
+location = /authelia {
+    internal;
+    proxy_pass ${AUTHELIA_URL}/api/verify;
+    proxy_ssl_server_name on;
+    proxy_set_header Host $proxy_host;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Content-Length "";
+    proxy_pass_request_body off;
+}

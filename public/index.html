@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#123f31">
+  <title>KDA · 金蝶数据查询台</title>
+  <link rel="stylesheet" href="/styles.css?v=20260812-2">
+</head>
+<body>
+  <a class="skip-link" href="#query-input">跳到查询输入框</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="KDA 金蝶数据查询台首页">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span><strong>KDA</strong><small>金蝶数据查询台</small></span>
+    </a>
+    <div class="session" id="session">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="session-label">正在确认身份</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="workspace" aria-labelledby="page-title">
+      <div class="intro">
+        <p class="eyebrow">READ-ONLY · 权限随行</p>
+        <h1 id="page-title">把一句业务问题，<br><em>落成一条有权限的查询。</em></h1>
+        <p class="lede">库存、订单、报销与审批进度，都从你的金蝶权限范围内取数。系统只读，并记录每次查询。</p>
+      </div>
+
+      <div class="query-card">
+        <div class="ledger-rule" aria-hidden="true"><span>QUERY / 001</span></div>
+        <label for="query-input">你想查什么？</label>
+        <div class="composer">
+          <textarea id="query-input" rows="3" maxlength="1000" placeholder="例如：查询物料编码 A100 的即时库存" autocomplete="off"></textarea>
+          <button id="query-button" type="button">
+            <span>开始查询</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="examples" aria-label="查询示例">
+          <span>试着问</span>
+          <button type="button" data-query="查询物料编码 A100 的库存">物料 A100 的库存</button>
+          <button type="button" data-query="我今年的报销总金额是多少">今年报销总额</button>
+          <button type="button" data-query="查询采购订单 CGDD000123">采购订单状态</button>
+          <button type="button" data-query="报销单 BX202608120001 审批到哪里">报销审批进度</button>
+        </div>
+        <p class="query-hint" id="query-hint">系统不会执行 SQL，也不会展示超出当前用户权限的数据。</p>
+      </div>
+
+      <section class="result-panel" id="result-panel" aria-live="polite" hidden>
+        <div class="result-heading">
+          <div>
+            <p class="eyebrow" id="result-tool">查询结果</p>
+            <h2 id="result-summary">正在读取数据</h2>
+          </div>
+          <button id="export-button" class="quiet-button" type="button" hidden>导出 CSV</button>
+        </div>
+        <div class="plan-strip" id="plan-strip"></div>
+        <div class="table-wrap" id="table-wrap"></div>
+      </section>
+    </section>
+
+    <aside class="scope" aria-labelledby="scope-title">
+      <div class="scope-head">
+        <p class="eyebrow">AVAILABLE SCOPE</p>
+        <h2 id="scope-title">当前可查询</h2>
+      </div>
+      <div class="tool-list" id="tool-list">
+        <div class="tool-skeleton"></div><div class="tool-skeleton"></div><div class="tool-skeleton"></div>
+      </div>
+      <div class="boundary-note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.8 2.8 8.1 7 10 4.2-1.9 7-5.2 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+        <div><strong>权限在查询前生效</strong><p>身份来自 SSO，服务端再叠加金蝶用户权限与查询范围，不依赖 AI 作授权判断。</p></div>
+      </div>
+      <footer><span>服务状态</span><strong id="service-status">连接中</strong></footer>
+    </aside>
+  </main>
+
+  <template id="empty-template">
+    <div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>可以换一个编码、日期或组织范围后再查。</p></div>
+  </template>
+  <script src="/app.js?v=20260812-2" defer></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+{
+  "inventory": {
+    "label": "即时库存",
+    "description": "按物料、仓库和库存组织查询即时库存",
+    "formId": "STK_Inventory",
+    "fields": [
+      ["FStockOrgId.FNumber", "库存组织编码"],
+      ["FStockOrgId.FName", "库存组织"],
+      ["FMaterialId.FNumber", "物料编码"],
+      ["FMaterialId.FName", "物料名称"],
+      ["FStockId.FNumber", "仓库编码"],
+      ["FStockId.FName", "仓库"],
+      ["FLot.FNumber", "批号"],
+      ["FBaseQty", "基本库存数量"],
+      ["FSecQty", "辅助库存数量"],
+      ["FProduceDate", "生产日期"],
+      ["FExpiryDate", "有效期至"]
+    ],
+    "filterFields": {
+      "materialNumber": "FMaterialId.FNumber",
+      "materialName": "FMaterialId.FName",
+      "warehouseNumber": "FStockId.FNumber",
+      "warehouseName": "FStockId.FName",
+      "organizationNumber": "FStockOrgId.FNumber",
+      "lotNumber": "FLot.FNumber"
+    },
+    "defaultOrder": "FMaterialId.FNumber ASC",
+    "requiresFilter": true
+  },
+  "sales_orders": {
+    "label": "销售订单",
+    "description": "查询销售订单编号、客户、组织、金额和状态",
+    "formId": "SAL_SaleOrder",
+    "fields": [
+      ["FID", "内码"],
+      ["FBillNo", "单据编号"],
+      ["FDate", "业务日期"],
+      ["FSaleOrgId.FName", "销售组织"],
+      ["FCustId.FNumber", "客户编码"],
+      ["FCustId.FName", "客户"],
+      ["FDocumentStatus", "审核状态"],
+      ["FCloseStatus", "关闭状态"],
+      ["FBillAllAmount", "价税合计"],
+      ["FCreatorId.FName", "创建人"]
+    ],
+    "filterFields": {
+      "billNumber": "FBillNo",
+      "customerNumber": "FCustId.FNumber",
+      "customerName": "FCustId.FName",
+      "organizationName": "FSaleOrgId.FName",
+      "creatorName": "FCreatorId.FName",
+      "dateFrom": "FDate",
+      "dateTo": "FDate"
+    },
+    "defaultOrder": "FDate DESC,FBillNo DESC",
+    "valueMappings": {
+      "审核状态": {
+        "Z": "暂存",
+        "A": "已创建",
+        "B": "审核中",
+        "C": "已审核",
+        "D": "重新审核"
+      }
+    },
+    "requiresFilter": true
+  },
+  "purchase_orders": {
+    "label": "采购订单",
+    "description": "查询采购订单编号、供应商、组织、金额和状态",
+    "formId": "PUR_PurchaseOrder",
+    "fields": [
+      ["FID", "内码"],
+      ["FBillNo", "单据编号"],
+      ["FDate", "业务日期"],
+      ["FPurchaseOrgId.FName", "采购组织"],
+      ["FSupplierId.FNumber", "供应商编码"],
+      ["FSupplierId.FName", "供应商"],
+      ["FDocumentStatus", "审核状态"],
+      ["FCloseStatus", "关闭状态"],
+      ["FBillAllAmount", "价税合计"],
+      ["FCreatorId.FName", "创建人"]
+    ],
+    "filterFields": {
+      "billNumber": "FBillNo",
+      "supplierNumber": "FSupplierId.FNumber",
+      "supplierName": "FSupplierId.FName",
+      "organizationName": "FPurchaseOrgId.FName",
+      "creatorName": "FCreatorId.FName",
+      "dateFrom": "FDate",
+      "dateTo": "FDate"
+    },
+    "defaultOrder": "FDate DESC,FBillNo DESC",
+    "valueMappings": {
+      "审核状态": {
+        "Z": "暂存",
+        "A": "已创建",
+        "B": "审核中",
+        "C": "已审核",
+        "D": "重新审核"
+      }
+    },
+    "requiresFilter": true
+  },
+  "expense_claims": {
+    "label": "费用报销单",
+    "description": "查询本人或授权范围内的费用报销单",
+    "formId": "ER_ExpReimbursement",
+    "fields": [
+      ["FBillNo", "单据编号"],
+      ["FDate", "申请日期"],
+      ["FProposerID.FName", "申请人"],
+      ["FRequestDeptID.FName", "申请部门"],
+      ["FOrgID.FName", "申请组织"],
+      ["FDocumentStatus", "审核状态"],
+      ["FExpAmountSum", "单据总金额"],
+      ["FApproveDate", "审核日期"]
+    ],
+    "filterFields": {
+      "billNumber": "FBillNo",
+      "applicantNumber": "FProposerID.FNumber",
+      "applicantName": "FProposerID.FName",
+      "departmentName": "FRequestDeptID.FName",
+      "organizationName": "FOrgID.FName",
+      "dateFrom": "FDate",
+      "dateTo": "FDate",
+      "status": "FDocumentStatus"
+    },
+    "selfField": "FProposerID.FName",
+    "selfValueSource": "name",
+    "defaultOrder": "FDate DESC,FBillNo DESC",
+    "valueMappings": {
+      "审核状态": {
+        "Z": "暂存",
+        "A": "已创建",
+        "B": "审核中",
+        "C": "已审核",
+        "D": "重新审核"
+      }
+    },
+    "requiresFilter": true,
+    "forceSelfScope": true
+  }
+}

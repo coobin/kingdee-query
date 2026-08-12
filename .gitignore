@@ -1,0 +1,26 @@
+node_modules/
+.env
+.env.*
+!.env.example
+data/
+database_exports/
+deploy/*.generated.conf
+.venv/
+__pycache__/
+*.pyc
+*.xlsx
+~$*
+*.tgz
+.DS_Store
+npm-debug.log*
+
+# Local data-export utilities used during deployment analysis. They are not
+# required by the application and may contain environment-specific details.
+.receive_export.py
+build_k3_permissions_excel.py
+build_role_permission_matrix_db.py
+build_role_user_document_permissions.py
+reformat_role_permission_matrix.py
+export_k3_permissions.js
+export_role_permission_matrix_db.js
+export_role_user_document_permissions_db.js

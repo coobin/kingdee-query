@@ -1,0 +1,20 @@
+# Offline deployment fallback for servers that already cache node:20.
+# The deployment bundle must include node_modules produced by `npm ci --omit=dev`.
+FROM node:20
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY node_modules ./node_modules
+COPY server.js ./
+COPY src ./src
+COPY public ./public
+COPY config ./config
+
+RUN mkdir -p /app/data && chown -R node:node /app
+USER node
+
+ENV NODE_ENV=production TZ=Asia/Shanghai
+EXPOSE 8092
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:8092/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "server.js"]
