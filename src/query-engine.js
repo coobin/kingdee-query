@@ -109,7 +109,7 @@ function buildOverdueInvoiceCandidateFilter(args, asOfDate) {
   const clauses = [
     "FDocumentStatus='C'",
     "FCancelStatus='A'",
-    "FALLAMOUNTFOR>0",
+    "FALLAMOUNTFOR<>0",
     `FINVOICEDATE<'${isoDate(cutoffDate)}'`,
   ];
   if (args.customerName) clauses.push(`FCustomerID.FName LIKE '%${escapeValue(args.customerName)}%'`);
@@ -215,7 +215,7 @@ class QueryEngine {
       identity,
       invoiceSource,
       candidateSubprojects,
-      ["FDocumentStatus='C'", "FCancelStatus='A'", "FALLAMOUNTFOR>0"],
+      ["FDocumentStatus='C'", "FCancelStatus='A'", "FALLAMOUNTFOR<>0"],
       pageSize,
     );
     const invoiceRows = rowsToObjects(allInvoices.rows, invoiceSource.fields);
@@ -357,7 +357,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     addIfPresent(subproject.names, row["销售子项目名称"]);
     addIfPresent(subproject.customers, row["客户"]);
     addIfPresent(subproject.invoiceNumbers, row["销售发票号"]);
-    subproject.invoiceAmount += Math.max(0, Number(row["发票金额"]) || 0);
+    subproject.invoiceAmount += signedInvoiceAmount(row);
     const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!subproject.firstInvoiceDate || invoiceDate < subproject.firstInvoiceDate)) subproject.firstInvoiceDate = invoiceDate;
   }
@@ -403,7 +403,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
   const rows = [...subprojects.values()].map((subproject) => {
     if (!subproject.firstInvoiceDate) { missingInvoiceDateSubprojects += 1; return null; }
     const firstDate = subproject.firstInvoiceDate;
-    const invoiceAmount = roundMoney(subproject.invoiceAmount || subproject.receivableAmount);
+    const invoiceAmount = roundMoney(subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount);
     const outstandingAmount = roundMoney(subproject.outstandingAmount);
     const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
     const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
@@ -497,6 +497,12 @@ function joinValues(values) {
 
 function roundMoney(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function signedInvoiceAmount(row) {
+  const amount = Number(row["发票金额"]) || 0;
+  const redBlue = String(row["红蓝字标识"] || "").trim();
+  return redBlue === "1" && amount > 0 ? -amount : amount;
 }
 
 function sumMoney(rows, field) {

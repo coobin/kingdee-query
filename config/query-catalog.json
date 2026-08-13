@@ -88,7 +88,8 @@
         ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
         ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
         ["FCustomerID.FName", "客户"],
-        ["FALLAMOUNTFOR", "发票金额"]
+        ["FALLAMOUNTFOR", "发票金额"],
+        ["FRedBlue", "红蓝字标识"]
       ],
       "defaultOrder": "FINVOICEDATE ASC,FBillNo ASC"
     },

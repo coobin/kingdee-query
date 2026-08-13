@@ -98,6 +98,7 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   const invoiceRows = [
     { 销售发票号: "INV1", 开票日期: "2026-01-10T00:00:00", 销售子项目编码: "SP-1", 销售子项目名称: "销售子项目一", 客户: "客户甲", 发票金额: 100 },
     { 销售发票号: "INV2", 开票日期: "2026-02-01T00:00:00", 销售子项目编码: "sp-1", 销售子项目名称: "销售子项目一", 客户: "客户甲", 发票金额: 50 },
+    { 销售发票号: "INV2-RED", 开票日期: "2026-02-02T00:00:00", 销售子项目编码: "sp-1", 销售子项目名称: "销售子项目一", 客户: "客户甲", 发票金额: -20, 红蓝字标识: "1" },
     { 销售发票号: "INV3", 开票日期: "2026-01-05T00:00:00", 销售子项目编码: "SP-3", 销售子项目名称: "已结清子项目", 客户: "客户丙", 发票金额: 300 },
     { 销售发票号: "INV4", 开票日期: "2026-01-06T00:00:00", 销售子项目编码: "SP-4", 销售子项目名称: "没有应收的发票", 客户: "客户丁", 发票金额: 80 },
   ];
@@ -121,7 +122,8 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
   assert.equal(result.rows[0]["销售子项目名称"], "销售子项目一");
   assert.equal(result.rows[0]["开票日期"], "2026-01-10");
-  assert.equal(result.rows[0]["超期发票数"], 2);
+  assert.equal(result.rows[0]["开票金额"], 130);
+  assert.equal(result.rows[0]["超期发票数"], 3);
   assert.equal(result.rows[0]["应收单数"], 2);
   assert.equal(result.rows[0]["实际回款净额"], 130);
   assert.equal(result.rows[0]["未核销金额"], 100);
@@ -137,7 +139,7 @@ test("executes the overdue receivable tool with current business date and visibl
   const kingdee = { executeBillQuery: async (username, payload) => {
     assert.equal(username, "240001");
     requests.push(payload);
-    if (payload.FormId === "IV_SALESIC") return [["INV1", "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100]];
+    if (payload.FormId === "IV_SALESIC") return [["INV1", "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100, "0"]];
     if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
     return [[20, "RF1", "2026-03-02T00:00:00", "SP-1", "销售子项目一", 5]];
