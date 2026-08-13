@@ -6,23 +6,23 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员设置 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=20260813-2">
+  <link rel="stylesheet" href="/auth.css?v=20260813-3">
 </head>
 <body class="admin-page">
   <header class="admin-topbar">
     <a class="auth-brand" href="/"><span class="auth-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>KINGDEE QUERY HUB</strong><small>超级管理员设置</small></span></a>
-    <nav><a href="/">数据查询台</a><button id="logout-button" type="button">退出登录</button></nav>
+    <nav><a href="/">数据查询台</a><button id="logout-button" type="button">退出管理员，使用 SSO</button></nav>
   </header>
 
   <main class="admin-shell">
     <section class="admin-heading">
-      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>名单支持中文姓名、姓名拼音、SSO 账号、邮箱或金蝶账号。每个模块名单为空时，所有已登录员工都可以查看。</p></div>
+      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>模块名单直接匹配员工的金蝶用户名。每个模块名单为空时，所有已登录员工都可以查看。</p></div>
       <div class="admin-identity"><span>当前超级管理员</span><strong id="current-admin">读取中</strong></div>
     </section>
 
     <section class="settings-section" aria-labelledby="module-title">
       <div class="section-heading"><div><p class="auth-eyebrow">MODULE ACCESS</p><h2 id="module-title">模块查看人员</h2></div><button class="primary-action" id="save-access" type="button">保存模块权限</button></div>
-      <div class="module-explainer"><span class="access-state open">空白</span><p>模块对所有已登录员工开放</p><span class="access-state restricted">有名单</span><p>只有名单人员和超级管理员可见</p></div>
+      <div class="module-explainer"><span class="access-state open">空白</span><p>模块对所有已登录员工开放</p><span class="access-state restricted">有名单</span><p>只匹配名单中的金蝶用户；超级管理员始终可见</p></div>
       <div class="module-grid" id="module-grid" aria-live="polite"></div>
       <div class="admin-message" id="access-message" role="status" hidden></div>
     </section>
@@ -43,6 +43,6 @@
       </form>
     </section>
   </main>
-  <script src="/admin.js?v=20260813-1" defer></script>
+  <script src="/admin.js?v=20260813-2" defer></script>
 </body>
 </html>

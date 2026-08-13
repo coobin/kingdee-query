@@ -38,17 +38,23 @@ test("creates and reads an administrator session cookie", (t) => {
   assert.equal(access.readSession(cookie).adminUsername, "kay");
 });
 
-test("matches module access by Chinese name, pinyin account, email local part, or Kingdee account", (t) => {
+test("matches module access only by the SSO-resolved Kingdee username", (t) => {
   const { directory, access } = fixture();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const chinese = { userId: "240001", name: "张三", email: "zhangsan@example.com", kingdeeUsername: "KD001" };
-  access.setModuleAccess({ inventory: ["张三"], sales_orders: ["lisi"] });
-  assert.equal(access.canAccess(chinese, "inventory"), true);
-  assert.equal(access.canAccess(chinese, "sales_orders"), false);
-  access.setModuleAccess({ inventory: ["ZHANGSAN"] });
-  assert.equal(access.canAccess(chinese, "inventory"), true);
+  const employee = { userId: "240001", name: "张三", email: "zhangsan@example.com", kingdeeUsername: "KD001" };
+  for (const nonKingdeeIdentifier of ["张三", "zhangsan", "240001", "zhangsan@example.com"]) {
+    access.setModuleAccess({ inventory: [nonKingdeeIdentifier] });
+    assert.equal(access.canAccess(employee, "inventory"), false);
+  }
   access.setModuleAccess({ inventory: ["kd001"] });
-  assert.equal(access.canAccess(chinese, "inventory"), true);
+  assert.equal(access.canAccess(employee, "inventory"), true);
+});
+
+test("normalizes and deduplicates multiline Kingdee user lists", (t) => {
+  const { directory, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const saved = access.setModuleAccess({ inventory: ["张三", " 张三 ", "李四"] });
+  assert.deepEqual(saved.inventory, ["张三", "李四"]);
 });
 
 test("blank access list is open while a super administrator always bypasses module restrictions", (t) => {

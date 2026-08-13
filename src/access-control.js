@@ -10,15 +10,7 @@ function normalizeIdentifier(value) {
 }
 
 function identityIdentifiers(identity) {
-  const email = normalizeIdentifier(identity?.email);
-  return new Set([
-    identity?.userId,
-    identity?.name,
-    identity?.email,
-    email.includes("@") ? email.split("@")[0] : "",
-    identity?.kingdeeUsername,
-    identity?.adminUsername,
-  ].map(normalizeIdentifier).filter(Boolean));
+  return new Set([identity?.kingdeeUsername].map(normalizeIdentifier).filter(Boolean));
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {

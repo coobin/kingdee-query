@@ -30,13 +30,16 @@ function renderModules() {
     const description = document.createElement("small"); description.textContent = module.description;
     title.append(strong, description); head.append(number, title);
     const label = document.createElement("label");
-    const labelText = document.createElement("span"); labelText.textContent = "允许查看的人员";
+    const labelText = document.createElement("span"); labelText.textContent = "允许查看的金蝶用户";
     const textarea = document.createElement("textarea");
     textarea.rows = 4;
-    textarea.placeholder = "空白表示全部人员\n例如：郑婷、zhengting";
+    textarea.placeholder = "例如：张三";
+    const hint = document.createElement("small");
+    hint.className = "field-hint";
+    hint.textContent = "直接填写金蝶用户名；多个用户请每行填写一个，也可以用逗号分隔。";
     textarea.value = (state.settings.moduleAccess[module.id] || []).join("\n");
     textarea.addEventListener("input", () => card.classList.toggle("restricted", Boolean(parsePeople(textarea.value).length)));
-    label.append(labelText, textarea); card.append(head, label);
+    label.append(labelText, textarea, hint); card.append(head, label);
     card.classList.toggle("restricted", Boolean(parsePeople(textarea.value).length));
     return card;
   }));
@@ -128,8 +131,15 @@ async function deleteAdmin(username) {
 }
 
 document.querySelector("#logout-button").addEventListener("click", async () => {
-  await api("/api/local-auth/logout", { method: "POST", body: "{}" }).catch(() => null);
-  location.assign("/login");
+  const button = document.querySelector("#logout-button");
+  button.disabled = true;
+  try {
+    await api("/api/local-auth/logout", { method: "POST", body: "{}" });
+    location.assign("/");
+  } catch (error) {
+    button.disabled = false;
+    showMessage(accessMessage, `退出失败：${error.message}`, true);
+  }
 });
 
 async function reloadSettings() {
