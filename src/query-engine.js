@@ -196,21 +196,16 @@ class QueryEngine {
     if (args.customerName) accepted.customerName = args.customerName;
     if (args.subprojectNumber || args.projectNumber) accepted.subprojectNumber = args.subprojectNumber || args.projectNumber;
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
-    const maximum = this.config.kingdee.aggregationMaxRows;
-    const requestLimit = Math.min(maximum + 1, 10000);
+    const pageSize = Math.min(this.config.kingdee.maxRows, 200);
     const invoiceSource = item.invoiceDateSource;
     if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
-    let rawInvoiceRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+    const rawInvoiceRows = await this.queryAllPages(identity, {
       FormId: invoiceSource.formId,
       FieldKeys: invoiceSource.fields.map(([key]) => key).join(","),
       FilterString: buildOverdueInvoiceCandidateFilter(args, asOfDate),
       OrderString: invoiceSource.defaultOrder || "FINVOICEDATE ASC,FBillNo ASC",
-      StartRow: 0,
-      Limit: requestLimit,
       TopRowCount: 0,
-    });
-    const invoicePartial = rawInvoiceRows.length >= requestLimit;
-    rawInvoiceRows = rawInvoiceRows.slice(0, maximum);
+    }, pageSize);
     const overdueInvoiceRows = rowsToObjects(rawInvoiceRows, invoiceSource.fields);
     const candidateSubprojects = [...new Set(overdueInvoiceRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
     // The first invoice query only identifies overdue candidates. Fetch every
@@ -221,27 +216,26 @@ class QueryEngine {
       invoiceSource,
       candidateSubprojects,
       ["FDocumentStatus='C'", "FCancelStatus='A'", "FALLAMOUNTFOR>0"],
-      maximum,
+      pageSize,
     );
     const invoiceRows = rowsToObjects(allInvoices.rows, invoiceSource.fields);
     const receivableSource = { ...item, fields: item.fields };
-    const receivables = await this.queryBySubprojects(identity, receivableSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'", "FIVALLAMOUNTFOR>0"], maximum);
+    const receivables = await this.queryBySubprojects(identity, receivableSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'", "FIVALLAMOUNTFOR>0"], pageSize);
     const receiptSource = item.receiptSource;
     const refundSource = item.refundSource;
     const receipts = receiptSource
-      ? await this.queryBySubprojects(identity, receiptSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], maximum)
-      : { rows: [], partial: false };
+      ? await this.queryBySubprojects(identity, receiptSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
+      : { rows: [] };
     const refunds = refundSource
-      ? await this.queryBySubprojects(identity, refundSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], maximum)
-      : { rows: [], partial: false };
-    const partial = invoicePartial || allInvoices.partial || receivables.partial || receipts.partial || refunds.partial;
+      ? await this.queryBySubprojects(identity, refundSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
+      : { rows: [] };
     const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
       invoiceRows,
       receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
       refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
       asOfDate,
       minimumDays,
-      partial,
+      partial: false,
     });
     return {
       tool: "overdue_receivables",
@@ -250,32 +244,41 @@ class QueryEngine {
       columns: item.publicColumns,
       rows: result.rows.slice(0, limit),
       count: result.rows.length,
-      truncated: partial || result.rows.length > limit,
+      truncated: result.rows.length > limit,
       statistics: result.statistics,
       summary: result.summary,
     };
   }
 
-  async queryBySubprojects(identity, source, subprojects, extraFilter, maximum) {
-    if (!subprojects.length) return { rows: [], partial: false };
+  async queryAllPages(identity, request, pageSize) {
     const rows = [];
-    let partial = false;
-    for (const batch of chunkValues(subprojects, 150)) {
-      const remaining = maximum + 1 - rows.length;
-      if (remaining <= 0) { partial = true; break; }
+    let startRow = 0;
+    while (true) {
       const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+        ...request,
+        StartRow: startRow,
+        Limit: pageSize,
+      });
+      rows.push(...page);
+      if (page.length < pageSize) break;
+      startRow += page.length;
+    }
+    return rows;
+  }
+
+  async queryBySubprojects(identity, source, subprojects, extraFilter, pageSize) {
+    if (!subprojects.length) return { rows: [] };
+    const rows = [];
+    for (const batch of chunkValues(subprojects, 150)) {
+      rows.push(...await this.queryAllPages(identity, {
         FormId: source.formId,
         FieldKeys: source.fields.map(([key]) => key).join(","),
         FilterString: buildSubprojectBatchFilter(batch, extraFilter),
         OrderString: source.defaultOrder || "FDATE ASC,FBillNo ASC",
-        StartRow: 0,
-        Limit: Math.min(remaining, 10000),
         TopRowCount: 0,
-      });
-      rows.push(...page);
-      if (rows.length > maximum) { partial = true; break; }
+      }, pageSize));
     }
-    return { rows: rows.slice(0, maximum), partial };
+    return { rows };
   }
 
   async queryForAggregation(identity, request) {

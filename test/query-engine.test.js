@@ -69,6 +69,25 @@ test("rejects invalid overdue day thresholds", () => {
   assert.throws(() => buildOverdueReceivableFilter({ minimumDays: "180.5" }, "2026-08-13"), /1 到 3650/);
 });
 
+test("paginates every page when querying a source", async () => {
+  const requests = [];
+  const kingdee = { executeBillQuery: async (username, payload) => {
+    assert.equal(username, "240001");
+    requests.push(payload);
+    if (payload.StartRow === 0) return [["A"], ["B"]];
+    if (payload.StartRow === 2) return [["C"]];
+    throw new Error(`unexpected page start ${payload.StartRow}`);
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 2, aggregationMaxRows: 5 } },
+  });
+  const rows = await engine.queryAllPages(identity, { FormId: "IV_SALESIC", FieldKeys: "FBillNo" }, 2);
+  assert.deepEqual(rows, [["A"], ["B"], ["C"]]);
+  assert.deepEqual(requests.map((request) => [request.StartRow, request.Limit]), [[0, 2], [2, 2]]);
+});
+
 test("aggregates one row per sales subproject from an invoice date", () => {
   const source = [
     { 应收内码: 1, 应收单号: "AR1", 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "销售子项目一", 已开票金额: 100, 已收金额: 0, 未收金额: 100, 已核销金额: 0 },
@@ -133,12 +152,12 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests.length, 5);
   assert.equal(requests[0].FormId, "IV_SALESIC");
   assert.match(requests[0].FilterString, /FINVOICEDATE<'2026-02-14'/);
-  assert.equal(requests[0].Limit, 5001);
+  assert.equal(requests[0].Limit, 100);
   assert.equal(requests[1].FormId, "IV_SALESIC");
   assert.match(requests[1].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
   assert.equal(requests[2].FormId, "AR_RECEIVABLE");
   assert.doesNotMatch(requests[2].FilterString, /FDate|FEndDate/);
-  assert.equal(requests[2].Limit, 5001);
+  assert.equal(requests[2].Limit, 100);
   assert.equal(requests[3].FormId, "AR_RECEIVEBILL");
   assert.equal(requests[4].FormId, "AR_REFUNDBILL");
   assert.equal(result.count, 1);
