@@ -10,9 +10,10 @@ function localPlan(question) {
   if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
   else if (/采购|供应商/.test(text)) tool = "purchase_orders";
+  else if (/未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
   else if (/销售|客户|订单/.test(text)) tool = "sales_orders";
   else if (/库存|仓库|物料|存量/.test(text)) tool = "inventory";
-  else throw Object.assign(new Error("暂时无法判断你要查询库存、订单、报销还是审批进度，请说得具体一点。"), { statusCode: 400 });
+  else throw Object.assign(new Error("暂时无法判断你要查询库存、订单、超期未回款、报销还是审批进度，请说得具体一点。"), { statusCode: 400 });
 
   const quoted = [...text.matchAll(/[“\"']([^”\"']{1,40})[”\"']/g)].map((match) => match[1]);
   const bill = text.match(/(?:单号|编号|订单|报销单)\s*[：:=是为]?\s*([A-Za-z]{1,12}[-_]?\d{3,})/i);
@@ -43,6 +44,16 @@ function localPlan(question) {
   if (warehouse) arguments_.warehouseName = warehouse[1];
   if (applicant) arguments_.applicantName = applicant[1];
   if (/总金额|合计金额|金额合计|总计|一共.*(?:多少|金额)|累计.*金额/.test(text)) arguments_.aggregation = "sum_amount";
+  if (tool === "overdue_receivables") {
+    const minimumDays = text.match(/(?:超过|超|大于)?\s*(\d{1,4})\s*天/);
+    const customer = text.match(/客户(?:名称)?\s*[：:=是为]?\s*([^，。,.;；\s]{1,30})/);
+    const project = text.match(/项目(?:编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+    if (minimumDays) arguments_.minimumDays = Number(minimumDays[1]);
+    if (customer) arguments_.customerName = customer[1];
+    if (project) arguments_.projectNumber = project[1];
+    delete arguments_.dateFrom;
+    delete arguments_.dateTo;
+  }
   if (tool === "inventory" && !arguments_.materialNumber && quoted[0]) arguments_.materialName = quoted[0];
   if (tool === "workflow_progress") {
     arguments_.formId = inferFormId(text);

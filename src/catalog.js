@@ -16,7 +16,7 @@ function publicCatalog(catalog, workflowEnabled) {
     label: item.label,
     description: item.description,
     filters: Object.keys(item.filterFields),
-    columns: item.fields.map(([, label]) => label),
+    columns: item.publicColumns || item.fields.map(([, label]) => label),
   }));
   tools.push({
     id: "workflow_progress",

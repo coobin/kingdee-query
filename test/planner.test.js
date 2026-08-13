@@ -34,3 +34,17 @@ test("plans current-year expense amount aggregation", () => {
   assert.match(plan.arguments.dateFrom, /^\d{4}-01-01$/);
   assert.match(plan.arguments.dateTo, /^\d{4}-\d{2}-\d{2}$/);
 });
+
+test("plans an overdue invoiced receivable query", () => {
+  const plan = localPlan("统计超过 180 天还没回款的开票应收");
+  assert.equal(plan.tool, "overdue_receivables");
+  assert.equal(plan.arguments.minimumDays, 180);
+  assert.equal(plan.arguments.dateFrom, undefined);
+});
+
+test("plans an overdue receivable query for a project", () => {
+  const plan = localPlan("查询项目 QC-JE2019060-61 超过365天未回款");
+  assert.equal(plan.tool, "overdue_receivables");
+  assert.equal(plan.arguments.minimumDays, 365);
+  assert.equal(plan.arguments.projectNumber, "QC-JE2019060-61");
+});

@@ -62,6 +62,46 @@
     },
     "requiresFilter": true
   },
+  "overdue_receivables": {
+    "label": "超期未回款",
+    "description": "统计已开票且超过指定账龄仍未结清的应收",
+    "formId": "AR_RECEIVABLE",
+    "queryType": "overdue_receivables",
+    "fields": [
+      ["FID", "应收内码"],
+      ["FBillNo", "应收单号"],
+      ["FDate", "应收日期"],
+      ["FEndDate", "到期日"],
+      ["FCustomerID.FName", "客户"],
+      ["FSettleOrgId.FName", "结算组织"],
+      ["FSaleDeptId.FName", "销售部门"],
+      ["FSaleerId.FName", "销售员"],
+      ["F_PARA_SaleProId.FNumber", "项目编号"],
+      ["F_PARA_SaleProId.FName", "项目名称"],
+      ["F_PARA_SaleSubProId.FNumber", "子项目编号"],
+      ["FIVALLAMOUNTFOR", "已开票金额"],
+      ["FRECEIVEAMOUNT", "已收金额"],
+      ["FNORECEIVEAMOUNT", "未收金额"]
+    ],
+    "publicColumns": [
+      "客户",
+      "项目编号",
+      "项目名称",
+      "应收单号",
+      "应收日期",
+      "到期日",
+      "账龄天数",
+      "开票金额",
+      "未回款金额",
+      "回款状态"
+    ],
+    "filterFields": {
+      "minimumDays": "FDate",
+      "customerName": "FCustomerID.FName",
+      "projectNumber": "F_PARA_SaleProId.FNumber"
+    },
+    "defaultOrder": "FDate ASC,FBillNo ASC"
+  },
   "purchase_orders": {
     "label": "采购订单",
     "description": "查询采购订单编号、供应商、组织、金额和状态",

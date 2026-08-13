@@ -8,7 +8,8 @@
 
 - 通过 Authelia、Nginx 或其他反向代理注入的可信请求头完成 SSO
 - 使用最终用户身份建立金蝶 `LoginByAppSecret` 会话，沿用其金蝶数据权限
-- 提供库存、销售订单、采购订单和本人费用报销单查询
+- 提供库存、销售订单、超期未回款、采购订单和本人费用报销单查询
+- 超期未回款按当前日期和应收单业务日期计算，只汇总已审核、未作废、已开票且仍未结清的应收金额
 - 费用报销单按单据头返回，一张单据一行，状态转换为中文
 - 网页使用结构化查询表单，避免自然语言误判
 - Dify API 仍支持常见中文问法，也可连接 OpenAI-compatible 模型进行查询规划
@@ -125,6 +126,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 
 - `inventory`：即时库存
 - `sales_orders`：销售订单
+- `overdue_receivables`：已开票且超过指定天数仍未结清的应收，默认超过 180 天
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
 - `workflow_progress`：审批进度，需要自定义 WebAPI

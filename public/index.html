@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260812-3">
+  <link rel="stylesheet" href="/styles.css?v=20260813-1">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -46,6 +46,9 @@
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-sales_orders" id="tab-sales_orders" data-tool="sales_orders">
             <span>销售</span><strong>销售订单</strong>
           </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-overdue_receivables" id="tab-overdue_receivables" data-tool="overdue_receivables">
+            <span>财务</span><strong>超期未回款</strong>
+          </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-purchase_orders" id="tab-purchase_orders" data-tool="purchase_orders">
             <span>采购</span><strong>采购订单</strong>
           </button>
@@ -69,6 +72,16 @@
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
               <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
+            </div>
+          </section>
+
+          <section class="query-panel" id="panel-overdue_receivables" role="tabpanel" aria-labelledby="tab-overdue_receivables" data-panel="overdue_receivables" hidden>
+            <div class="panel-copy"><h3>统计超期未回款</h3><p>按应收单业务日期计算账龄，只统计已审核、未作废、已开票且当前仍有未收余额的记录。</p></div>
+            <div class="scope-lock aging-lock"><span id="aging-threshold-badge" aria-hidden="true">181+</span><div><strong>统计日：今天</strong><small>未回款风险金额只计算已开票部分；完全未回款与部分回款分别汇总。</small></div></div>
+            <div class="field-grid">
+              <label class="field"><span>超过天数 <b>必填</b></span><input name="minimumDays" type="number" min="1" max="3650" step="1" value="180" required></label>
+              <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="不填则查询全部客户" autocomplete="off"></label>
+              <label class="field"><span>项目编号</span><input name="projectNumber" type="text" maxlength="60" placeholder="支持包含匹配" autocomplete="off"></label>
             </div>
           </section>
 
@@ -122,6 +135,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260812-3" defer></script>
+  <script src="/app.js?v=20260813-1" defer></script>
 </body>
 </html>
