@@ -119,7 +119,7 @@ test("executes the overdue receivable tool with current business date and visibl
     assert.equal(username, "240001");
     requests.push(payload);
     if (payload.FormId === "IV_SALESIC") return [["INV1", "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100]];
-    if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "张三", "SP-1", "销售子项目一", 100, 0, 100, 0]];
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
     return [[20, "RF1", "2026-03-02T00:00:00", "SP-1", "销售子项目一", 5]];
   } };

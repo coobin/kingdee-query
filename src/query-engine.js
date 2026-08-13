@@ -332,7 +332,6 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
         billNumbers: new Set(),
         organizations: new Set(),
         departments: new Set(),
-        salespersons: new Set(),
         invoiceNumbers: new Set(),
         firstInvoiceDate: "",
         invoiceAmount: 0,
@@ -368,7 +367,6 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     addIfPresent(subproject.billNumbers, row["应收单号"]);
     addIfPresent(subproject.organizations, row["结算组织"]);
     addIfPresent(subproject.departments, row["销售部门"]);
-    addIfPresent(subproject.salespersons, row["销售员"]);
     const invoiceAmount = Math.max(0, Number(row["已开票金额"]) || 0);
     const receivedAmount = Math.max(0, Number(row["已收金额"]) || 0);
     const entryOutstanding = Math.max(0, Number(row["未收金额"]) || 0);
@@ -425,7 +423,6 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
       应收单数: subproject.billNumbers.size,
       结算组织: joinValues(subproject.organizations),
       销售部门: joinValues(subproject.departments),
-      销售员: joinValues(subproject.salespersons),
       开票金额: invoiceAmount,
       实际回款净额: actualReceiptAmount,
       未核销金额: unreconciledAmount,

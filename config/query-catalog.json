@@ -73,7 +73,6 @@
       ["FCustomerID.FName", "客户"],
       ["FSettleOrgId.FName", "结算组织"],
       ["FSaleDeptId.FName", "销售部门"],
-      ["FSaleerId.FName", "销售员"],
       ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
       ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
       ["FIVALLAMOUNTFOR", "已开票金额"],
@@ -130,8 +129,7 @@
       "未核销金额",
       "未生成应收金额",
       "未回款金额",
-      "回款状态",
-      "销售员"
+      "回款状态"
     ],
     "filterFields": {
       "minimumDays": "FINVOICEDATE",
