@@ -10,22 +10,24 @@ function loadCatalog(filePath) {
   return catalog;
 }
 
-function publicCatalog(catalog, workflowEnabled) {
-  const tools = Object.entries(catalog).map(([id, item]) => ({
+function publicCatalog(catalog, workflowEnabled, canAccess = () => true) {
+  const tools = Object.entries(catalog).filter(([id]) => canAccess(id)).map(([id, item]) => ({
     id,
     label: item.label,
     description: item.description,
     filters: Object.keys(item.filterFields),
     columns: item.publicColumns || item.fields.map(([, label]) => label),
   }));
-  tools.push({
-    id: "workflow_progress",
-    label: "审批进度",
-    description: workflowEnabled ? "查询单据当前审批节点和历史" : "需要配置金蝶自定义工作流查询接口",
-    filters: ["formId", "billNumber"],
-    columns: [],
-    available: workflowEnabled,
-  });
+  if (canAccess("workflow_progress")) {
+    tools.push({
+      id: "workflow_progress",
+      label: "审批进度",
+      description: workflowEnabled ? "查询单据当前审批节点和历史" : "需要配置金蝶自定义工作流查询接口",
+      filters: ["formId", "billNumber"],
+      columns: [],
+      available: workflowEnabled,
+    });
+  }
   return tools;
 }
 

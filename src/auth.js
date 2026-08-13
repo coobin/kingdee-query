@@ -44,8 +44,13 @@ function readTrustedUser(req, config) {
   return user;
 }
 
-function browserAuth(config) {
+function browserAuth(config, accessControl) {
   return (req, res, next) => {
+    const localAdmin = accessControl?.readSession(req.headers.cookie);
+    if (localAdmin) {
+      req.identity = localAdmin;
+      return next();
+    }
     const proxyToken = normalizeHeader(req.headers[config.trustedProxyHeader]);
     if (config.authMode === "trusted_headers" && !safeEqual(proxyToken, config.trustedProxyToken)) {
       return res.status(401).json({
@@ -63,6 +68,31 @@ function browserAuth(config) {
     req.identity = { ...user, channel: "browser" };
     next();
   };
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (!req.identity?.isSuperAdmin) {
+    return res.status(403).json({ error: "admin_required", message: "需要超级管理员权限。" });
+  }
+  next();
+}
+
+function requireModuleAccess(accessControl, moduleFromRequest) {
+  return (req, res, next) => {
+    const moduleId = moduleFromRequest(req);
+    if (!moduleId || accessControl.canAccess(req.identity, moduleId)) return next();
+    return res.status(403).json({ error: "module_forbidden", message: "你没有查看该模块的权限。" });
+  };
+}
+
+function requireSameOrigin(req, res, next) {
+  const origin = String(req.headers.origin || "");
+  if (!origin) return next();
+  try {
+    const originUrl = new URL(origin);
+    if (originUrl.host === req.get("host")) return next();
+  } catch { /* reject malformed origin */ }
+  return res.status(403).json({ error: "invalid_origin", message: "请求来源不受信任。" });
 }
 
 function safeEqual(a, b) {
@@ -88,4 +118,12 @@ function difyAuth(config) {
   };
 }
 
-module.exports = { browserAuth, difyAuth, readTrustedUser, resolveKingdeeUsername };
+module.exports = {
+  browserAuth,
+  difyAuth,
+  readTrustedUser,
+  resolveKingdeeUsername,
+  requireSuperAdmin,
+  requireModuleAccess,
+  requireSameOrigin,
+};

@@ -7,6 +7,9 @@
 ## 功能
 
 - 通过 Authelia、Nginx 或其他反向代理注入的可信请求头完成 SSO
+- 提供独立的 `/login` 超级管理员登录入口和 `/admin` 权限设置界面
+- 可按查询模块配置查看人员，支持中文姓名、姓名拼音、SSO 账号、邮箱或金蝶账号
+- 可新增、修改和删除超级管理员，并保证至少保留一个管理员
 - 使用最终用户身份建立金蝶 `LoginByAppSecret` 会话，沿用其金蝶数据权限
 - 提供库存、销售订单、超期未回款、采购订单和本人费用报销单查询
 - 超期未回款按当前日期和应收单业务日期计算，只汇总已审核、未作废、已开票且仍未结清的应收金额
@@ -71,6 +74,9 @@ AUTH_MODE=dev
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
 | `KINGDEE_WORKFLOW_METHOD` | 可选的审批进度自定义 WebAPI 方法名 |
 | `AUDIT_LOG_PATH` | 查询审计日志路径 |
+| `LOCAL_AUTH_DATA_PATH` | 超级管理员和模块权限文件路径；只保存加盐密码摘要，不保存明文密码 |
+| `LOCAL_AUTH_SESSION_HOURS` | 超级管理员登录有效小时数，默认 8 小时 |
+| `LOCAL_AUTH_COOKIE_SECURE` | HTTPS 部署时设为 `true`；未填写时根据 `APP_BASE_URL` 判断 |
 
 建议使用以下命令分别生成代理共享密钥和 Dify Key：
 
@@ -97,6 +103,10 @@ KINGDEE_USERNAME_SOURCE=kingdee_header
 ```
 
 生产端口不应绕过代理直接暴露给不可信网络。即使攻击者伪造 `Remote-*` 请求头，没有正确的 `AUTH_TRUSTED_PROXY_TOKEN` 也无法访问网页 API。
+
+超级管理员从 `/login` 使用本地账号登录。管理员会话采用 `HttpOnly`、`SameSite=Lax` Cookie；连续登录失败会临时限制尝试。`/admin` 可以设置每个模块的查看名单：名单留空表示所有已登录员工可见，有名单时仅名单人员和超级管理员可见。权限同时作用于页面目录和服务端查询接口，不能通过直接请求绕过。
+
+首次部署需要在数据目录中创建第一个超级管理员。不要把初始密码写进 `.env`、源码或 Git；创建完成后，权限文件只包含随机盐和密码摘要。后续管理员可直接在 `/admin` 中维护其他超级管理员。
 
 仓库提供 Nginx Proxy Manager 模板。把部署地址保存在 `.env` 后生成可粘贴的配置：
 

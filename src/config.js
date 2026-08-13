@@ -41,6 +41,13 @@ module.exports = {
   },
   trustedProxyHeader: (process.env.AUTH_TRUSTED_PROXY_HEADER || "x-auth-proxy-token").toLowerCase(),
   trustedProxyToken: process.env.AUTH_TRUSTED_PROXY_TOKEN || "",
+  localAuth: {
+    dataPath: process.env.LOCAL_AUTH_DATA_PATH || path.join(__dirname, "..", "data", "access-control.json"),
+    sessionHours: Math.min(number("LOCAL_AUTH_SESSION_HOURS", 8), 168),
+    cookieSecure: process.env.LOCAL_AUTH_COOKIE_SECURE == null
+      ? /^https:/i.test(process.env.APP_BASE_URL || "")
+      : bool("LOCAL_AUTH_COOKIE_SECURE"),
+  },
   kingdeeUsernameSource: process.env.KINGDEE_USERNAME_SOURCE || "auto",
   difyApiKeys: new Set((process.env.DIFY_API_KEYS || "").split(",").map((x) => x.trim()).filter(Boolean)),
   difyUserHeader: (process.env.DIFY_USER_HEADER || "x-end-user").toLowerCase(),

@@ -34,6 +34,7 @@ button { cursor: pointer; }
 .brand strong { display: block; font-family: var(--utility); font-size: 14px; letter-spacing: .12em; }
 .brand small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; letter-spacing: .08em; }
 .session { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 13px; }
+.session a { padding: 5px 8px; border: 1px solid var(--line); color: var(--forest); text-decoration: none; font-size: 10px; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(217, 154, 43, .14); }
 .session.ready .status-dot { background: var(--jade); box-shadow: 0 0 0 4px rgba(40, 119, 90, .13); }
 .session.error .status-dot { background: var(--red); }

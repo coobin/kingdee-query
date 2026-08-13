@@ -9,6 +9,7 @@ RUN npm ci --omit=dev
 COPY server.js ./
 COPY src ./src
 COPY public ./public
+COPY views ./views
 COPY config ./config
 
 RUN mkdir -p /app/data && chown -R node:node /app

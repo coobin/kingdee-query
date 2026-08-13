@@ -5,7 +5,7 @@ const TOOL_META = {
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
-const state = { selectedTool: "inventory", lastResult: null, tools: [] };
+const state = { selectedTool: "inventory", lastResult: null, tools: [], accessibleTools: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   toolList: document.querySelector("#tool-list"), form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), formError: document.querySelector("#form-error"),
@@ -23,8 +23,10 @@ async function initialize() {
     const [session, catalog] = await Promise.all([api("/api/session"), api("/api/catalog")]);
     els.session.classList.add("ready");
     els.sessionLabel.textContent = `${session.user.name || session.user.userId} · ${session.user.kingdeeUsername}`;
+    document.querySelector("#admin-link").hidden = !session.user.isSuperAdmin;
     els.service.textContent = "READY";
     state.tools = catalog.tools;
+    applyCatalogAccess(catalog.tools);
     renderTools(catalog.tools);
   } catch (error) {
     els.session.classList.add("error");
@@ -39,8 +41,9 @@ els.tabs.forEach((tab) => tab.addEventListener("click", () => selectTool(tab.dat
 els.tabs.forEach((tab) => tab.addEventListener("keydown", (event) => {
   if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
   event.preventDefault();
-  const next = (els.tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + els.tabs.length) % els.tabs.length;
-  els.tabs[next].focus(); els.tabs[next].click();
+  const visibleTabs = els.tabs.filter((item) => !item.hidden);
+  const next = (visibleTabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+  visibleTabs[next]?.focus(); visibleTabs[next]?.click();
 }));
 const agingThresholdInput = document.querySelector('[data-panel="overdue_receivables"] [name="minimumDays"]');
 agingThresholdInput?.addEventListener("input", () => {
@@ -52,6 +55,7 @@ els.export.addEventListener("click", exportCsv);
 
 function selectTool(tool, focus = true) {
   if (!TOOL_META[tool]) return;
+  if (state.accessibleTools.size && !state.accessibleTools.has(tool)) return;
   state.selectedTool = tool;
   els.tabs.forEach((tab) => { const active = tab.dataset.tool === tool; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
   els.panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== tool; });
@@ -59,6 +63,18 @@ function selectTool(tool, focus = true) {
   els.formError.hidden = true;
   document.querySelectorAll(".tool[data-tool-id]").forEach((item) => item.classList.toggle("active", item.dataset.toolId === tool));
   if (focus) els.panels.find((panel) => panel.dataset.panel === tool)?.querySelector("input")?.focus();
+}
+
+function applyCatalogAccess(tools) {
+  state.accessibleTools = new Set(tools.filter((tool) => TOOL_META[tool.id]).map((tool) => tool.id));
+  els.tabs.forEach((tab) => { tab.hidden = !state.accessibleTools.has(tab.dataset.tool); });
+  const firstAccessible = Object.keys(TOOL_META).find((id) => state.accessibleTools.has(id));
+  if (firstAccessible && !state.accessibleTools.has(state.selectedTool)) selectTool(firstAccessible, false);
+  if (!firstAccessible) {
+    els.panels.forEach((panel) => { panel.hidden = true; });
+    els.button.disabled = true;
+    showFormError("当前账号还没有配置任何查询模块，请联系超级管理员。");
+  }
 }
 
 async function runQuery(event) {
