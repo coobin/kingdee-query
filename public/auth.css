@@ -32,7 +32,7 @@ button { cursor: pointer; }
 .auth-eyebrow { margin: 0 0 13px; color: var(--jade); font-family: var(--utility); font-size: 10px; font-weight: 700; letter-spacing: .16em; }
 
 .auth-page { display: grid; place-items: center; padding: clamp(24px, 6vw, 80px); background: linear-gradient(135deg, var(--mist) 0 62%, #e1ebe6 62%); }
-.login-shell { width: min(1120px, 100%); min-height: 650px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(350px, .8fr); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
+.login-shell { width: min(1480px, 100%); min-height: 650px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, .75fr); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
 .login-intro { display: flex; flex-direction: column; justify-content: center; padding: clamp(38px, 7vw, 90px); border-right: 1px solid var(--line); }
 .login-intro .auth-brand { margin-bottom: auto; }
 .login-intro .auth-eyebrow { margin-top: 72px; }
@@ -64,7 +64,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-topbar { height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(20px, 5vw, 70px); border-bottom: 1px solid var(--line); background: rgba(248,250,248,.96); }
 .admin-topbar nav { display: flex; align-items: center; gap: 9px; }
 .admin-topbar nav a, .admin-topbar nav button { padding: 9px 12px; border: 1px solid var(--line); color: var(--forest); background: transparent; text-decoration: none; font-size: 11px; }
-.admin-shell { width: min(1240px, calc(100% - 40px)); margin: 0 auto; padding: clamp(44px, 7vw, 84px) 0 80px; }
+.admin-shell { width: calc(100% - clamp(40px, 8vw, 160px)); margin: 0 auto; padding: clamp(44px, 6vw, 84px) 0 80px; }
 .admin-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 50px; align-items: end; }
 .admin-heading h1 { margin: 0; font-family: var(--display); font-size: clamp(40px, 6vw, 72px); font-weight: 600; line-height: 1.1; letter-spacing: -.04em; }
 .admin-heading > div > p:last-child { max-width: 730px; margin: 25px 0 0; color: var(--muted); line-height: 1.75; }
