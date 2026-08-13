@@ -77,12 +77,12 @@
           </section>
 
           <section class="query-panel" id="panel-overdue_receivables" role="tabpanel" aria-labelledby="tab-overdue_receivables" data-panel="overdue_receivables" hidden>
-            <div class="panel-copy"><h3>统计超期未回款</h3><p>按应收单业务日期计算账龄，只统计已审核、未作废、已开票且当前仍有未收余额的记录。</p></div>
-            <div class="scope-lock aging-lock"><span id="aging-threshold-badge" aria-hidden="true">181+</span><div><strong>统计日：今天</strong><small>未回款风险金额只计算已开票部分；完全未回款与部分回款分别汇总。</small></div></div>
+            <div class="panel-copy"><h3>统计超期未回款</h3><p>每行对应一个销售子项目，从该子项目最早开票日期起算，不再使用应收日期或到期日。</p></div>
+            <div class="scope-lock aging-lock"><span id="aging-threshold-badge" aria-hidden="true">181+</span><div><strong>统计日：今天</strong><small>按销售子项目汇总已开票未回款金额，并输出子项目编码、名称和起算开票日期。</small></div></div>
             <div class="field-grid">
               <label class="field"><span>超过天数 <b>必填</b></span><input name="minimumDays" type="number" min="1" max="3650" step="1" value="180" required></label>
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="不填则查询全部客户" autocomplete="off"></label>
-              <label class="field"><span>项目编号</span><input name="projectNumber" type="text" maxlength="60" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="支持包含匹配" autocomplete="off"></label>
             </div>
           </section>
 
@@ -136,6 +136,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260813-3" defer></script>
+  <script src="/app.js?v=20260813-4" defer></script>
 </body>
 </html>

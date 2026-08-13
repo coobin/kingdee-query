@@ -106,6 +106,11 @@ class KingdeeClient {
     if (!Array.isArray(result)) {
       throw new KingdeeError("金蝶查询未返回列表", { payload: result });
     }
+    const responseStatus = result?.[0]?.[0]?.Result?.ResponseStatus;
+    if (responseStatus?.IsSuccess === false) {
+      const message = responseStatus.Errors?.map((error) => error.Message).filter(Boolean).join("；") || "字段或过滤条件无效";
+      throw new KingdeeError(`金蝶查询失败：${message}`, { payload: result });
+    }
     return result;
   }
 

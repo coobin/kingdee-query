@@ -64,43 +64,52 @@
   },
   "overdue_receivables": {
     "label": "超期未回款",
-    "description": "统计已开票且超过指定账龄仍未结清的应收",
+    "description": "按销售子项目统计开票后超过指定天数仍未结清的应收",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_receivables",
     "fields": [
       ["FID", "应收内码"],
       ["FBillNo", "应收单号"],
-      ["FDate", "应收日期"],
-      ["FEndDate", "到期日"],
       ["FCustomerID.FName", "客户"],
       ["FSettleOrgId.FName", "结算组织"],
       ["FSaleDeptId.FName", "销售部门"],
       ["FSaleerId.FName", "销售员"],
-      ["F_PARA_SaleProId.FNumber", "项目编号"],
-      ["F_PARA_SaleProId.FName", "项目名称"],
-      ["F_PARA_SaleSubProId.FNumber", "子项目编号"],
+      ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+      ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
       ["FIVALLAMOUNTFOR", "已开票金额"],
       ["FRECEIVEAMOUNT", "已收金额"],
       ["FNORECEIVEAMOUNT", "未收金额"]
     ],
+    "invoiceDateSource": {
+      "formId": "IV_SALESIC",
+      "fields": [
+        ["FBillNo", "销售发票号"],
+        ["FINVOICEDATE", "开票日期"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"]
+      ],
+      "defaultOrder": "FINVOICEDATE ASC,FBillNo ASC"
+    },
     "publicColumns": [
       "客户",
-      "项目编号",
-      "项目名称",
-      "应收单号",
-      "应收日期",
-      "到期日",
-      "账龄天数",
+      "销售子项目编码",
+      "销售子项目名称",
+      "起算开票日期",
+      "超期天数",
+      "超期发票数",
+      "应收单数",
       "开票金额",
+      "已回款金额",
       "未回款金额",
-      "回款状态"
+      "回款状态",
+      "销售员"
     ],
     "filterFields": {
-      "minimumDays": "FDate",
+      "minimumDays": "FINVOICEDATE",
       "customerName": "FCustomerID.FName",
-      "projectNumber": "F_PARA_SaleProId.FNumber"
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber"
     },
-    "defaultOrder": "FDate ASC,FBillNo ASC"
+    "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC,FBillNo ASC"
   },
   "purchase_orders": {
     "label": "采购订单",

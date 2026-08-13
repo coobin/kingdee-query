@@ -42,9 +42,9 @@ test("plans an overdue invoiced receivable query", () => {
   assert.equal(plan.arguments.dateFrom, undefined);
 });
 
-test("plans an overdue receivable query for a project", () => {
-  const plan = localPlan("查询项目 QC-JE2019060-61 超过365天未回款");
+test("plans an overdue receivable query for a sales subproject", () => {
+  const plan = localPlan("查询销售子项目 QC-JE2019060-61 超过365天未回款");
   assert.equal(plan.tool, "overdue_receivables");
   assert.equal(plan.arguments.minimumDays, 365);
-  assert.equal(plan.arguments.projectNumber, "QC-JE2019060-61");
+  assert.equal(plan.arguments.subprojectNumber, "QC-JE2019060-61");
 });

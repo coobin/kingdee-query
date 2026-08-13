@@ -1,7 +1,7 @@
 const TOOL_META = {
   inventory: { action: "查询即时库存", conditionLabels: { materialNumber: "物料编码" } },
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
-  overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", projectNumber: "项目编号" } },
+  overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
@@ -178,11 +178,11 @@ function renderStatistics(statistics) {
   strip.className = "aging-summary";
   strip.setAttribute("aria-label", "超期未回款汇总");
   const items = [
-    ["未回款风险金额", formatMoney(statistics.outstandingAmount), `${statistics.billCount} 笔已开票应收`, "primary"],
+    ["未回款风险金额", formatMoney(statistics.outstandingAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
     ["涉及客户", `${statistics.customerCount} 家`, `截至 ${statistics.asOfDate}`],
-    ["完全未回款", `${statistics.completelyUnpaidCount} 笔`, formatMoney(statistics.completelyUnpaidAmount)],
-    ["部分回款未结清", `${statistics.partiallyPaidCount} 笔`, formatMoney(statistics.partiallyPaidAmount)],
-    ["最长账龄", `${statistics.oldestDays} 天`, `阈值 > ${statistics.minimumDays} 天`],
+    ["完全未回款", `${statistics.completelyUnpaidCount} 个`, formatMoney(statistics.completelyUnpaidAmount)],
+    ["部分回款未结清", `${statistics.partiallyPaidCount} 个`, formatMoney(statistics.partiallyPaidAmount)],
+    ["最长开票账龄", `${statistics.oldestDays} 天`, `从最早开票日期起算`],
   ];
   items.forEach(([label, value, note, variant]) => {
     const item = document.createElement("div");

@@ -86,7 +86,6 @@ function buildOverdueReceivableFilter(args, asOfDate) {
   const clauses = [
     "FDocumentStatus='C'",
     "FCancelStatus='A'",
-    `FDate<'${cutoffDate}'`,
     "FIVALLAMOUNTFOR>0",
     "FNORECEIVEAMOUNT>0",
   ];
@@ -96,12 +95,23 @@ function buildOverdueReceivableFilter(args, asOfDate) {
     clauses.push(`FCustomerID.FName LIKE '%${value}%'`);
     accepted.customerName = args.customerName;
   }
-  if (args.projectNumber) {
-    const value = escapeValue(args.projectNumber);
-    clauses.push(`F_PARA_SaleProId.FNumber LIKE '%${value}%'`);
-    accepted.projectNumber = args.projectNumber;
+  const subprojectNumber = args.subprojectNumber || args.projectNumber;
+  if (subprojectNumber) {
+    const value = escapeValue(subprojectNumber);
+    clauses.push(`F_PARA_SaleSubProId.FNumber LIKE '%${value}%'`);
+    accepted.subprojectNumber = subprojectNumber;
   }
   return { filter: clauses.join(" AND "), accepted };
+}
+
+function buildOverdueInvoiceFilter(cutoffDate, subprojectNumbers) {
+  const quoted = subprojectNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
+  return [
+    "FDocumentStatus='C'",
+    "FCancelStatus='A'",
+    `FINVOICEDATE<'${isoDate(cutoffDate)}'`,
+    `F_PARA_SaleSubProId.FNumber IN (${quoted})`,
+  ].join(" AND ");
 }
 
 function rowsToObjects(rows, fields, valueMappings = {}) {
@@ -174,9 +184,32 @@ class QueryEngine {
       Limit: requestLimit,
       TopRowCount: 0,
     });
-    const partial = rawRows.length >= requestLimit;
+    const receivablePartial = rawRows.length >= requestLimit;
     rawRows = rawRows.slice(0, maximum);
-    const result = aggregateOverdueReceivables(rowsToObjects(rawRows, item.fields), {
+    const receivableRows = rowsToObjects(rawRows, item.fields);
+    const candidateSubprojects = [...new Set(receivableRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
+    const invoiceSource = item.invoiceDateSource;
+    if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
+    const invoiceRows = [];
+    let invoicePartial = false;
+    for (const batch of chunkValues(candidateSubprojects, 150)) {
+      const remaining = maximum + 1 - invoiceRows.length;
+      if (remaining <= 0) { invoicePartial = true; break; }
+      const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+        FormId: invoiceSource.formId,
+        FieldKeys: invoiceSource.fields.map(([key]) => key).join(","),
+        FilterString: buildOverdueInvoiceFilter(accepted.cutoffDate, batch),
+        OrderString: invoiceSource.defaultOrder || "FINVOICEDATE ASC,FBillNo ASC",
+        StartRow: 0,
+        Limit: Math.min(remaining, 10000),
+        TopRowCount: 0,
+      });
+      invoiceRows.push(...page);
+      if (invoiceRows.length > maximum) { invoicePartial = true; break; }
+    }
+    const partial = receivablePartial || invoicePartial;
+    const result = aggregateOverdueReceivables(receivableRows, {
+      invoiceRows: rowsToObjects(invoiceRows.slice(0, maximum), invoiceSource.fields),
       asOfDate,
       minimumDays: accepted.minimumDays,
       partial,
@@ -232,63 +265,84 @@ class QueryEngine {
   }
 }
 
-function aggregateOverdueReceivables(sourceRows, { asOfDate, minimumDays, partial = false }) {
-  const bills = new Map();
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, minimumDays, partial = false }) {
+  const invoiceDates = new Map();
+  for (const row of invoiceRows) {
+    const code = String(row["销售子项目编码"] || "").trim();
+    const date = String(row["开票日期"] || "").slice(0, 10);
+    if (!code || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const key = normalizeSubprojectKey(code);
+    let invoice = invoiceDates.get(key);
+    if (!invoice) {
+      invoice = { code, names: new Set(), firstDate: date, invoiceNumbers: new Set() };
+      invoiceDates.set(key, invoice);
+    }
+    addIfPresent(invoice.names, row["销售子项目名称"]);
+    addIfPresent(invoice.invoiceNumbers, row["销售发票号"]);
+    if (date < invoice.firstDate) invoice.firstDate = date;
+  }
+
+  const subprojects = new Map();
+  let rowsWithoutSubproject = 0;
   for (const row of sourceRows) {
-    const id = String(row["应收内码"] ?? row["应收单号"] ?? "");
-    if (!id) continue;
-    let bill = bills.get(id);
-    if (!bill) {
-      bill = {
-        customer: String(row["客户"] || "").trim(),
-        billNumber: row["应收单号"],
-        receivableDate: row["应收日期"],
-        dueDate: row["到期日"],
-        organization: row["结算组织"],
-        department: row["销售部门"],
-        salesperson: row["销售员"],
-        projectNumbers: new Set(),
-        projectNames: new Set(),
-        subprojectNumbers: new Set(),
+    const code = String(row["销售子项目编码"] || "").trim();
+    if (!code) { rowsWithoutSubproject += 1; continue; }
+    const key = normalizeSubprojectKey(code);
+    let subproject = subprojects.get(key);
+    if (!subproject) {
+      subproject = {
+        code,
+        names: new Set(),
+        customers: new Set(),
+        billNumbers: new Set(),
+        organizations: new Set(),
+        departments: new Set(),
+        salespersons: new Set(),
         invoiceAmount: 0,
         outstandingAmount: 0,
       };
-      bills.set(id, bill);
+      subprojects.set(key, subproject);
     }
-    addIfPresent(bill.projectNumbers, row["项目编号"]);
-    addIfPresent(bill.projectNames, row["项目名称"]);
-    addIfPresent(bill.subprojectNumbers, row["子项目编号"]);
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    addIfPresent(subproject.customers, row["客户"]);
+    addIfPresent(subproject.billNumbers, row["应收单号"]);
+    addIfPresent(subproject.organizations, row["结算组织"]);
+    addIfPresent(subproject.departments, row["销售部门"]);
+    addIfPresent(subproject.salespersons, row["销售员"]);
     const invoiceAmount = Math.max(0, Number(row["已开票金额"]) || 0);
     const receivedAmount = Math.max(0, Number(row["已收金额"]) || 0);
     const entryOutstanding = Math.max(0, Number(row["未收金额"]) || 0);
-    bill.invoiceAmount += invoiceAmount;
+    subproject.invoiceAmount += invoiceAmount;
     // Allocate collected money to the invoiced portion first, then cap by the entry's
     // current open balance. This keeps unbilled receivables out of the risk amount.
-    bill.outstandingAmount += Math.min(entryOutstanding, Math.max(0, invoiceAmount - receivedAmount));
+    subproject.outstandingAmount += Math.min(entryOutstanding, Math.max(0, invoiceAmount - receivedAmount));
   }
 
-  const rows = [...bills.values()].filter((bill) => bill.outstandingAmount > 0.004).map((bill) => {
-    const invoiceAmount = roundMoney(bill.invoiceAmount);
-    const outstandingAmount = roundMoney(bill.outstandingAmount);
+  let missingInvoiceDateSubprojects = 0;
+  const rows = [...subprojects.entries()].filter(([, subproject]) => subproject.outstandingAmount > 0.004).map(([key, subproject]) => {
+    const invoice = invoiceDates.get(key);
+    if (!invoice) { missingInvoiceDateSubprojects += 1; return null; }
+    invoice.names.forEach((name) => subproject.names.add(name));
+    const invoiceAmount = roundMoney(subproject.invoiceAmount);
+    const outstandingAmount = roundMoney(subproject.outstandingAmount);
     const receivedAmount = roundMoney(Math.max(0, invoiceAmount - outstandingAmount));
     return {
-      客户: bill.customer,
-      项目编号: joinValues(bill.projectNumbers),
-      项目名称: joinValues(bill.projectNames),
-      子项目编号: joinValues(bill.subprojectNumbers),
-      结算组织: bill.organization,
-      销售部门: bill.department,
-      销售员: bill.salesperson,
-      应收单号: bill.billNumber,
-      应收日期: bill.receivableDate,
-      到期日: bill.dueDate,
-      账龄天数: elapsedDays(bill.receivableDate, asOfDate),
+      客户: joinValues(subproject.customers),
+      销售子项目编码: subproject.code,
+      销售子项目名称: joinValues(subproject.names),
+      起算开票日期: invoice.firstDate,
+      超期天数: elapsedDays(invoice.firstDate, asOfDate),
+      超期发票数: invoice.invoiceNumbers.size,
+      应收单数: subproject.billNumbers.size,
+      结算组织: joinValues(subproject.organizations),
+      销售部门: joinValues(subproject.departments),
+      销售员: joinValues(subproject.salespersons),
       开票金额: invoiceAmount,
       已回款金额: receivedAmount,
       未回款金额: outstandingAmount,
       回款状态: receivedAmount > 0.004 ? "部分回款未结清" : "完全未回款",
     };
-  }).sort((left, right) => right["未回款金额"] - left["未回款金额"] || right["账龄天数"] - left["账龄天数"]);
+  }).filter(Boolean).sort((left, right) => right["未回款金额"] - left["未回款金额"] || right["超期天数"] - left["超期天数"]);
 
   const completelyUnpaid = rows.filter((row) => row["回款状态"] === "完全未回款");
   const partiallyPaid = rows.filter((row) => row["回款状态"] === "部分回款未结清");
@@ -297,21 +351,39 @@ function aggregateOverdueReceivables(sourceRows, { asOfDate, minimumDays, partia
   const statistics = {
     asOfDate,
     minimumDays,
-    billCount: rows.length,
+    subprojectCount: rows.length,
+    invoiceCount: rows.reduce((total, row) => total + row["超期发票数"], 0),
+    receivableBillCount: rows.reduce((total, row) => total + row["应收单数"], 0),
     customerCount,
     outstandingAmount,
     completelyUnpaidCount: completelyUnpaid.length,
     completelyUnpaidAmount: sumMoney(completelyUnpaid, "未回款金额"),
     partiallyPaidCount: partiallyPaid.length,
     partiallyPaidAmount: sumMoney(partiallyPaid, "未回款金额"),
-    oldestDays: rows.reduce((maximum, row) => Math.max(maximum, row["账龄天数"]), 0),
+    oldestDays: rows.reduce((maximum, row) => Math.max(maximum, row["超期天数"]), 0),
+    missingInvoiceDateSubprojects,
+    rowsWithoutSubproject,
     partial,
   };
   const amount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(outstandingAmount);
+  const exclusions = [
+    missingInvoiceDateSubprojects ? `${missingInvoiceDateSubprojects} 个销售子项目未找到开票日期` : "",
+    rowsWithoutSubproject ? `${rowsWithoutSubproject} 条应收明细缺少销售子项目编码` : "",
+  ].filter(Boolean);
   const summary = rows.length
-    ? `截至 ${asOfDate}，共 ${rows.length} 笔已开票应收超过 ${minimumDays} 天仍未结清，未回款金额 ¥${amount}，涉及 ${customerCount} 家客户${partial ? "（已达到扫描上限，结果可能不完整）" : ""}。`
-    : `截至 ${asOfDate}，没有已开票且超过 ${minimumDays} 天仍未结清的应收。`;
+    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目自开票起超过 ${minimumDays} 天仍未结清，未回款金额 ¥${amount}，涉及 ${customerCount} 家客户${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
+    : `截至 ${asOfDate}，没有找到自开票起超过 ${minimumDays} 天且仍未结清的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
   return { rows, statistics, summary };
+}
+
+function normalizeSubprojectKey(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function chunkValues(values, size) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
 }
 
 function addIfPresent(target, value) {
@@ -368,5 +440,6 @@ module.exports = {
   businessDate,
   shiftDate,
   buildOverdueReceivableFilter,
+  buildOverdueInvoiceFilter,
   aggregateOverdueReceivables,
 };

@@ -47,10 +47,11 @@ function localPlan(question) {
   if (tool === "overdue_receivables") {
     const minimumDays = text.match(/(?:超过|超|大于)?\s*(\d{1,4})\s*天/);
     const customer = text.match(/客户(?:名称)?\s*[：:=是为]?\s*([^，。,.;；\s]{1,30})/);
-    const project = text.match(/项目(?:编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+    const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
+      || text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
     if (minimumDays) arguments_.minimumDays = Number(minimumDays[1]);
     if (customer) arguments_.customerName = customer[1];
-    if (project) arguments_.projectNumber = project[1];
+    if (subproject) arguments_.subprojectNumber = subproject[1];
     delete arguments_.dateFrom;
     delete arguments_.dateTo;
   }
