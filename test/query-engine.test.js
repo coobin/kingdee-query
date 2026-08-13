@@ -81,7 +81,7 @@ test("paginates every page when querying a source", async () => {
   const engine = new QueryEngine({
     catalog,
     kingdee,
-    config: { scopeAdmins: new Set(), kingdee: { maxRows: 2, aggregationMaxRows: 5 } },
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 2, queryPageSize: 2, aggregationMaxRows: 5 } },
   });
   const rows = await engine.queryAllPages(identity, { FormId: "IV_SALESIC", FieldKeys: "FBillNo" }, 2);
   assert.deepEqual(rows, [["A"], ["B"], ["C"]]);
@@ -145,19 +145,19 @@ test("executes the overdue receivable tool with current business date and visibl
   const engine = new QueryEngine({
     catalog,
     kingdee,
-    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, aggregationMaxRows: 5000 } },
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 5000, aggregationMaxRows: 5000 } },
     now: () => new Date("2026-08-13T03:00:00Z"),
   });
   const result = await engine.execute(identity, { tool: "overdue_receivables", arguments: { minimumDays: 180, limit: 1 } });
   assert.equal(requests.length, 5);
   assert.equal(requests[0].FormId, "IV_SALESIC");
   assert.match(requests[0].FilterString, /FINVOICEDATE<'2026-02-14'/);
-  assert.equal(requests[0].Limit, 100);
+  assert.equal(requests[0].Limit, 5000);
   assert.equal(requests[1].FormId, "IV_SALESIC");
   assert.match(requests[1].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
   assert.equal(requests[2].FormId, "AR_RECEIVABLE");
   assert.doesNotMatch(requests[2].FilterString, /FDate|FEndDate/);
-  assert.equal(requests[2].Limit, 100);
+  assert.equal(requests[2].Limit, 5000);
   assert.equal(requests[3].FormId, "AR_RECEIVEBILL");
   assert.equal(requests[4].FormId, "AR_REFUNDBILL");
   assert.equal(result.count, 1);

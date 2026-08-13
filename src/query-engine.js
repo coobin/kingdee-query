@@ -196,7 +196,7 @@ class QueryEngine {
     if (args.customerName) accepted.customerName = args.customerName;
     if (args.subprojectNumber || args.projectNumber) accepted.subprojectNumber = args.subprojectNumber || args.projectNumber;
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
-    const pageSize = Math.min(this.config.kingdee.maxRows, 200);
+    const pageSize = this.config.kingdee.queryPageSize || 5000;
     const invoiceSource = item.invoiceDateSource;
     if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
     const rawInvoiceRows = await this.queryAllPages(identity, {

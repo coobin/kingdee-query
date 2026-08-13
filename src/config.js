@@ -78,6 +78,7 @@ module.exports = {
     timeoutMs: number("KINGDEE_TIMEOUT_MS", 15000),
     sessionTtlMs: number("KINGDEE_SESSION_TTL_SECONDS", 900) * 1000,
     maxRows: Math.min(number("KINGDEE_MAX_ROWS", 200), 1000),
+    queryPageSize: Math.min(number("KINGDEE_QUERY_PAGE_SIZE", 5000), 5000),
     aggregationMaxRows: Math.min(number("KINGDEE_AGGREGATION_MAX_ROWS", 5000), 10000),
     workflowMethod: process.env.KINGDEE_WORKFLOW_METHOD || "",
   },

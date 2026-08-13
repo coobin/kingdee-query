@@ -71,6 +71,7 @@ AUTH_MODE=dev
 | `KINGDEE_APP_ID` | 第三方系统登录授权的应用 ID |
 | `KINGDEE_APP_SECRET` | 第三方系统登录授权的应用密钥 |
 | `KINGDEE_MAX_ROWS` | 普通查询最大返回行数 |
+| `KINGDEE_QUERY_PAGE_SIZE` | 超期未回款按销售子项目分页时每页读取行数，默认 5000，最大 5000 |
 | `KINGDEE_AGGREGATION_MAX_ROWS` | 其他汇总查询最大扫描行数；超期未回款按销售子项目分页读取 |
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
 | `KINGDEE_WORKFLOW_METHOD` | 可选的审批进度自定义 WebAPI 方法名 |
