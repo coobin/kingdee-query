@@ -128,6 +128,8 @@ envsubst '${AUTHELIA_URL} ${APP_UPSTREAM} ${AUTH_TRUSTED_PROXY_TOKEN}' \
 
 ## 金蝶配置
 
+各查询模块的业务用途、筛选条件、结果字段、权限边界和已知限制见 [`docs/modules/`](docs/modules/README.md)。文档只使用脱敏说明，不保存生产账号、密钥或真实业务数据。
+
 服务使用：
 
 ```text
