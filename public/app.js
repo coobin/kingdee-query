@@ -5,7 +5,7 @@ const TOOL_META = {
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
-const state = { selectedTool: "inventory", lastResult: null, tools: [], accessibleTools: new Set() };
+const state = { selectedTool: "inventory", lastResult: null, tableRows: [], tableSort: { column: "", direction: 1 }, tools: [], accessibleTools: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   toolList: document.querySelector("#tool-list"), form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), formError: document.querySelector("#form-error"),
@@ -150,6 +150,8 @@ function renderTools(tools) {
 
 function renderResult(payload) {
   const { result, plan } = payload;
+  state.tableSort = { column: "", direction: 1 };
+  state.tableRows = [];
   els.tool.textContent = `${result.label || plan.tool} · ${String(result.count ?? 0).padStart(2, "0")} ROWS`;
   els.summary.textContent = result.summary || "查询完成";
   const labels = TOOL_META[plan.tool]?.conditionLabels || {};
@@ -164,13 +166,72 @@ function renderResult(payload) {
   }
   if (result.statistics) renderStatistics(result.statistics);
   if (!result.rows?.length) { if (!result.aggregate) els.table.replaceChildren(document.querySelector("#empty-template").content.cloneNode(true)); els.export.hidden = true; return; }
+  renderResultTable(result);
+  els.export.hidden = false;
+}
+
+function renderResultTable(result) {
+  els.table.querySelector("table")?.remove();
   const table = document.createElement("table");
   const thead = document.createElement("thead"); const headRow = document.createElement("tr");
-  result.columns.forEach((column) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = column; headRow.append(th); });
+  result.columns.forEach((column) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    const active = state.tableSort.column === column;
+    th.setAttribute("aria-sort", active ? (state.tableSort.direction === 1 ? "ascending" : "descending") : "none");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "table-sort";
+    button.setAttribute("aria-label", `按${column}${active && state.tableSort.direction === -1 ? "降序" : "升序"}排序`);
+    const label = document.createElement("span"); label.textContent = column;
+    const indicator = document.createElement("span");
+    indicator.className = "table-sort-indicator";
+    indicator.setAttribute("aria-hidden", "true");
+    indicator.textContent = active ? (state.tableSort.direction === 1 ? "↑" : "↓") : "↕";
+    button.append(label, indicator);
+    button.addEventListener("click", () => {
+      state.tableSort = {
+        column,
+        direction: active ? state.tableSort.direction * -1 : 1,
+      };
+      renderResultTable(result);
+    });
+    th.append(button); headRow.append(th);
+  });
   thead.append(headRow); table.append(thead);
   const tbody = document.createElement("tbody");
-  result.rows.forEach((row) => { const tr = document.createElement("tr"); result.columns.forEach((column) => { const td = document.createElement("td"); td.textContent = formatCell(row[column], column); tr.append(td); }); tbody.append(tr); });
-  table.append(tbody); els.table.append(table); els.export.hidden = false;
+  state.tableRows = sortRows(result.rows, state.tableSort);
+  state.tableRows.forEach((row) => {
+    const tr = document.createElement("tr");
+    result.columns.forEach((column) => { const td = document.createElement("td"); td.textContent = formatCell(row[column], column); tr.append(td); });
+    tbody.append(tr);
+  });
+  table.append(tbody); els.table.append(table);
+}
+
+function sortRows(rows, sort) {
+  if (!sort.column) return [...rows];
+  return rows.map((row, index) => ({ row, index })).sort((left, right) => {
+    const comparison = compareCell(left.row[sort.column], right.row[sort.column], sort.column);
+    return comparison ? comparison * sort.direction : left.index - right.index;
+  }).map(({ row }) => row);
+}
+
+function compareCell(left, right, column) {
+  const leftEmpty = left == null || left === "";
+  const rightEmpty = right == null || right === "";
+  if (leftEmpty || rightEmpty) return leftEmpty && rightEmpty ? 0 : (leftEmpty ? 1 : -1);
+  if (/日期|时间/.test(column)) {
+    const leftTime = Date.parse(String(left));
+    const rightTime = Date.parse(String(right));
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime - rightTime;
+  }
+  if (/金额|数量|天数|发票数|单数|内码|库存/.test(column)) {
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+  }
+  return String(left).localeCompare(String(right), "zh-CN", { numeric: true, sensitivity: "base" });
 }
 
 function renderStatistics(statistics) {
@@ -205,4 +266,4 @@ function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "cu
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
 async function api(url, options = {}) { const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(payload.message || `请求失败 (${response.status})`), payload); return payload; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
-function exportCsv() { const result = state.lastResult; if (!result?.rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...result.rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }
+function exportCsv() { const result = state.lastResult; const rows = Array.isArray(state.tableRows) ? state.tableRows : result?.rows; if (!result?.columns?.length || !rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }

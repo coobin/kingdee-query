@@ -132,6 +132,10 @@ button.tool:hover, .tool.active { padding-left: 11px; color: var(--forest); back
 table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: 12px; }
 th, td { padding: 12px 13px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { position: sticky; top: 0; z-index: 1; color: var(--forest); background: var(--paper); font-size: 11px; }
+.table-sort { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.table-sort:hover { color: var(--jade); }
+.table-sort:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+.table-sort-indicator { min-width: 10px; color: var(--jade); font-family: var(--utility); font-size: 12px; line-height: 1; }
 tbody tr:hover { background: #f1f7f3; }
 .empty-state { padding: 54px 20px; text-align: center; }
 .empty-state span { color: var(--amber); font-family: var(--utility); font-size: 32px; }
