@@ -69,15 +69,17 @@ test("rejects invalid overdue day thresholds", () => {
   assert.throws(() => buildOverdueReceivableFilter({ minimumDays: "180.5" }, "2026-08-13"), /1 到 3650/);
 });
 
-test("aggregates one row per sales subproject from its earliest invoice date", () => {
+test("aggregates one row per sales subproject from an invoice date", () => {
   const source = [
     { 应收内码: 1, 应收单号: "AR1", 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "销售子项目一", 已开票金额: 100, 已收金额: 0, 未收金额: 100 },
     { 应收内码: 2, 应收单号: "AR2", 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "销售子项目一", 已开票金额: 50, 已收金额: 30, 未收金额: 70 },
     { 应收内码: 3, 应收单号: "AR3", 客户: "客户乙", 销售子项目编码: "SP-2", 销售子项目名称: "销售子项目二", 已开票金额: 200, 已收金额: 0, 未收金额: 260 },
+    { 应收内码: 4, 应收单号: "AR4", 客户: "客户丙", 销售子项目编码: "SP-3", 销售子项目名称: "已结清子项目", 已开票金额: 300, 已收金额: 300, 未收金额: 0 },
   ];
   const invoiceRows = [
     { 销售发票号: "INV1", 开票日期: "2026-01-10T00:00:00", 销售子项目编码: "SP-1", 销售子项目名称: "销售子项目一" },
     { 销售发票号: "INV2", 开票日期: "2026-02-01T00:00:00", 销售子项目编码: "sp-1", 销售子项目名称: "销售子项目一" },
+    { 销售发票号: "INV3", 开票日期: "2026-01-05T00:00:00", 销售子项目编码: "SP-3", 销售子项目名称: "已结清子项目" },
   ];
   const result = aggregateOverdueReceivables(source, { invoiceRows, asOfDate: "2026-08-13", minimumDays: 180 });
   assert.equal(result.statistics.subprojectCount, 1);
@@ -88,11 +90,12 @@ test("aggregates one row per sales subproject from its earliest invoice date", (
   assert.equal(result.statistics.partiallyPaidCount, 1);
   assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
   assert.equal(result.rows[0]["销售子项目名称"], "销售子项目一");
-  assert.equal(result.rows[0]["起算开票日期"], "2026-01-10");
+  assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["超期发票数"], 2);
   assert.equal(result.rows[0]["应收单数"], 2);
   assert.equal(result.rows[0]["未回款金额"], 120);
   assert.equal(result.rows[0]["到期日"], undefined);
+  assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-3"), false);
 });
 
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {
@@ -120,6 +123,6 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(result.count, 1);
   assert.equal(result.statistics.outstandingAmount, 100);
   assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
-  assert.equal(result.rows[0]["起算开票日期"], "2026-01-10");
+  assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["回款状态"], "完全未回款");
 });

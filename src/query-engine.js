@@ -330,7 +330,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
       客户: joinValues(subproject.customers),
       销售子项目编码: subproject.code,
       销售子项目名称: joinValues(subproject.names),
-      起算开票日期: invoice.firstDate,
+      开票日期: invoice.firstDate,
       超期天数: elapsedDays(invoice.firstDate, asOfDate),
       超期发票数: invoice.invoiceNumbers.size,
       应收单数: subproject.billNumbers.size,
@@ -371,8 +371,8 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
     rowsWithoutSubproject ? `${rowsWithoutSubproject} 条应收明细缺少销售子项目编码` : "",
   ].filter(Boolean);
   const summary = rows.length
-    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目自开票起超过 ${minimumDays} 天仍未结清，未回款金额 ¥${amount}，涉及 ${customerCount} 家客户${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
-    : `截至 ${asOfDate}，没有找到自开票起超过 ${minimumDays} 天且仍未结清的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
+    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天仍未结清，未回款金额 ¥${amount}，涉及 ${customerCount} 家客户${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
+    : `截至 ${asOfDate}，没有找到以开票日期起算超过 ${minimumDays} 天且仍未结清的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
   return { rows, statistics, summary };
 }
 

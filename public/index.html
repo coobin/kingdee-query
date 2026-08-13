@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260813-4">
+  <link rel="stylesheet" href="/styles.css?v=20260813-5">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -27,7 +27,6 @@
       <div class="intro">
         <p class="eyebrow">STRUCTURED QUERY · 无需猜测</p>
         <h1 id="page-title">选择业务，填入条件，<em>直接查询金蝶。</em></h1>
-        <p class="lede">不依赖自然语言理解。每种查询只开放必要条件，结果仍受你的金蝶权限约束，并记录查询审计。</p>
       </div>
 
       <section class="query-card" aria-labelledby="query-title">
@@ -77,8 +76,8 @@
           </section>
 
           <section class="query-panel" id="panel-overdue_receivables" role="tabpanel" aria-labelledby="tab-overdue_receivables" data-panel="overdue_receivables" hidden>
-            <div class="panel-copy"><h3>统计超期未回款</h3><p>每行对应一个销售子项目，从该子项目最早开票日期起算，不再使用应收日期或到期日。</p></div>
-            <div class="scope-lock aging-lock"><span id="aging-threshold-badge" aria-hidden="true">181+</span><div><strong>统计日：今天</strong><small>按销售子项目汇总已开票未回款金额，并输出子项目编码、名称和起算开票日期。</small></div></div>
+            <div class="panel-copy"><h3>统计超期未回款</h3><p>起始日：以开票日期开始计算</p></div>
+            <div class="scope-lock aging-lock"><span id="aging-threshold-badge" aria-hidden="true">181+</span><div><strong>统计日：今天</strong></div></div>
             <div class="field-grid">
               <label class="field"><span>超过天数 <b>必填</b></span><input name="minimumDays" type="number" min="1" max="3650" step="1" value="180" required></label>
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="不填则查询全部客户" autocomplete="off"></label>
@@ -108,7 +107,6 @@
 
           <div class="form-error" id="form-error" role="alert" hidden></div>
           <div class="query-actions">
-            <p>系统不会执行 SQL，也不会返回未登记字段。</p>
             <button id="query-button" type="submit"><span>查询即时库存</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
           </div>
         </form>
@@ -127,15 +125,11 @@
     <aside class="scope" aria-labelledby="scope-title">
       <div class="scope-head"><p class="eyebrow">QUERY BOUNDARY</p><h2 id="scope-title">查询边界</h2></div>
       <div class="tool-list" id="tool-list"><div class="tool-skeleton"></div><div class="tool-skeleton"></div><div class="tool-skeleton"></div></div>
-      <div class="boundary-note">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.8 2.8 8.1 7 10 4.2-1.9 7-5.2 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-        <div><strong>填写条件不等于扩大权限</strong><p>服务端会再次校验字段和范围；报销查询始终绑定当前用户。</p></div>
-      </div>
       <footer><span>服务状态</span><strong id="service-status">连接中</strong></footer>
     </aside>
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260813-4" defer></script>
+  <script src="/app.js?v=20260813-5" defer></script>
 </body>
 </html>

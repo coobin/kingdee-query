@@ -12,7 +12,7 @@
 - 可新增、修改和删除超级管理员，并保证至少保留一个管理员
 - 使用最终用户身份建立金蝶 `LoginByAppSecret` 会话，沿用其金蝶数据权限
 - 提供库存、销售订单、超期未回款、采购订单和本人费用报销单查询
-- 超期未回款以销售子项目为统计维度，从最早开票日期起算，只汇总已审核、未作废、已开票且仍未结清的应收金额
+- 超期未回款以销售子项目为统计维度，以开票日期计算账龄，只汇总已审核、未作废、已开票且仍有未回款的应收金额
 - 费用报销单按单据头返回，一张单据一行，状态转换为中文
 - 网页使用结构化查询表单，避免自然语言误判
 - Dify API 仍支持常见中文问法，也可连接 OpenAI-compatible 模型进行查询规划
@@ -136,7 +136,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 
 - `inventory`：即时库存
 - `sales_orders`：销售订单
-- `overdue_receivables`：按销售子项目汇总已开票且超过指定天数仍未结清的应收，默认超过 180 天；输出销售子项目编码、名称和起算开票日期
+- `overdue_receivables`：按销售子项目汇总已开票且超过指定天数仍未结清的应收，默认超过 180 天；输出销售子项目编码、名称和开票日期
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
 - `workflow_progress`：审批进度，需要自定义 WebAPI

@@ -46,7 +46,6 @@ main { min-height: calc(100vh - 76px); display: grid; grid-template-columns: min
 h1 { margin: 0; font-family: var(--display); font-size: clamp(38px, 5.2vw, 70px); font-weight: 600; line-height: 1.08; letter-spacing: -.04em; }
 h1 em { position: relative; color: var(--forest); font-style: normal; }
 h1 em::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 3px; background: var(--amber); transform: scaleX(.43); transform-origin: left; }
-.lede { max-width: 690px; margin: 28px 0 0; color: var(--muted); font-size: 16px; line-height: 1.8; }
 
 .query-card { position: relative; width: 100%; margin-top: 48px; padding: 30px; border: 1px solid var(--line); background: var(--white); box-shadow: var(--shadow); }
 .ledger-rule { position: absolute; top: 0; left: 30px; right: 30px; height: 8px; border-top: 2px solid var(--forest); background: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 22px); }
@@ -91,7 +90,6 @@ h1 em::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px;
 .check-field small { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .form-error { margin-top: 18px; padding: 12px 14px; color: var(--red); background: #fff5f3; border-left: 3px solid var(--red); font-size: 12px; }
 .query-actions { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 27px; padding-top: 20px; border-top: 1px solid var(--line); }
-.query-actions p { margin: 0; color: var(--muted); font-size: 10px; }
 #query-button { min-width: 176px; height: 50px; display: inline-flex; align-items: center; justify-content: center; gap: 17px; padding: 0 20px; border: 0; color: white; background: var(--forest); font-weight: 700; transition: transform .16s ease, background .16s ease; }
 #query-button:hover { background: var(--jade); transform: translateY(-2px); }
 #query-button:disabled { cursor: wait; opacity: .65; transform: none; }
@@ -107,10 +105,6 @@ button.tool:hover, .tool.active { padding-left: 11px; color: var(--forest); back
 .tool-state { width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--jade); }
 .tool-state.off { background: var(--line); }
 .tool-skeleton { height: 70px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, transparent, rgba(255,255,255,.8), transparent); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
-.boundary-note { display: grid; grid-template-columns: 28px 1fr; gap: 12px; margin-top: 34px; padding: 17px; color: var(--mint); background: var(--forest); }
-.boundary-note svg { width: 24px; fill: none; stroke: var(--amber); stroke-width: 1.6; }
-.boundary-note strong { display: block; color: var(--white); font-size: 12px; }
-.boundary-note p { margin: 6px 0 0; font-size: 10px; line-height: 1.65; }
 .scope footer { display: flex; justify-content: space-between; margin-top: auto; padding-top: 40px; color: var(--muted); font-size: 11px; }
 .scope footer strong { color: var(--jade); font-family: var(--utility); }
 
@@ -159,7 +153,6 @@ tbody tr:hover { background: #f1f7f3; }
   .session { max-width: 43%; font-size: 10px; }
   .workspace { padding: 38px 18px 54px; }
   h1 { font-size: 39px; }
-  .lede { font-size: 14px; }
   .query-card, .result-panel { margin-left: -1px; margin-right: -1px; padding-left: 18px; padding-right: 18px; }
   .ledger-rule { left: 18px; right: 18px; }
   .query-tabs { grid-template-columns: repeat(2, 1fr); }
