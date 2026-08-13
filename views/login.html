@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员登录 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=20260813-2">
+  <link rel="stylesheet" href="/auth.css?v=20260813-4">
 </head>
 <body class="auth-page">
   <main class="login-shell">
@@ -24,13 +24,16 @@
       <h2 id="form-title">超级管理员登录</h2>
       <form id="login-form">
         <label><span>用户名</span><input name="username" type="text" minlength="2" maxlength="64" autocomplete="username" required autofocus></label>
-        <label><span>密码</span><input name="password" type="password" minlength="10" maxlength="200" autocomplete="current-password" required></label>
+        <label id="password-field"><span>密码</span><input name="password" type="password" minlength="10" maxlength="200" autocomplete="current-password" required></label>
         <div class="auth-error" id="login-error" role="alert" hidden></div>
         <button type="submit"><span>进入管理设置</span><span aria-hidden="true">→</span></button>
+        <button class="passkey-action" id="passkey-login-button" type="button" hidden>使用 Passkey 登录</button>
+        <small class="passkey-hint" id="passkey-hint" hidden>使用设备锁屏、指纹或面容验证。</small>
       </form>
       <a class="back-link" href="/">返回数据查询台</a>
     </section>
   </main>
-  <script src="/login.js?v=20260813-1" defer></script>
+  <script src="/passkey.js?v=20260813-1" defer></script>
+  <script src="/login.js?v=20260813-2" defer></script>
 </body>
 </html>

@@ -29,9 +29,18 @@ if (authMode === "trusted_headers" && process.env.NODE_ENV === "production" && !
   throw new Error("AUTH_TRUSTED_PROXY_TOKEN is required for trusted_headers in production");
 }
 
+const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:8092";
+let appBase;
+try { appBase = new URL(appBaseUrl); } catch { throw new Error("APP_BASE_URL must be a valid URL"); }
+const passkeyOriginInput = (process.env.PASSKEY_ORIGIN || appBaseUrl).replace(/\/+$/, "");
+let passkeyOriginUrl;
+try { passkeyOriginUrl = new URL(passkeyOriginInput); } catch { throw new Error("PASSKEY_ORIGIN must be a valid URL"); }
+const passkeyOrigin = `${passkeyOriginUrl.protocol}//${passkeyOriginUrl.host}`;
+const passkeySecureContext = passkeyOriginUrl.protocol === "https:" || ["localhost", "127.0.0.1", "::1"].includes(passkeyOriginUrl.hostname);
+
 module.exports = {
   port: number("PORT", 8092),
-  appBaseUrl: process.env.APP_BASE_URL || "http://localhost:8092",
+  appBaseUrl,
   authMode,
   remoteHeaders: {
     user: (process.env.REMOTE_USER_HEADER || "remote-user").toLowerCase(),
@@ -47,6 +56,13 @@ module.exports = {
     cookieSecure: process.env.LOCAL_AUTH_COOKIE_SECURE == null
       ? /^https:/i.test(process.env.APP_BASE_URL || "")
       : bool("LOCAL_AUTH_COOKIE_SECURE"),
+  },
+  passkey: {
+    enabled: bool("PASSKEY_ENABLED", true),
+    available: passkeySecureContext,
+    origin: passkeyOrigin,
+    rpId: process.env.PASSKEY_RP_ID || passkeyOriginUrl.hostname,
+    rpName: process.env.PASSKEY_RP_NAME || "Kingdee Query Hub",
   },
   kingdeeUsernameSource: process.env.KINGDEE_USERNAME_SOURCE || "auto",
   difyApiKeys: new Set((process.env.DIFY_API_KEYS || "").split(",").map((x) => x.trim()).filter(Boolean)),

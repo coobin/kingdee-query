@@ -9,6 +9,12 @@ const { AccessControl, normalizeIdentifier } = require("./src/access-control");
 const { KingdeeClient, KingdeeError } = require("./src/kingdee");
 const { QueryEngine } = require("./src/query-engine");
 const { aiPlan } = require("./src/planner");
+const {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} = require("@simplewebauthn/server");
 
 const catalog = loadCatalog(config.catalogPath);
 const moduleIds = [...Object.keys(catalog), "workflow_progress"];
@@ -67,6 +73,58 @@ app.post("/api/local-auth/login", requireSameOrigin, (req, res) => {
   res.json({ ok: true, user: publicIdentity(identity), redirect: "/admin" });
 });
 
+app.get("/api/local-auth/passkey/status", (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ enabled: config.passkey.enabled, available: config.passkey.enabled && config.passkey.available, rpName: config.passkey.rpName });
+});
+
+app.post("/api/local-auth/passkey/login/options", requireSameOrigin, asyncRoute(async (req, res) => {
+  requirePasskeyAvailable();
+  const username = String(req.body?.username || "").slice(0, 64);
+  const admin = accessControl.findAdmin(username);
+  if (!admin || !(admin.passkeys || []).length) {
+    throw Object.assign(new Error("该管理员尚未注册 Passkey，或用户名不正确。"), { statusCode: 401 });
+  }
+  const options = await generateAuthenticationOptions({
+    rpID: config.passkey.rpId,
+    allowCredentials: admin.passkeys.map((passkey) => ({ id: passkey.id, transports: passkey.transports })),
+    userVerification: "required",
+  });
+  const token = accessControl.createPasskeyChallenge({ type: "login", adminUsername: admin.username, challenge: options.challenge });
+  res.setHeader("Set-Cookie", accessControl.passkeyChallengeCookie(token));
+  res.json({ options });
+}));
+
+app.post("/api/local-auth/passkey/login/verify", requireSameOrigin, asyncRoute(async (req, res) => {
+  requirePasskeyAvailable();
+  const challenge = accessControl.consumePasskeyChallenge(req.headers.cookie, "login");
+  if (!challenge) throw Object.assign(new Error("Passkey 登录已过期，请重新开始。"), { statusCode: 400 });
+  const admin = accessControl.findAdmin(challenge.adminUsername);
+  const credential = req.body?.credential;
+  const stored = admin?.passkeys?.find((passkey) => passkey.id === credential?.id);
+  if (!admin || !stored || !credential) throw Object.assign(new Error("Passkey 不属于该管理员。"), { statusCode: 401 });
+  const verification = await verifyAuthenticationResponse({
+    response: credential,
+    expectedChallenge: challenge.challenge,
+    expectedOrigin: config.passkey.origin,
+    expectedRPID: config.passkey.rpId,
+    credential: {
+      id: stored.id,
+      publicKey: fromBase64Url(stored.publicKey),
+      counter: stored.counter,
+      transports: stored.transports,
+    },
+    requireUserVerification: true,
+  });
+  if (!verification.verified) throw Object.assign(new Error("Passkey 验证未通过。"), { statusCode: 401 });
+  accessControl.updatePasskeyCounter(admin.username, stored.id, verification.authenticationInfo.newCounter);
+  const identity = accessControl.adminIdentity(accessControl.findAdmin(admin.username));
+  const token = accessControl.createSession(identity);
+  res.setHeader("Set-Cookie", [accessControl.sessionCookie(token), accessControl.clearPasskeyChallengeCookie()]);
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin_passkey", user: identity.adminUsername, action: "passkey.login", ip: req.ip });
+  res.json({ ok: true, user: publicIdentity(identity), redirect: "/admin" });
+}));
+
 app.post("/api/local-auth/logout", requireSameOrigin, (req, res) => {
   accessControl.revokeSession(req.headers.cookie);
   res.setHeader("Set-Cookie", accessControl.clearCookie());
@@ -90,10 +148,77 @@ admin.use(browserAuth(config, accessControl), requireSuperAdmin);
 admin.use((req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
 admin.get("/settings", (req, res) => res.json({
   currentAdmin: req.identity.adminUsername,
+  passkey: { enabled: config.passkey.enabled, available: config.passkey.enabled && config.passkey.available, rpName: config.passkey.rpName },
   admins: accessControl.listAdmins(),
   modules: moduleIds.map((id) => ({ id, label: id === "workflow_progress" ? "审批进度" : catalog[id].label, description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description })),
   moduleAccess: accessControl.getModuleAccess(),
 }));
+admin.post("/passkeys/register/options", requireSameOrigin, asyncRoute(async (req, res) => {
+  requirePasskeyAvailable();
+  const target = String(req.body?.username || req.identity.adminUsername).trim();
+  if (normalizeIdentifier(target) !== normalizeIdentifier(req.identity.adminUsername)) {
+    throw Object.assign(new Error("请由该管理员本人登录后注册 Passkey。"), { statusCode: 403 });
+  }
+  const admin = accessControl.findAdmin(req.identity.adminUsername);
+  const options = await generateRegistrationOptions({
+    rpName: config.passkey.rpName,
+    rpID: config.passkey.rpId,
+    userID: Buffer.from(admin.username),
+    userName: admin.username,
+    userDisplayName: admin.displayName || admin.username,
+    excludeCredentials: (admin.passkeys || []).map((passkey) => ({ id: passkey.id, transports: passkey.transports })),
+    authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+    attestationType: "none",
+  });
+  const token = accessControl.createPasskeyChallenge({ type: "registration", adminUsername: admin.username, challenge: options.challenge });
+  res.setHeader("Set-Cookie", accessControl.passkeyChallengeCookie(token));
+  res.json({ options });
+}));
+admin.post("/passkeys/register/verify", requireSameOrigin, asyncRoute(async (req, res) => {
+  requirePasskeyAvailable();
+  const challenge = accessControl.consumePasskeyChallenge(req.headers.cookie, "registration");
+  if (!challenge) throw Object.assign(new Error("Passkey 注册已过期，请重新开始。"), { statusCode: 400 });
+  if (normalizeIdentifier(challenge.adminUsername) !== normalizeIdentifier(req.identity.adminUsername)) {
+    throw Object.assign(new Error("请由发起注册的管理员完成验证。"), { statusCode: 403 });
+  }
+  const verification = await verifyRegistrationResponse({
+    response: req.body?.credential,
+    expectedChallenge: challenge.challenge,
+    expectedOrigin: config.passkey.origin,
+    expectedRPID: config.passkey.rpId,
+    requireUserVerification: true,
+  });
+  if (!verification.verified) throw Object.assign(new Error("Passkey 注册验证未通过。"), { statusCode: 400 });
+  const credential = verification.registrationInfo.credential;
+  const admin = accessControl.addPasskey(challenge.adminUsername, {
+    id: credential.id,
+    publicKey: toBase64Url(credential.publicKey),
+    counter: credential.counter,
+    transports: credential.transports,
+    credentialDeviceType: verification.registrationInfo.credentialDeviceType,
+    credentialBackedUp: verification.registrationInfo.credentialBackedUp,
+  }, req.body?.name);
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "passkey.register", target: challenge.adminUsername, ip: req.ip });
+  res.setHeader("Set-Cookie", accessControl.clearPasskeyChallengeCookie());
+  res.json({ ok: true, admin });
+}));
+admin.delete("/passkeys/:id", requireSameOrigin, (req, res) => {
+  const target = String(req.body?.username || req.identity.adminUsername).trim();
+  if (normalizeIdentifier(target) !== normalizeIdentifier(req.identity.adminUsername)) {
+    throw Object.assign(new Error("请由该管理员本人管理 Passkey。"), { statusCode: 403 });
+  }
+  const updated = accessControl.removePasskey(req.identity.adminUsername, req.params.id);
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "passkey.remove", target: req.identity.adminUsername, ip: req.ip });
+  res.json({ ok: true, admin: updated });
+});
+admin.put("/admins/:username/passkey-policy", requireSameOrigin, (req, res) => {
+  if (normalizeIdentifier(req.params.username) !== normalizeIdentifier(req.identity.adminUsername)) {
+    throw Object.assign(new Error("请由该管理员本人切换 Passkey 登录策略。"), { statusCode: 403 });
+  }
+  const updated = accessControl.setPasskeyOnly(req.identity.adminUsername, req.body?.passkeyOnly === true);
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "passkey.policy.update", target: req.identity.adminUsername, ip: req.ip });
+  res.json({ ok: true, admin: updated });
+});
 admin.put("/module-access", requireSameOrigin, (req, res) => {
   const moduleAccess = accessControl.setModuleAccess(req.body?.moduleAccess || {});
   audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "module_access.update", ip: req.ip });
@@ -151,6 +276,12 @@ async function executeAndAudit(req, plan, question) {
 function publicIdentity(identity) {
   return { userId: identity.userId, name: identity.name, email: identity.email, kingdeeUsername: identity.kingdeeUsername, isSuperAdmin: Boolean(identity.isSuperAdmin), adminUsername: identity.adminUsername || "" };
 }
+function requirePasskeyAvailable() {
+  if (!config.passkey.enabled) throw Object.assign(new Error("Passkey 功能尚未启用。"), { statusCode: 503 });
+  if (!config.passkey.available) throw Object.assign(new Error("Passkey 需要 HTTPS 域名，请先配置 PASSKEY_ORIGIN。"), { statusCode: 503 });
+}
+function toBase64Url(value) { return Buffer.from(value).toString("base64url"); }
+function fromBase64Url(value) { return new Uint8Array(Buffer.from(String(value), "base64url")); }
 function enforceModuleAccess(identity, moduleId) {
   if (!accessControl.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
 }

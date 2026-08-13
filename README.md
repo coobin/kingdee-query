@@ -8,6 +8,7 @@
 
 - 通过 Authelia、Nginx 或其他反向代理注入的可信请求头完成 SSO
 - 提供独立的 `/login` 超级管理员登录入口和 `/admin` 权限设置界面
+- 支持超级管理员注册 Passkey，并可切换为仅使用设备验证登录
 - 可按查询模块配置查看人员，名单直接匹配 SSO 解析出的金蝶用户名
 - 可新增、修改和删除超级管理员，并保证至少保留一个管理员
 - 使用最终用户身份建立金蝶 `LoginByAppSecret` 会话，沿用其金蝶数据权限
@@ -77,6 +78,10 @@ AUTH_MODE=dev
 | `LOCAL_AUTH_DATA_PATH` | 超级管理员和模块权限文件路径；只保存加盐密码摘要，不保存明文密码 |
 | `LOCAL_AUTH_SESSION_HOURS` | 超级管理员登录有效小时数，默认 8 小时 |
 | `LOCAL_AUTH_COOKIE_SECURE` | HTTPS 部署时设为 `true`；未填写时根据 `APP_BASE_URL` 判断 |
+| `PASSKEY_ENABLED` | 是否启用超级管理员 Passkey，默认 `true` |
+| `PASSKEY_ORIGIN` | Passkey 使用的完整 HTTPS 来源，例如 `https://query.example.com`；本地 `localhost` 可用于开发 |
+| `PASSKEY_RP_ID` | Passkey 依赖方 ID，通常填写访问域名，不含协议和路径 |
+| `PASSKEY_RP_NAME` | Passkey 注册时显示的应用名称 |
 
 建议使用以下命令分别生成代理共享密钥和 Dify Key：
 
@@ -104,7 +109,7 @@ KINGDEE_USERNAME_SOURCE=kingdee_header
 
 生产端口不应绕过代理直接暴露给不可信网络。即使攻击者伪造 `Remote-*` 请求头，没有正确的 `AUTH_TRUSTED_PROXY_TOKEN` 也无法访问网页 API。
 
-超级管理员从 `/login` 使用本地账号登录。管理员会话采用 `HttpOnly`、`SameSite=Lax` Cookie；连续登录失败会临时限制尝试。`/admin` 可以设置每个模块的查看名单：名单直接匹配 SSO 解析出的金蝶用户名，多个用户可以逐行填写或用逗号分隔；名单留空表示所有已登录员工可见，有名单时仅名单人员和超级管理员可见。权限同时作用于页面目录和服务端查询接口，不能通过直接请求绕过。管理员点击“退出管理员，使用 SSO”后会清除本地管理员会话并返回查询台，由 SSO 身份接管。
+超级管理员从 `/login` 使用本地账号登录。管理员会话采用 `HttpOnly`、`SameSite=Lax` Cookie；连续登录失败会临时限制尝试。Passkey 只能在 HTTPS（或本机 localhost）来源下使用：管理员登录 `/admin` 后，在自己的卡片中注册至少两个 Passkey，再按需切换为“仅 Passkey 登录”；切换后该账号的密码登录会被禁用，但仍保留受保护的密码摘要以便必要时恢复。`/admin` 可以设置每个模块的查看名单：名单直接匹配 SSO 解析出的金蝶用户名，多个用户可以逐行填写或用逗号分隔；名单留空表示所有已登录员工可见，有名单时仅名单人员和超级管理员可见。权限同时作用于页面目录和服务端查询接口，不能通过直接请求绕过。管理员点击“退出管理员，使用 SSO”后会清除本地管理员会话并返回查询台，由 SSO 身份接管。
 
 首次部署需要在数据目录中创建第一个超级管理员。不要把初始密码写进 `.env`、源码或 Git；创建完成后，权限文件只包含随机盐和密码摘要。后续管理员可直接在 `/admin` 中维护其他超级管理员。
 

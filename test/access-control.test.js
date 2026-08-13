@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { AccessControl, COOKIE_NAME } = require("../src/access-control");
+const { AccessControl, COOKIE_NAME, PASSKEY_CHALLENGE_COOKIE } = require("../src/access-control");
 const { publicCatalog } = require("../src/catalog");
 
 function fixture() {
@@ -75,6 +75,41 @@ test("prevents deleting the last administrator and keeps the current session aft
   access.updateAdmin("kay", { password: "another-secure-password" });
   assert.equal(access.readSession(`${COOKIE_NAME}=${token}`).adminUsername, "kay");
   assert.equal(access.authenticate("kay", "another-secure-password").isSuperAdmin, true);
+});
+
+test("stores Passkeys, updates counters, and can switch an administrator to Passkey-only login", (t) => {
+  const { directory, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  access.createAdmin({ username: "kay", password: "a-secure-password" });
+  const credential = { id: "credential-1", publicKey: "public-key", counter: 0, transports: ["internal"] };
+  access.addPasskey("kay", credential, "办公室电脑");
+  assert.equal(access.listAdmins()[0].passkeys[0].name, "办公室电脑");
+  access.updatePasskeyCounter("kay", "credential-1", 7);
+  assert.equal(access.findAdmin("kay").passkeys[0].counter, 7);
+  access.setPasskeyOnly("kay", true);
+  assert.equal(access.authenticate("kay", "a-secure-password"), null);
+  assert.equal(access.listAdmins()[0].passkeyOnly, true);
+  assert.throws(() => access.removePasskey("kay", "credential-1"), /至少要保留一个/);
+  access.setPasskeyOnly("kay", false);
+  assert.equal(access.authenticate("kay", "a-secure-password").isSuperAdmin, true);
+});
+
+test("requires a Passkey before enabling Passkey-only login", (t) => {
+  const { directory, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  access.createAdmin({ username: "kay", password: "a-secure-password" });
+  assert.throws(() => access.setPasskeyOnly("kay", true), /先注册至少一个 Passkey/);
+});
+
+test("stores Passkey challenges as one-time, type-bound cookies", (t) => {
+  const { directory, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const token = access.createPasskeyChallenge({ type: "login", adminUsername: "kay", challenge: "challenge-1" });
+  const cookie = access.passkeyChallengeCookie(token);
+  assert.match(cookie, new RegExp(`^${PASSKEY_CHALLENGE_COOKIE}=`));
+  assert.equal(access.consumePasskeyChallenge(cookie, "registration"), null);
+  assert.deepEqual(access.consumePasskeyChallenge(cookie, "login").challenge, "challenge-1");
+  assert.equal(access.consumePasskeyChallenge(cookie, "login"), null);
 });
 
 test("filters the public catalog before it reaches the browser", () => {

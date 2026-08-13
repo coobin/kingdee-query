@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const COOKIE_NAME = "kqh_admin_session";
+const PASSKEY_CHALLENGE_COOKIE = "kqh_passkey_challenge";
 const PASSWORD_MIN_LENGTH = 10;
 
 function normalizeIdentifier(value) {
@@ -63,6 +64,7 @@ class AccessControl {
     this.cookieSecure = cookieSecure;
     this.moduleIds = [...new Set(moduleIds)];
     this.sessions = new Map();
+    this.passkeyChallenges = new Map();
     this.loginAttempts = new Map();
     this.state = this.load();
   }
@@ -91,7 +93,12 @@ class AccessControl {
   hasAdmins() { return this.state.admins.length > 0; }
 
   listAdmins() {
-    return this.state.admins.map(({ passwordHash, passwordSalt, ...admin }) => admin);
+    return this.state.admins.map(({ passwordHash, passwordSalt, ...admin }) => ({
+      ...admin,
+      passwordEnabled: admin.passwordEnabled !== false,
+      passkeyOnly: Boolean(admin.passkeyOnly),
+      passkeys: (admin.passkeys || []).map(({ id, name, createdAt, transports, credentialDeviceType, credentialBackedUp }) => ({ id, name, createdAt, transports, credentialDeviceType, credentialBackedUp })),
+    }));
   }
 
   createAdmin({ username, displayName, kingdeeUsername, password }) {
@@ -108,6 +115,9 @@ class AccessControl {
       kingdeeUsername: cleanText(kingdeeUsername),
       passwordSalt: passwordData.salt,
       passwordHash: passwordData.hash,
+      passwordEnabled: true,
+      passkeyOnly: false,
+      passkeys: [],
       createdAt: now,
       updatedAt: now,
     });
@@ -146,8 +156,86 @@ class AccessControl {
   authenticate(username, password) {
     const key = normalizeIdentifier(username);
     const admin = this.state.admins.find((item) => normalizeIdentifier(item.username) === key);
-    if (!admin || !verifyPassword(password, admin.passwordSalt, admin.passwordHash)) return null;
+    if (!admin || admin.passwordEnabled === false || admin.passkeyOnly || !verifyPassword(password, admin.passwordSalt, admin.passwordHash)) return null;
     return this.adminIdentity(admin);
+  }
+
+  findAdmin(username) {
+    const key = normalizeIdentifier(username);
+    return this.state.admins.find((admin) => normalizeIdentifier(admin.username) === key) || null;
+  }
+
+  addPasskey(username, credential, name = "未命名 Passkey") {
+    const admin = this.findAdmin(username);
+    if (!admin) throw Object.assign(new Error("没有找到该超级管理员。"), { statusCode: 404 });
+    if (!Array.isArray(admin.passkeys)) admin.passkeys = [];
+    if (admin.passkeys.some((item) => item.id === credential.id)) {
+      throw Object.assign(new Error("这个 Passkey 已经注册过了。"), { statusCode: 409 });
+    }
+    if (admin.passkeys.length >= 10) {
+      throw Object.assign(new Error("每个超级管理员最多注册 10 个 Passkey。"), { statusCode: 400 });
+    }
+    const now = new Date().toISOString();
+    admin.passkeys.push({ ...credential, name: cleanText(name || "未命名 Passkey", 80), createdAt: now });
+    this.persist();
+    return this.listAdmins().find((item) => normalizeIdentifier(item.username) === normalizeIdentifier(username));
+  }
+
+  removePasskey(username, credentialId) {
+    const admin = this.findAdmin(username);
+    if (!admin) throw Object.assign(new Error("没有找到该超级管理员。"), { statusCode: 404 });
+    if (!Array.isArray(admin.passkeys)) admin.passkeys = [];
+    if (admin.passkeyOnly && admin.passkeys.length <= 1) {
+      throw Object.assign(new Error("仅 Passkey 登录的管理员至少要保留一个 Passkey。"), { statusCode: 400 });
+    }
+    const before = admin.passkeys.length;
+    admin.passkeys = admin.passkeys.filter((item) => item.id !== credentialId);
+    if (admin.passkeys.length === before) throw Object.assign(new Error("没有找到该 Passkey。"), { statusCode: 404 });
+    this.persist();
+    return this.listAdmins().find((item) => normalizeIdentifier(item.username) === normalizeIdentifier(username));
+  }
+
+  updatePasskeyCounter(username, credentialId, counter) {
+    const admin = this.findAdmin(username);
+    const passkey = admin?.passkeys?.find((item) => item.id === credentialId);
+    if (!passkey) throw Object.assign(new Error("没有找到该 Passkey。"), { statusCode: 404 });
+    if (Number.isFinite(Number(counter))) passkey.counter = Number(counter);
+    this.persist();
+  }
+
+  setPasskeyOnly(username, enabled) {
+    const admin = this.findAdmin(username);
+    if (!admin) throw Object.assign(new Error("没有找到该超级管理员。"), { statusCode: 404 });
+    if (enabled && !(admin.passkeys || []).length) {
+      throw Object.assign(new Error("请先注册至少一个 Passkey，再关闭密码登录。"), { statusCode: 400 });
+    }
+    admin.passkeyOnly = Boolean(enabled);
+    admin.passwordEnabled = !admin.passkeyOnly;
+    admin.updatedAt = new Date().toISOString();
+    this.persist();
+    return this.listAdmins().find((item) => normalizeIdentifier(item.username) === normalizeIdentifier(username));
+  }
+
+  createPasskeyChallenge({ type, adminUsername, challenge, ttlMs = 120000 }) {
+    this.cleanupPasskeyChallenges();
+    const token = crypto.randomBytes(32).toString("base64url");
+    this.passkeyChallenges.set(token, { type, adminUsername, challenge, expiresAt: Date.now() + ttlMs });
+    return token;
+  }
+
+  consumePasskeyChallenge(cookieHeader, type) {
+    this.cleanupPasskeyChallenges();
+    const token = parseCookies(cookieHeader)[PASSKEY_CHALLENGE_COOKIE];
+    const challenge = token ? this.passkeyChallenges.get(token) : null;
+    if (!challenge || challenge.type !== type || challenge.expiresAt <= Date.now()) return null;
+    this.passkeyChallenges.delete(token);
+    return challenge;
+  }
+
+  cleanupPasskeyChallenges() {
+    for (const [token, challenge] of this.passkeyChallenges) {
+      if (challenge.expiresAt <= Date.now()) this.passkeyChallenges.delete(token);
+    }
   }
 
   adminIdentity(admin) {
@@ -158,6 +246,7 @@ class AccessControl {
       kingdeeUsername: admin.kingdeeUsername || admin.username,
       adminUsername: admin.username,
       isSuperAdmin: true,
+      passkeyOnly: Boolean(admin.passkeyOnly),
       channel: "local_admin",
     };
   }
@@ -201,6 +290,14 @@ class AccessControl {
 
   clearCookie() {
     return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${this.cookieSecure ? "; Secure" : ""}`;
+  }
+
+  passkeyChallengeCookie(token) {
+    return `${PASSKEY_CHALLENGE_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=120${this.cookieSecure ? "; Secure" : ""}`;
+  }
+
+  clearPasskeyChallengeCookie() {
+    return `${PASSKEY_CHALLENGE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${this.cookieSecure ? "; Secure" : ""}`;
   }
 
   isLoginBlocked(key) {
@@ -251,6 +348,7 @@ module.exports = {
   AccessControl,
   COOKIE_NAME,
   PASSWORD_MIN_LENGTH,
+  PASSKEY_CHALLENGE_COOKIE,
   normalizeIdentifier,
   identityIdentifiers,
   hashPassword,

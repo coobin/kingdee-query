@@ -54,6 +54,8 @@ textarea { min-height: 104px; padding: 12px 13px; resize: vertical; line-height:
 input:focus, textarea:focus { border-color: var(--jade); background: white; box-shadow: inset 3px 0 var(--jade); }
 .login-card form button, .primary-action { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 18px; padding: 0 20px; border: 0; color: white; background: var(--forest); font-weight: 700; }
 .login-card form button { margin-top: 5px; justify-content: space-between; }
+.login-card form .passkey-action { justify-content: center; margin-top: 0; color: var(--forest); background: var(--mint); }
+.passkey-hint { color: var(--muted); font-size: 10px; line-height: 1.5; }
 button:hover:not(:disabled) { filter: brightness(1.12); }
 button:disabled { cursor: not-allowed; opacity: .55; }
 .auth-error, .admin-message { padding: 12px 14px; color: var(--forest); background: var(--mint); border-left: 3px solid var(--jade); font-size: 12px; }
@@ -102,6 +104,14 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-card-identity small { margin-top: 4px; color: var(--muted); font-size: 9px; }
 .admin-card-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .admin-card-fields input { height: 42px; }
+.passkey-panel { grid-column: 2 / -1; display: grid; gap: 9px; padding: 13px 15px; border-left: 3px solid var(--jade); background: #f3f8f5; }
+.passkey-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.passkey-panel-heading strong { font-size: 12px; }
+.passkey-panel-heading small, .passkey-empty { color: var(--muted); font-size: 9px; }
+.passkey-list, .passkey-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.passkey-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; color: var(--forest); background: white; border: 1px solid var(--line); font-size: 10px; }
+.passkey-chip button { width: 18px; height: 18px; padding: 0; border: 0; color: var(--red); background: transparent; font-size: 15px; line-height: 1; }
+.passkey-actions .secondary-action { height: 34px; }
 .admin-card-actions { display: flex; gap: 7px; }
 .secondary-action, .danger-action { height: 42px; padding: 0 12px; border: 1px solid var(--line); background: white; font-size: 10px; }
 .danger-action { color: var(--red); }
@@ -119,6 +129,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .login-card { min-height: 480px; }
   .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-card { grid-template-columns: 1fr; align-items: stretch; }
+  .passkey-panel { grid-column: auto; }
   .admin-card-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-card-actions { justify-content: flex-end; }
   .admin-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
