@@ -64,7 +64,7 @@
   },
   "overdue_receivables": {
     "label": "超期未回款",
-    "description": "按销售子项目统计开票后超过指定天数仍未结清的应收",
+    "description": "按销售子项目统计开票后超过指定天数的未回款、未核销和未生成应收金额",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_receivables",
     "fields": [
@@ -78,7 +78,8 @@
       ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
       ["FIVALLAMOUNTFOR", "已开票金额"],
       ["FRECEIVEAMOUNT", "已收金额"],
-      ["FNORECEIVEAMOUNT", "未收金额"]
+      ["FNORECEIVEAMOUNT", "未收金额"],
+      ["FWRITTENOFFAMOUNT", "已核销金额"]
     ],
     "invoiceDateSource": {
       "formId": "IV_SALESIC",
@@ -86,9 +87,35 @@
         ["FBillNo", "销售发票号"],
         ["FINVOICEDATE", "开票日期"],
         ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
-        ["F_PARA_SaleSubProId.FName", "销售子项目名称"]
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FCustomerID.FName", "客户"],
+        ["FALLAMOUNTFOR", "发票金额"]
       ],
       "defaultOrder": "FINVOICEDATE ASC,FBillNo ASC"
+    },
+    "receiptSource": {
+      "formId": "AR_RECEIVEBILL",
+      "fields": [
+        ["FID", "收款内码"],
+        ["FBillNo", "收款单号"],
+        ["FDATE", "收款日期"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FRECAMOUNT", "收款金额"]
+      ],
+      "defaultOrder": "FDATE ASC,FBillNo ASC"
+    },
+    "refundSource": {
+      "formId": "AR_REFUNDBILL",
+      "fields": [
+        ["FID", "退款内码"],
+        ["FBillNo", "退款单号"],
+        ["FDATE", "退款日期"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FREFUNDTOTALAMOUNTFOR", "退款金额"]
+      ],
+      "defaultOrder": "FDATE ASC,FBillNo ASC"
     },
     "publicColumns": [
       "客户",
@@ -99,7 +126,9 @@
       "超期发票数",
       "应收单数",
       "开票金额",
-      "已回款金额",
+      "实际回款净额",
+      "未核销金额",
+      "未生成应收金额",
       "未回款金额",
       "回款状态",
       "销售员"

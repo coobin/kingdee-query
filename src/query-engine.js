@@ -87,7 +87,6 @@ function buildOverdueReceivableFilter(args, asOfDate) {
     "FDocumentStatus='C'",
     "FCancelStatus='A'",
     "FIVALLAMOUNTFOR>0",
-    "FNORECEIVEAMOUNT>0",
   ];
   const accepted = { asOfDate, minimumDays, cutoffDate };
   if (args.customerName) {
@@ -104,6 +103,21 @@ function buildOverdueReceivableFilter(args, asOfDate) {
   return { filter: clauses.join(" AND "), accepted };
 }
 
+function buildOverdueInvoiceCandidateFilter(args, asOfDate) {
+  const minimumDays = normalizeMinimumDays(args.minimumDays);
+  const cutoffDate = shiftDate(asOfDate, -minimumDays);
+  const clauses = [
+    "FDocumentStatus='C'",
+    "FCancelStatus='A'",
+    "FALLAMOUNTFOR>0",
+    `FINVOICEDATE<'${isoDate(cutoffDate)}'`,
+  ];
+  if (args.customerName) clauses.push(`FCustomerID.FName LIKE '%${escapeValue(args.customerName)}%'`);
+  const subprojectNumber = args.subprojectNumber || args.projectNumber;
+  if (subprojectNumber) clauses.push(`F_PARA_SaleSubProId.FNumber LIKE '%${escapeValue(subprojectNumber)}%'`);
+  return clauses.join(" AND ");
+}
+
 function buildOverdueInvoiceFilter(cutoffDate, subprojectNumbers) {
   const quoted = subprojectNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
   return [
@@ -112,6 +126,11 @@ function buildOverdueInvoiceFilter(cutoffDate, subprojectNumbers) {
     `FINVOICEDATE<'${isoDate(cutoffDate)}'`,
     `F_PARA_SaleSubProId.FNumber IN (${quoted})`,
   ].join(" AND ");
+}
+
+function buildSubprojectBatchFilter(subprojectNumbers, extra = []) {
+  const quoted = subprojectNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
+  return [...extra, `F_PARA_SaleSubProId.FNumber IN (${quoted})`].join(" AND ");
 }
 
 function rowsToObjects(rows, fields, valueMappings = {}) {
@@ -171,47 +190,57 @@ class QueryEngine {
 
   async overdueReceivables(identity, item, args) {
     const asOfDate = businessDate(this.now());
-    const { filter, accepted } = buildOverdueReceivableFilter(args, asOfDate);
+    const minimumDays = normalizeMinimumDays(args.minimumDays);
+    const cutoffDate = shiftDate(asOfDate, -minimumDays);
+    const accepted = { asOfDate, minimumDays, cutoffDate };
+    if (args.customerName) accepted.customerName = args.customerName;
+    if (args.subprojectNumber || args.projectNumber) accepted.subprojectNumber = args.subprojectNumber || args.projectNumber;
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const maximum = this.config.kingdee.aggregationMaxRows;
     const requestLimit = Math.min(maximum + 1, 10000);
-    let rawRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
-      FormId: item.formId,
-      FieldKeys: item.fields.map(([key]) => key).join(","),
-      FilterString: filter,
-      OrderString: item.defaultOrder || "FDate ASC,FBillNo ASC",
+    const invoiceSource = item.invoiceDateSource;
+    if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
+    let rawInvoiceRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+      FormId: invoiceSource.formId,
+      FieldKeys: invoiceSource.fields.map(([key]) => key).join(","),
+      FilterString: buildOverdueInvoiceCandidateFilter(args, asOfDate),
+      OrderString: invoiceSource.defaultOrder || "FINVOICEDATE ASC,FBillNo ASC",
       StartRow: 0,
       Limit: requestLimit,
       TopRowCount: 0,
     });
-    const receivablePartial = rawRows.length >= requestLimit;
-    rawRows = rawRows.slice(0, maximum);
-    const receivableRows = rowsToObjects(rawRows, item.fields);
-    const candidateSubprojects = [...new Set(receivableRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
-    const invoiceSource = item.invoiceDateSource;
-    if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
-    const invoiceRows = [];
-    let invoicePartial = false;
-    for (const batch of chunkValues(candidateSubprojects, 150)) {
-      const remaining = maximum + 1 - invoiceRows.length;
-      if (remaining <= 0) { invoicePartial = true; break; }
-      const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
-        FormId: invoiceSource.formId,
-        FieldKeys: invoiceSource.fields.map(([key]) => key).join(","),
-        FilterString: buildOverdueInvoiceFilter(accepted.cutoffDate, batch),
-        OrderString: invoiceSource.defaultOrder || "FINVOICEDATE ASC,FBillNo ASC",
-        StartRow: 0,
-        Limit: Math.min(remaining, 10000),
-        TopRowCount: 0,
-      });
-      invoiceRows.push(...page);
-      if (invoiceRows.length > maximum) { invoicePartial = true; break; }
-    }
-    const partial = receivablePartial || invoicePartial;
-    const result = aggregateOverdueReceivables(receivableRows, {
-      invoiceRows: rowsToObjects(invoiceRows.slice(0, maximum), invoiceSource.fields),
+    const invoicePartial = rawInvoiceRows.length >= requestLimit;
+    rawInvoiceRows = rawInvoiceRows.slice(0, maximum);
+    const overdueInvoiceRows = rowsToObjects(rawInvoiceRows, invoiceSource.fields);
+    const candidateSubprojects = [...new Set(overdueInvoiceRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
+    // The first invoice query only identifies overdue candidates. Fetch every
+    // valid invoice for those subprojects so totals and the earliest invoice
+    // date describe the complete subproject, not just its overdue invoice rows.
+    const allInvoices = await this.queryBySubprojects(
+      identity,
+      invoiceSource,
+      candidateSubprojects,
+      ["FDocumentStatus='C'", "FCancelStatus='A'", "FALLAMOUNTFOR>0"],
+      maximum,
+    );
+    const invoiceRows = rowsToObjects(allInvoices.rows, invoiceSource.fields);
+    const receivableSource = { ...item, fields: item.fields };
+    const receivables = await this.queryBySubprojects(identity, receivableSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'", "FIVALLAMOUNTFOR>0"], maximum);
+    const receiptSource = item.receiptSource;
+    const refundSource = item.refundSource;
+    const receipts = receiptSource
+      ? await this.queryBySubprojects(identity, receiptSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], maximum)
+      : { rows: [], partial: false };
+    const refunds = refundSource
+      ? await this.queryBySubprojects(identity, refundSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], maximum)
+      : { rows: [], partial: false };
+    const partial = invoicePartial || allInvoices.partial || receivables.partial || receipts.partial || refunds.partial;
+    const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
+      invoiceRows,
+      receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
+      refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
       asOfDate,
-      minimumDays: accepted.minimumDays,
+      minimumDays,
       partial,
     });
     return {
@@ -225,6 +254,28 @@ class QueryEngine {
       statistics: result.statistics,
       summary: result.summary,
     };
+  }
+
+  async queryBySubprojects(identity, source, subprojects, extraFilter, maximum) {
+    if (!subprojects.length) return { rows: [], partial: false };
+    const rows = [];
+    let partial = false;
+    for (const batch of chunkValues(subprojects, 150)) {
+      const remaining = maximum + 1 - rows.length;
+      if (remaining <= 0) { partial = true; break; }
+      const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: buildSubprojectBatchFilter(batch, extraFilter),
+        OrderString: source.defaultOrder || "FDATE ASC,FBillNo ASC",
+        StartRow: 0,
+        Limit: Math.min(remaining, 10000),
+        TopRowCount: 0,
+      });
+      rows.push(...page);
+      if (rows.length > maximum) { partial = true; break; }
+    }
+    return { rows: rows.slice(0, maximum), partial };
   }
 
   async queryForAggregation(identity, request) {
@@ -265,28 +316,12 @@ class QueryEngine {
   }
 }
 
-function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, minimumDays, partial = false }) {
-  const invoiceDates = new Map();
-  for (const row of invoiceRows) {
-    const code = String(row["销售子项目编码"] || "").trim();
-    const date = String(row["开票日期"] || "").slice(0, 10);
-    if (!code || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    const key = normalizeSubprojectKey(code);
-    let invoice = invoiceDates.get(key);
-    if (!invoice) {
-      invoice = { code, names: new Set(), firstDate: date, invoiceNumbers: new Set() };
-      invoiceDates.set(key, invoice);
-    }
-    addIfPresent(invoice.names, row["销售子项目名称"]);
-    addIfPresent(invoice.invoiceNumbers, row["销售发票号"]);
-    if (date < invoice.firstDate) invoice.firstDate = date;
-  }
-
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows = [], refundRows = [], asOfDate, minimumDays, partial = false }) {
   const subprojects = new Map();
   let rowsWithoutSubproject = 0;
-  for (const row of sourceRows) {
-    const code = String(row["销售子项目编码"] || "").trim();
-    if (!code) { rowsWithoutSubproject += 1; continue; }
+  const getSubproject = (row, codeValue = row["销售子项目编码"]) => {
+    const code = String(codeValue || "").trim();
+    if (!code) return null;
     const key = normalizeSubprojectKey(code);
     let subproject = subprojects.get(key);
     if (!subproject) {
@@ -298,11 +333,36 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
         organizations: new Set(),
         departments: new Set(),
         salespersons: new Set(),
+        invoiceNumbers: new Set(),
+        firstInvoiceDate: "",
         invoiceAmount: 0,
+        receivableAmount: 0,
         outstandingAmount: 0,
+        writtenOffAmount: 0,
+        actualReceiptAmount: 0,
+        refundAmount: 0,
+        writtenOffBills: new Set(),
+        writtenOffKnown: false,
       };
       subprojects.set(key, subproject);
     }
+    return subproject;
+  };
+
+  for (const row of invoiceRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) { rowsWithoutSubproject += 1; continue; }
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    addIfPresent(subproject.customers, row["客户"]);
+    addIfPresent(subproject.invoiceNumbers, row["销售发票号"]);
+    subproject.invoiceAmount += Math.max(0, Number(row["发票金额"]) || 0);
+    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!subproject.firstInvoiceDate || invoiceDate < subproject.firstInvoiceDate)) subproject.firstInvoiceDate = invoiceDate;
+  }
+
+  for (const row of sourceRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) { rowsWithoutSubproject += 1; continue; }
     addIfPresent(subproject.names, row["销售子项目名称"]);
     addIfPresent(subproject.customers, row["客户"]);
     addIfPresent(subproject.billNumbers, row["应收单号"]);
@@ -312,41 +372,76 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
     const invoiceAmount = Math.max(0, Number(row["已开票金额"]) || 0);
     const receivedAmount = Math.max(0, Number(row["已收金额"]) || 0);
     const entryOutstanding = Math.max(0, Number(row["未收金额"]) || 0);
-    subproject.invoiceAmount += invoiceAmount;
-    // Allocate collected money to the invoiced portion first, then cap by the entry's
-    // current open balance. This keeps unbilled receivables out of the risk amount.
+    subproject.receivableAmount += invoiceAmount;
+    // Keep the risk amount bounded by the invoiced portion of each receivable entry.
     subproject.outstandingAmount += Math.min(entryOutstanding, Math.max(0, invoiceAmount - receivedAmount));
+    const billKey = String(row["应收内码"] || row["应收单号"] || "").trim();
+    if (billKey && !subproject.writtenOffBills.has(billKey)) {
+      subproject.writtenOffBills.add(billKey);
+      if (row["已核销金额"] != null && Number.isFinite(Number(row["已核销金额"]))) {
+        subproject.writtenOffKnown = true;
+        subproject.writtenOffAmount += Math.max(0, Number(row["已核销金额"]) || 0);
+      }
+    }
+  }
+
+  for (const row of receiptRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) { rowsWithoutSubproject += 1; continue; }
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    subproject.actualReceiptAmount += Math.max(0, Number(row["收款金额"]) || 0);
+  }
+  for (const row of refundRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) { rowsWithoutSubproject += 1; continue; }
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    subproject.refundAmount += Math.max(0, Number(row["退款金额"]) || 0);
   }
 
   let missingInvoiceDateSubprojects = 0;
-  const rows = [...subprojects.entries()].filter(([, subproject]) => subproject.outstandingAmount > 0.004).map(([key, subproject]) => {
-    const invoice = invoiceDates.get(key);
-    if (!invoice) { missingInvoiceDateSubprojects += 1; return null; }
-    invoice.names.forEach((name) => subproject.names.add(name));
-    const invoiceAmount = roundMoney(subproject.invoiceAmount);
+  const rows = [...subprojects.values()].map((subproject) => {
+    if (!subproject.firstInvoiceDate) { missingInvoiceDateSubprojects += 1; return null; }
+    const firstDate = subproject.firstInvoiceDate;
+    const invoiceAmount = roundMoney(subproject.invoiceAmount || subproject.receivableAmount);
     const outstandingAmount = roundMoney(subproject.outstandingAmount);
-    const receivedAmount = roundMoney(Math.max(0, invoiceAmount - outstandingAmount));
+    const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
+    const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
+    const writtenOffAmount = roundMoney(subproject.writtenOffKnown ? subproject.writtenOffAmount : fallbackWrittenOff);
+    const unreconciledAmount = roundMoney(Math.max(0, actualReceiptAmount - writtenOffAmount));
+    const unreceiptedInvoiceAmount = roundMoney(Math.max(0, invoiceAmount - subproject.receivableAmount));
+    const hasRisk = outstandingAmount > 0.004 || unreceiptedInvoiceAmount > 0.004;
+    if (!hasRisk) return null;
+    let status = "完全未回款";
+    if (unreceiptedInvoiceAmount > 0.004) status = "发票未生成应收";
+    else if (outstandingAmount <= 0.004) status = "已结清";
+    else if (actualReceiptAmount > 0.004 || writtenOffAmount > 0.004) status = "部分回款未结清";
     return {
       客户: joinValues(subproject.customers),
       销售子项目编码: subproject.code,
       销售子项目名称: joinValues(subproject.names),
-      开票日期: invoice.firstDate,
-      超期天数: elapsedDays(invoice.firstDate, asOfDate),
-      超期发票数: invoice.invoiceNumbers.size,
+      开票日期: firstDate,
+      超期天数: elapsedDays(firstDate, asOfDate),
+      超期发票数: subproject.invoiceNumbers.size,
       应收单数: subproject.billNumbers.size,
       结算组织: joinValues(subproject.organizations),
       销售部门: joinValues(subproject.departments),
       销售员: joinValues(subproject.salespersons),
       开票金额: invoiceAmount,
-      已回款金额: receivedAmount,
+      实际回款净额: actualReceiptAmount,
+      未核销金额: unreconciledAmount,
+      未生成应收金额: unreceiptedInvoiceAmount,
       未回款金额: outstandingAmount,
-      回款状态: receivedAmount > 0.004 ? "部分回款未结清" : "完全未回款",
+      回款状态: status,
     };
-  }).filter(Boolean).sort((left, right) => right["未回款金额"] - left["未回款金额"] || right["超期天数"] - left["超期天数"]);
+  }).filter(Boolean).sort((left, right) => right["未回款金额"] - left["未回款金额"] || right["未生成应收金额"] - left["未生成应收金额"] || right["超期天数"] - left["超期天数"]);
 
   const completelyUnpaid = rows.filter((row) => row["回款状态"] === "完全未回款");
   const partiallyPaid = rows.filter((row) => row["回款状态"] === "部分回款未结清");
+  const invoiceOnly = rows.filter((row) => row["回款状态"] === "发票未生成应收");
   const outstandingAmount = sumMoney(rows, "未回款金额");
+  const actualReceiptAmount = sumMoney(rows, "实际回款净额");
+  const unreconciledAmount = sumMoney(rows, "未核销金额");
+  const unreceiptedInvoiceAmount = sumMoney(rows, "未生成应收金额");
   const customerCount = new Set(rows.map((row) => row["客户"]).filter(Boolean)).size;
   const statistics = {
     asOfDate,
@@ -356,10 +451,15 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
     receivableBillCount: rows.reduce((total, row) => total + row["应收单数"], 0),
     customerCount,
     outstandingAmount,
+    actualReceiptAmount,
+    unreconciledAmount,
+    unreceiptedInvoiceAmount,
     completelyUnpaidCount: completelyUnpaid.length,
     completelyUnpaidAmount: sumMoney(completelyUnpaid, "未回款金额"),
     partiallyPaidCount: partiallyPaid.length,
     partiallyPaidAmount: sumMoney(partiallyPaid, "未回款金额"),
+    invoiceOnlyCount: invoiceOnly.length,
+    invoiceOnlyAmount: sumMoney(invoiceOnly, "未生成应收金额"),
     oldestDays: rows.reduce((maximum, row) => Math.max(maximum, row["超期天数"]), 0),
     missingInvoiceDateSubprojects,
     rowsWithoutSubproject,
@@ -368,11 +468,11 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], asOfDate, m
   const amount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(outstandingAmount);
   const exclusions = [
     missingInvoiceDateSubprojects ? `${missingInvoiceDateSubprojects} 个销售子项目未找到开票日期` : "",
-    rowsWithoutSubproject ? `${rowsWithoutSubproject} 条应收明细缺少销售子项目编码` : "",
+    rowsWithoutSubproject ? `${rowsWithoutSubproject} 条明细缺少销售子项目编码` : "",
   ].filter(Boolean);
   const summary = rows.length
-    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天仍未结清，未回款金额 ¥${amount}，涉及 ${customerCount} 家客户${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
-    : `截至 ${asOfDate}，没有找到以开票日期起算超过 ${minimumDays} 天且仍未结清的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
+    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天，未回款金额 ¥${amount}${invoiceOnly.length ? `，其中 ${invoiceOnly.length} 个仅有发票未生成应收` : ""}${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
+    : `截至 ${asOfDate}，没有找到以开票日期起算超过 ${minimumDays} 天且存在未回款或未生成应收金额的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
   return { rows, statistics, summary };
 }
 
@@ -440,6 +540,7 @@ module.exports = {
   businessDate,
   shiftDate,
   buildOverdueReceivableFilter,
+  buildOverdueInvoiceCandidateFilter,
   buildOverdueInvoiceFilter,
   aggregateOverdueReceivables,
 };

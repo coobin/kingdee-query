@@ -179,6 +179,9 @@ function renderStatistics(statistics) {
   strip.setAttribute("aria-label", "超期未回款汇总");
   const items = [
     ["未回款风险金额", formatMoney(statistics.outstandingAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
+    ["实际回款净额", formatMoney(statistics.actualReceiptAmount), `收款单减退款单`],
+    ["未核销金额", formatMoney(statistics.unreconciledAmount), "实际回款尚未匹配应收"],
+    ["未生成应收", formatMoney(statistics.unreceiptedInvoiceAmount), `${statistics.invoiceOnlyCount} 个子项目`],
     ["涉及客户", `${statistics.customerCount} 家`, `截至 ${statistics.asOfDate}`],
     ["完全未回款", `${statistics.completelyUnpaidCount} 个`, formatMoney(statistics.completelyUnpaidAmount)],
     ["部分回款未结清", `${statistics.partiallyPaidCount} 个`, formatMoney(statistics.partiallyPaidAmount)],
