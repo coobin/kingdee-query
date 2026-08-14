@@ -5,7 +5,7 @@ const TOOL_META = {
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
-const state = { selectedTool: "inventory", lastResult: null, tableRows: [], tableSort: { column: "", direction: 1 }, tools: [], accessibleTools: new Set() };
+const state = { selectedTool: readSelectedTool(), lastResult: null, tableRows: [], tableSort: { column: "", direction: 1 }, tools: [], accessibleTools: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   toolList: document.querySelector("#tool-list"), form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), formError: document.querySelector("#form-error"),
@@ -18,7 +18,7 @@ initialize();
 
 async function initialize() {
   setDefaultDates();
-  selectTool("inventory", false);
+  selectTool(state.selectedTool, false);
   try {
     const [session, catalog] = await Promise.all([api("/api/session"), api("/api/catalog")]);
     els.session.classList.add("ready");
@@ -57,12 +57,26 @@ function selectTool(tool, focus = true) {
   if (!TOOL_META[tool]) return;
   if (state.accessibleTools.size && !state.accessibleTools.has(tool)) return;
   state.selectedTool = tool;
+  persistSelectedTool(tool);
   els.tabs.forEach((tab) => { const active = tab.dataset.tool === tool; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
   els.panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== tool; });
   els.button.querySelector("span").textContent = TOOL_META[tool].action;
   els.formError.hidden = true;
   document.querySelectorAll(".tool[data-tool-id]").forEach((item) => item.classList.toggle("active", item.dataset.toolId === tool));
   if (focus) els.panels.find((panel) => panel.dataset.panel === tool)?.querySelector("input")?.focus();
+}
+
+function readSelectedTool() {
+  try {
+    const saved = globalThis.localStorage?.getItem("kingdee-query-hub.selected-tool");
+    return TOOL_META[saved] ? saved : "inventory";
+  } catch {
+    return "inventory";
+  }
+}
+
+function persistSelectedTool(tool) {
+  try { globalThis.localStorage?.setItem("kingdee-query-hub.selected-tool", tool); } catch { /* storage may be disabled */ }
 }
 
 function applyCatalogAccess(tools) {
