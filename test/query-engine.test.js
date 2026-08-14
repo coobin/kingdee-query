@@ -112,9 +112,10 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   });
   assert.equal(result.statistics.subprojectCount, 2);
   assert.equal(result.statistics.customerCount, 2);
-  assert.equal(result.statistics.outstandingAmount, 120);
-  assert.equal(result.statistics.actualReceiptAmount, 150);
-  assert.equal(result.statistics.unreconciledAmount, 120);
+  assert.equal(result.statistics.receivableOutstandingAmount, 120);
+  assert.equal(result.statistics.receivedAmount, 150);
+  assert.equal(result.statistics.paymentUnreconciledAmount, 120);
+  assert.equal(result.statistics.unpaidAmount, 60);
   assert.equal(result.statistics.invoiceOnlyCount, 1);
   assert.equal(result.statistics.invoiceOnlyAmount, 80);
   assert.equal(result.statistics.unreceiptedCount, 1);
@@ -123,20 +124,23 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   assert.equal(result.statistics.missingInvoiceDateSubprojects, 1);
   assert.equal(result.statistics.completelyUnpaidCount, 0);
   assert.equal(result.statistics.partiallyPaidCount, 1);
-  assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
-  assert.equal(result.rows[0]["销售子项目名称"], "销售子项目一");
-  assert.equal(result.rows[0]["收款条件"], "月结30天");
-  assert.equal(result.rows[0]["开票日期"], "2026-01-10");
-  assert.equal(result.rows[0]["开票金额"], 130);
-  assert.equal(result.rows[0]["超期发票数"], 3);
-  assert.equal(result.rows[0]["应收单数"], 2);
-  assert.equal(result.rows[0]["实际回款净额"], 130);
-  assert.equal(result.rows[0]["未核销金额"], 100);
-  assert.equal(result.rows[0]["未生成应收金额"], 0);
-  assert.equal(result.rows[0]["未回款金额"], 120);
-  assert.equal(result.rows[0]["到期日"], undefined);
+  const sp1 = result.rows.find((row) => row["销售子项目编码"] === "SP-1");
+  assert.equal(sp1["销售子项目名称"], "销售子项目一");
+  assert.equal(sp1["收款条件"], "月结30天");
+  assert.equal(sp1["开票日期"], "2026-01-10");
+  assert.equal(sp1["开票金额"], 130);
+  assert.equal(sp1["超期发票数"], 3);
+  assert.equal(sp1["应收单数"], 2);
+  assert.equal(sp1["已收款金额"], 130);
+  assert.equal(sp1["收款未核销金额"], 100);
+  assert.equal(sp1["未生成应收金额"], 0);
+  assert.equal(sp1["应收未收款金额"], 120);
+  assert.equal(sp1["未回款金额"], 0);
+  assert.equal(sp1["到期日"], undefined);
   assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-3"), false);
   assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-4" && row["回款状态"] === "完全未形成应收"), true);
+  const sp4 = result.rows.find((row) => row["销售子项目编码"] === "SP-4");
+  assert.equal(sp4["未回款金额"], 60);
 });
 
 test("distinguishes a partially formed receivable from no receivable", () => {
@@ -152,6 +156,26 @@ test("distinguishes a partially formed receivable from no receivable", () => {
   assert.equal(result.statistics.partiallyUnreceiptedCount, 1);
   assert.equal(result.rows[0]["回款状态"], "未完全形成应收");
   assert.equal(result.rows[0]["未生成应收金额"], 40);
+  assert.equal(result.rows[0]["应收未收款金额"], 60);
+  assert.equal(result.rows[0]["未回款金额"], 100);
+});
+
+test("calculates true unpaid amount from invoiced amount minus received amount", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 31, 应收单号: "AR-BALANCED", 客户: "客户平衡", 销售子项目编码: "SP-BALANCED", 销售子项目名称: "平衡项目", 已开票金额: 80, 已收金额: 60, 未收金额: 20, 已核销金额: 60 },
+  ], {
+    invoiceRows: [{ 销售发票号: "INV-BALANCED", 开票日期: "2026-01-01T00:00:00", 销售子项目编码: "SP-BALANCED", 销售子项目名称: "平衡项目", 客户: "客户平衡", 发票金额: 100 }],
+    receiptRows: [{ 销售子项目编码: "SP-BALANCED", 销售子项目名称: "平衡项目", 收款金额: 60 }],
+    asOfDate: "2026-08-13",
+    minimumDays: 180,
+  });
+  const row = result.rows[0];
+  assert.equal(row["已收款金额"], 60);
+  assert.equal(row["应收未收款金额"], 20);
+  assert.equal(row["未生成应收金额"], 20);
+  assert.equal(row["未回款金额"], 40);
+  assert.equal(row["未回款金额"], row["应收未收款金额"] + row["未生成应收金额"]);
+  assert.equal(row["开票金额"] - row["应收未收款金额"] - row["未生成应收金额"], row["已收款金额"]);
 });
 
 test("uses the earliest overdue invoice for aging date and count", () => {
@@ -218,7 +242,8 @@ test("uses invoice-to-receivable writeoff status for the overdue aging date", ()
   });
   assert.equal(result.rows[0]["开票日期"], "2025-12-04");
   assert.equal(result.rows[0]["超期发票数"], 1);
-  assert.equal(result.rows[0]["未回款金额"], 80);
+  assert.equal(result.rows[0]["应收未收款金额"], 80);
+  assert.equal(result.rows[0]["未回款金额"], 230);
   assert.equal(result.rows[0]["未生成应收金额"], 0);
   assert.equal(result.rows[0]["开票金额"], 230);
 });
@@ -233,6 +258,8 @@ test("counts an old invoice without an invoice-to-receivable match as unformed",
   });
   assert.equal(result.rows[0]["回款状态"], "完全未形成应收");
   assert.equal(result.rows[0]["未生成应收金额"], 60);
+  assert.equal(result.rows[0]["应收未收款金额"], 0);
+  assert.equal(result.rows[0]["未回款金额"], 60);
   assert.equal(result.rows[0]["超期发票数"], 1);
 });
 
@@ -275,13 +302,17 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[7].FieldKeys, "FBillNo,FName,FRecConditionStr");
   assert.equal(requests[7].FilterString, "FBillNo IN ('SP-1')");
   assert.equal(result.count, 1);
-  assert.equal(result.statistics.outstandingAmount, 100);
-  assert.equal(result.statistics.actualReceiptAmount, 75);
-  assert.equal(result.statistics.unreconciledAmount, 75);
+  assert.equal(result.statistics.receivableOutstandingAmount, 100);
+  assert.equal(result.statistics.receivedAmount, 75);
+  assert.equal(result.statistics.paymentUnreconciledAmount, 75);
+  assert.equal(result.statistics.unpaidAmount, 25);
   assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
   assert.equal(result.rows[0]["收款条件"], "月结30天");
   assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["回款状态"], "部分回款未结清");
+  assert.equal(result.rows[0]["已收款金额"], 75);
+  assert.equal(result.rows[0]["应收未收款金额"], 100);
+  assert.equal(result.rows[0]["未回款金额"], 25);
 });
 
 test("keeps the list date tied to the overdue invoice query, not the full invoice query", async () => {

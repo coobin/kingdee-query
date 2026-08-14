@@ -649,6 +649,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     const invoiceAmount = roundMoney(subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount);
     const outstandingAmount = roundMoney(strictInvoiceMatching ? subproject.strictOutstandingAmount : subproject.outstandingAmount);
     const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
+    const unpaidAmount = roundMoney(Math.max(0, invoiceAmount - actualReceiptAmount));
     const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
     const writtenOffAmount = roundMoney(subproject.writtenOffKnown ? subproject.writtenOffAmount : fallbackWrittenOff);
     const unreconciledAmount = roundMoney(Math.max(0, actualReceiptAmount - writtenOffAmount));
@@ -675,10 +676,11 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       结算组织: joinValues(subproject.organizations),
       销售部门: joinValues(subproject.departments),
       开票金额: invoiceAmount,
-      实际回款净额: actualReceiptAmount,
-      未核销金额: unreconciledAmount,
+      已收款金额: actualReceiptAmount,
+      收款未核销金额: unreconciledAmount,
       未生成应收金额: unreceiptedInvoiceAmount,
-      未回款金额: outstandingAmount,
+      应收未收款金额: outstandingAmount,
+      未回款金额: unpaidAmount,
       回款状态: status,
     };
   }).filter(Boolean).sort((left, right) => right["未回款金额"] - left["未回款金额"] || right["未生成应收金额"] - left["未生成应收金额"] || right["超期天数"] - left["超期天数"]);
@@ -688,9 +690,10 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
   const unreceipted = rows.filter((row) => row["未生成应收金额"] > 0.004);
   const fullyUnreceipted = rows.filter((row) => row["回款状态"] === "完全未形成应收");
   const partiallyUnreceipted = rows.filter((row) => row["回款状态"] === "未完全形成应收");
-  const outstandingAmount = sumMoney(rows, "未回款金额");
-  const actualReceiptAmount = sumMoney(rows, "实际回款净额");
-  const unreconciledAmount = sumMoney(rows, "未核销金额");
+  const receivableOutstandingAmount = sumMoney(rows, "应收未收款金额");
+  const receivedAmount = sumMoney(rows, "已收款金额");
+  const paymentUnreconciledAmount = sumMoney(rows, "收款未核销金额");
+  const unpaidAmount = sumMoney(rows, "未回款金额");
   const unreceiptedInvoiceAmount = sumMoney(rows, "未生成应收金额");
   const customerCount = new Set(rows.map((row) => row["客户"]).filter(Boolean)).size;
   const statistics = {
@@ -700,14 +703,15 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     invoiceCount: rows.reduce((total, row) => total + row["超期发票数"], 0),
     receivableBillCount: rows.reduce((total, row) => total + row["应收单数"], 0),
     customerCount,
-    outstandingAmount,
-    actualReceiptAmount,
-    unreconciledAmount,
+    unpaidAmount,
+    receivableOutstandingAmount,
+    receivedAmount,
+    paymentUnreconciledAmount,
     unreceiptedInvoiceAmount,
     completelyUnpaidCount: completelyUnpaid.length,
-    completelyUnpaidAmount: sumMoney(completelyUnpaid, "未回款金额"),
+    completelyUnpaidAmount: sumMoney(completelyUnpaid, "应收未收款金额"),
     partiallyPaidCount: partiallyPaid.length,
-    partiallyPaidAmount: sumMoney(partiallyPaid, "未回款金额"),
+    partiallyPaidAmount: sumMoney(partiallyPaid, "应收未收款金额"),
     unreceiptedCount: unreceipted.length,
     fullyUnreceiptedCount: fullyUnreceipted.length,
     fullyUnreceiptedAmount: sumMoney(fullyUnreceipted, "未生成应收金额"),
@@ -720,8 +724,14 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     missingInvoiceDateSubprojects,
     rowsWithoutSubproject,
     partial,
+    // Deprecated aliases retained for existing API consumers. New clients
+    // should use unpaidAmount, receivableOutstandingAmount, receivedAmount,
+    // and paymentUnreconciledAmount.
+    outstandingAmount: receivableOutstandingAmount,
+    actualReceiptAmount: receivedAmount,
+    unreconciledAmount: paymentUnreconciledAmount,
   };
-  const amount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(outstandingAmount);
+  const amount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(unpaidAmount);
   const exclusions = [
     missingInvoiceDateSubprojects ? `${missingInvoiceDateSubprojects} 个销售子项目未找到开票日期` : "",
     rowsWithoutSubproject ? `${rowsWithoutSubproject} 条明细缺少销售子项目编码` : "",
