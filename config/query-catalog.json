@@ -135,6 +135,7 @@
         ["FRecConditionStr", "收款条件"]
       ],
       "subprojectFilterField": "FBillNo",
+      "filters": [],
       "defaultOrder": "FBillNo ASC"
     },
     "receiptSource": {

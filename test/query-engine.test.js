@@ -273,7 +273,7 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[6].FormId, "AR_REFUNDBILL");
   assert.equal(requests[7].FormId, "PARA_SaleSubProject");
   assert.equal(requests[7].FieldKeys, "FBillNo,FName,FRecConditionStr");
-  assert.match(requests[7].FilterString, /FBillNo IN \('SP-1'\)/);
+  assert.equal(requests[7].FilterString, "FBillNo IN ('SP-1')");
   assert.equal(result.count, 1);
   assert.equal(result.statistics.outstandingAmount, 100);
   assert.equal(result.statistics.actualReceiptAmount, 75);

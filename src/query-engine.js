@@ -245,7 +245,7 @@ class QueryEngine {
       : { rows: [] };
     const paymentConditionSource = item.paymentConditionSource;
     const paymentConditions = paymentConditionSource
-      ? await this.queryBySubprojects(identity, paymentConditionSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
+      ? await this.queryBySubprojects(identity, paymentConditionSource, candidateSubprojects, paymentConditionSource.filters || ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
       : { rows: [] };
     const result = aggregateOverdueReceivables(receivableRows, {
       invoiceRows,
