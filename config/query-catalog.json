@@ -128,13 +128,14 @@
       "defaultOrder": "FSRCBILLNO ASC"
     },
     "paymentConditionSource": {
-      "formId": "SAL_SaleOrder",
+      "formId": "PARA_SaleSubProject",
       "fields": [
-        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
-        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
-        ["FRecConditionId.FName", "收款条件"]
+        ["FBillNo", "销售子项目编码"],
+        ["FName", "销售子项目名称"],
+        ["FRecConditionStr", "收款条件"]
       ],
-      "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC"
+      "subprojectFilterField": "FBillNo",
+      "defaultOrder": "FBillNo ASC"
     },
     "receiptSource": {
       "formId": "AR_RECEIVEBILL",

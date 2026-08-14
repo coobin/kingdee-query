@@ -247,7 +247,7 @@ test("executes the overdue receivable tool with current business date and visibl
     if (payload.FormId === "AR_BILLINGMATCHRECORD") return [["BM1", "2026-03-01", "INV1", 1001, "AR1", 2001, "IV_SALESIC", "AR_receivable", 100, 100, 0, "SP-1"]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
     if (payload.FormId === "AR_REFUNDBILL") return [[20, "RF1", "2026-03-02T00:00:00", "SP-1", "销售子项目一", 5]];
-    if (payload.FormId === "SAL_SaleOrder") return [["SP-1", "销售子项目一", "月结30天"]];
+    if (payload.FormId === "PARA_SaleSubProject") return [["SP-1", "销售子项目一", "月结30天"]];
     throw new Error(`unexpected form ${payload.FormId}`);
   } };
   const engine = new QueryEngine({
@@ -271,8 +271,9 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[4].FormId, "AR_BILLINGMATCHRECORD");
   assert.equal(requests[5].FormId, "AR_RECEIVEBILL");
   assert.equal(requests[6].FormId, "AR_REFUNDBILL");
-  assert.equal(requests[7].FormId, "SAL_SaleOrder");
-  assert.match(requests[7].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
+  assert.equal(requests[7].FormId, "PARA_SaleSubProject");
+  assert.equal(requests[7].FieldKeys, "FBillNo,FName,FRecConditionStr");
+  assert.match(requests[7].FilterString, /FBillNo IN \('SP-1'\)/);
   assert.equal(result.count, 1);
   assert.equal(result.statistics.outstandingAmount, 100);
   assert.equal(result.statistics.actualReceiptAmount, 75);
@@ -297,7 +298,7 @@ test("keeps the list date tied to the overdue invoice query, not the full invoic
     }
     if (payload.FormId === "AR_RECEIVABLE") return [[1, 2002, "AR-DATE", "客户", "组织", "部门", "SP-DATE", "日期项目", 150, 0, 150, 0]];
     if (payload.FormId === "AR_MATCHRECORD" || payload.FormId === "AR_BILLINGMATCHRECORD") return [];
-    if (payload.FormId === "SAL_SaleOrder") return [];
+    if (payload.FormId === "PARA_SaleSubProject") return [];
     if (payload.FormId === "AR_RECEIVEBILL" || payload.FormId === "AR_REFUNDBILL") return [];
     throw new Error(`unexpected form ${payload.FormId}`);
   } };
