@@ -93,6 +93,15 @@
       ],
       "defaultOrder": "FINVOICEDATE ASC,FBillNo ASC"
     },
+    "paymentConditionSource": {
+      "formId": "SAL_SaleOrder",
+      "fields": [
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FRecConditionId.FName", "收款条件"]
+      ],
+      "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC"
+    },
     "receiptSource": {
       "formId": "AR_RECEIVEBILL",
       "fields": [
@@ -121,6 +130,7 @@
       "客户",
       "销售子项目编码",
       "销售子项目名称",
+      "收款条件",
       "开票日期",
       "超期天数",
       "超期发票数",

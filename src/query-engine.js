@@ -208,9 +208,9 @@ class QueryEngine {
     }, pageSize);
     const overdueInvoiceRows = rowsToObjects(rawInvoiceRows, invoiceSource.fields);
     const candidateSubprojects = [...new Set(overdueInvoiceRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
-    // The first invoice query only identifies overdue candidates. Fetch every
-    // valid invoice for those subprojects so totals and the earliest invoice
-    // date describe the complete subproject, not just its overdue invoice rows.
+    // The first invoice query identifies overdue candidates. Fetch every valid
+    // invoice for those subprojects so amounts describe the complete
+    // subproject, while the candidate rows remain the aging source.
     const allInvoices = await this.queryBySubprojects(
       identity,
       invoiceSource,
@@ -229,11 +229,16 @@ class QueryEngine {
     const refunds = refundSource
       ? await this.queryBySubprojects(identity, refundSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
       : { rows: [] };
+    const paymentConditionSource = item.paymentConditionSource;
+    const paymentConditions = paymentConditionSource
+      ? await this.queryBySubprojects(identity, paymentConditionSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
+      : { rows: [] };
     const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
       invoiceRows,
       overdueInvoiceRows,
       receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
       refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
+      paymentConditionRows: paymentConditionSource ? rowsToObjects(paymentConditions.rows, paymentConditionSource.fields) : [],
       asOfDate,
       minimumDays,
       partial: false,
@@ -320,7 +325,7 @@ class QueryEngine {
   }
 }
 
-function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], receiptRows = [], refundRows = [], asOfDate, minimumDays, partial = false }) {
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
   // The full invoice set is used for amount reconciliation, while the
   // candidate set is the source of the aging date and overdue invoice count.
   // Keep the fallback for direct callers that predate this distinction.
@@ -343,6 +348,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
         invoiceNumbers: new Set(),
         overdueInvoiceNumbers: new Set(),
         firstOverdueInvoiceDate: "",
+        paymentConditions: new Set(),
         invoiceAmount: 0,
         receivableAmount: 0,
         outstandingAmount: 0,
@@ -376,6 +382,13 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     addIfPresent(subproject.customers, row["客户"]);
     addIfPresent(subproject.invoiceNumbers, row["销售发票号"]);
     subproject.invoiceAmount += signedInvoiceAmount(row);
+  }
+
+  for (const row of paymentConditionRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) { rowsWithoutSubproject += 1; continue; }
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    addIfPresent(subproject.paymentConditions, row["收款条件"]);
   }
 
   for (const row of sourceRows) {
@@ -438,6 +451,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       客户: joinValues(subproject.customers),
       销售子项目编码: subproject.code,
       销售子项目名称: joinValues(subproject.names),
+      收款条件: joinValues(subproject.paymentConditions),
       开票日期: firstDate,
       超期天数: elapsedDays(firstDate, asOfDate),
       超期发票数: subproject.overdueInvoiceNumbers.size,
