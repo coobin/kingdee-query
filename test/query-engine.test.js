@@ -173,6 +173,25 @@ test("uses the earliest overdue invoice for aging date and count", () => {
   assert.equal(result.rows[0]["开票金额"], 150);
 });
 
+test("rejects a future invoice from the aging candidate set", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 22, 应收单号: "AR-AGING-FILTER", 客户: "客户庚", 销售子项目编码: "SP-AGING-FILTER", 销售子项目名称: "账龄过滤项目", 已开票金额: 150, 已收金额: 0, 未收金额: 150, 已核销金额: 0 },
+  ], {
+    invoiceRows: [
+      { 销售发票号: "INV-FUTURE", 开票日期: "2026-04-08T00:00:00", 销售子项目编码: "SP-AGING-FILTER", 销售子项目名称: "账龄过滤项目", 客户: "客户庚", 发票金额: 50 },
+      { 销售发票号: "INV-OVERDUE-FILTER", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-AGING-FILTER", 销售子项目名称: "账龄过滤项目", 客户: "客户庚", 发票金额: 100 },
+    ],
+    overdueInvoiceRows: [
+      { 销售发票号: "INV-FUTURE", 开票日期: "2026-04-08T00:00:00", 销售子项目编码: "SP-AGING-FILTER", 销售子项目名称: "账龄过滤项目", 客户: "客户庚", 发票金额: 50 },
+      { 销售发票号: "INV-OVERDUE-FILTER", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-AGING-FILTER", 销售子项目名称: "账龄过滤项目", 客户: "客户庚", 发票金额: 100 },
+    ],
+    asOfDate: "2026-08-14",
+    minimumDays: 180,
+  });
+  assert.equal(result.rows[0]["开票日期"], "2025-11-19");
+  assert.equal(result.rows[0]["超期发票数"], 1);
+});
+
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {
   const requests = [];
   const kingdee = { executeBillQuery: async (username, payload) => {

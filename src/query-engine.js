@@ -329,7 +329,18 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
   // The full invoice set is used for amount reconciliation, while the
   // candidate set is the source of the aging date and overdue invoice count.
   // Keep the fallback for direct callers that predate this distinction.
-  const agingInvoiceRows = overdueInvoiceRows.length ? overdueInvoiceRows : invoiceRows;
+  const candidateInvoiceRows = overdueInvoiceRows.length ? overdueInvoiceRows : invoiceRows;
+  // Treat the date predicate as a server-side invariant as well.  Kingdee's
+  // query endpoint is the source of the candidate set, but a malformed or
+  // ignored remote filter must never let a future invoice become the aging
+  // start date in the returned list.
+  const cutoffDate = asOfDate && Number.isInteger(minimumDays) ? shiftDate(asOfDate, -minimumDays) : "";
+  const agingInvoiceRows = cutoffDate
+    ? candidateInvoiceRows.filter((row) => {
+      const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && invoiceDate < cutoffDate;
+    })
+    : candidateInvoiceRows;
   const subprojects = new Map();
   let rowsWithoutSubproject = 0;
   const getSubproject = (row, codeValue = row["销售子项目编码"]) => {
