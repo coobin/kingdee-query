@@ -133,6 +133,11 @@ function buildSubprojectBatchFilter(subprojectNumbers, extra = [], field = "F_PA
   return [...extra, `${field} IN (${quoted})`].join(" AND ");
 }
 
+function buildBillBatchFilter(billNumbers) {
+  const quoted = billNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
+  return `(FSRCBILLNO IN (${quoted}) OR FTargetBillNO IN (${quoted}))`;
+}
+
 function rowsToObjects(rows, fields, valueMappings = {}) {
   const labels = fields.map(([, label]) => label);
   return rows.map((row) => Object.fromEntries(labels.map((label, index) => {
@@ -221,6 +226,11 @@ class QueryEngine {
     const invoiceRows = rowsToObjects(allInvoices.rows, invoiceSource.fields);
     const receivableSource = { ...item, fields: item.fields };
     const receivables = await this.queryBySubprojects(identity, receivableSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'", "FIVALLAMOUNTFOR>0"], pageSize);
+    const receivableRows = rowsToObjects(receivables.rows, item.fields);
+    const receiptWriteoffSource = item.receiptWriteoffSource;
+    const receiptWriteoffs = receiptWriteoffSource
+      ? await this.queryByBillNumbers(identity, receiptWriteoffSource, [...new Set(receivableRows.map((row) => String(row["应收单号"] || "").trim()).filter(Boolean))], pageSize)
+      : { rows: [] };
     const invoiceWriteoffSource = item.invoiceWriteoffSource;
     const invoiceWriteoffs = invoiceWriteoffSource
       ? await this.queryBySubprojects(identity, invoiceWriteoffSource, candidateSubprojects, [], pageSize)
@@ -237,9 +247,10 @@ class QueryEngine {
     const paymentConditions = paymentConditionSource
       ? await this.queryBySubprojects(identity, paymentConditionSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'"], pageSize)
       : { rows: [] };
-    const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
+    const result = aggregateOverdueReceivables(receivableRows, {
       invoiceRows,
       overdueInvoiceRows,
+      receiptWriteoffRows: receiptWriteoffSource ? rowsToObjects(receiptWriteoffs.rows, receiptWriteoffSource.fields) : [],
       invoiceWriteoffRows: invoiceWriteoffSource ? rowsToObjects(invoiceWriteoffs.rows, invoiceWriteoffSource.fields) : [],
       receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
       refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
@@ -292,6 +303,21 @@ class QueryEngine {
     return { rows };
   }
 
+  async queryByBillNumbers(identity, source, billNumbers, pageSize) {
+    if (!billNumbers.length) return { rows: [] };
+    const rows = [];
+    for (const batch of chunkValues(billNumbers, 150)) {
+      rows.push(...await this.queryAllPages(identity, {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: buildBillBatchFilter(batch),
+        OrderString: source.defaultOrder || "FSRCBILLNO ASC",
+        TopRowCount: 0,
+      }, pageSize));
+    }
+    return { rows };
+  }
+
   async queryForAggregation(identity, request) {
     const pageSize = Math.min(this.config.kingdee.maxRows, 200);
     const maximum = this.config.kingdee.aggregationMaxRows;
@@ -330,7 +356,7 @@ class QueryEngine {
   }
 }
 
-function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, cutoffDate) {
+function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, receiptWriteoffRows, cutoffDate) {
   const candidateNumbers = new Set(agingInvoiceRows.map((row) => String(row["销售发票号"] || "").trim()).filter(Boolean));
   const invoices = new Map();
   for (const row of invoiceRows) {
@@ -378,6 +404,19 @@ function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows,
     arBills.set(billNo, bill);
   }
 
+  const receiptWriteoffsByBill = new Map();
+  for (const row of receiptWriteoffRows) {
+    const sourceType = String(row["来源单据类型"] || "").trim();
+    const targetType = String(row["目标单据类型"] || "").trim();
+    if (sourceType !== "AR_receivable" || !["AR_RECEIVEBILL", "AR_REFUNDBILL"].includes(targetType)) continue;
+    const billNo = String(row["来源单据号"] || "").trim();
+    if (!billNo) continue;
+    const residual = Number(row["未收款核销金额"]);
+    const list = receiptWriteoffsByBill.get(billNo) || [];
+    list.push({ residual: Number.isFinite(residual) ? Math.max(0, residual) : null });
+    receiptWriteoffsByBill.set(billNo, list);
+  }
+
   const relationRows = invoiceWriteoffRows
     .filter((row) => row["来源单据类型"] === "IV_SALESIC" && row["目标单据类型"] === "AR_receivable")
     .map((row) => {
@@ -412,7 +451,13 @@ function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows,
     const bill = arBills.get(billNo) || { amount: 0, outstanding: 0 };
     const totalLinked = relations.reduce((total, relation) => total + relation.amount, 0);
     const denominator = Math.max(totalLinked, detail?.amount || bill.amount);
-    const outstanding = detail?.outstanding ?? (bill.amount > 0 ? bill.outstanding * (totalLinked / bill.amount) : 0);
+    const billWriteoffs = receiptWriteoffsByBill.get(billNo) || [];
+    const knownBillResiduals = billWriteoffs.map((row) => row.residual).filter((value) => value != null);
+    const billResidual = knownBillResiduals.length ? Math.min(...knownBillResiduals) : null;
+    const detailShare = bill.amount > 0 ? (billResidual == null ? bill.outstanding : billResidual) * ((detail?.amount || totalLinked) / bill.amount) : (billResidual || 0);
+    const outstanding = detail
+      ? Math.min(detail.outstanding, Math.max(0, detailShare))
+      : Math.max(0, detailShare);
     if (denominator <= 0 || outstanding <= 0) continue;
     for (const relation of relations) {
       const unpaid = relation.amount * outstanding / denominator;
@@ -446,7 +491,7 @@ function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows,
   return result;
 }
 
-function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], invoiceWriteoffRows = null, receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], invoiceWriteoffRows = null, receiptWriteoffRows = [], receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
   const strictInvoiceMatching = Array.isArray(invoiceWriteoffRows);
   // The full invoice set is used for amount reconciliation, while the
   // candidate set is the source of the aging date and overdue invoice count.
@@ -464,7 +509,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     })
     : candidateInvoiceRows;
   const strictRiskBySubproject = strictInvoiceMatching
-    ? aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, cutoffDate)
+    ? aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, receiptWriteoffRows, cutoffDate)
     : new Map();
   const subprojects = new Map();
   let rowsWithoutSubproject = 0;

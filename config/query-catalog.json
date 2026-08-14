@@ -115,6 +115,18 @@
       "subprojectFilterField": "F_PARA_SRCSALESUBPROID.FNumber",
       "defaultOrder": "FVERIFYDATE ASC,FBillNo ASC"
     },
+    "receiptWriteoffSource": {
+      "formId": "AR_MATCHRECORD",
+      "fields": [
+        ["FSRCBILLNO", "来源单据号"],
+        ["FTargetBillNO", "目标单据号"],
+        ["FSourceFromId", "来源单据类型"],
+        ["FTargetFromId", "目标单据类型"],
+        ["FWRITTENOFFAMOUNTFOR", "已收款核销金额"],
+        ["FNOTWRITTENOFFAMOUNTFOR", "未收款核销金额"]
+      ],
+      "defaultOrder": "FSRCBILLNO ASC"
+    },
     "paymentConditionSource": {
       "formId": "SAL_SaleOrder",
       "fields": [

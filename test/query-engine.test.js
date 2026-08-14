@@ -194,7 +194,7 @@ test("rejects a future invoice from the aging candidate set", () => {
 
 test("uses invoice-to-receivable writeoff status for the overdue aging date", () => {
   const result = aggregateOverdueReceivables([
-    { 应收内码: 1, 应收分录内码: 11, 应收单号: "AR-PAID", 客户: "客户甲", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 已开票金额: 100, 已收金额: 100, 未收金额: 0, 已核销金额: 100 },
+    { 应收内码: 1, 应收分录内码: 11, 应收单号: "AR-PAID", 客户: "客户甲", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 已开票金额: 100, 已收金额: 80, 未收金额: 20, 已核销金额: 80 },
     { 应收内码: 2, 应收分录内码: 12, 应收单号: "AR-UNPAID", 客户: "客户甲", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 已开票金额: 80, 已收金额: 0, 未收金额: 80, 已核销金额: 0 },
   ], {
     invoiceRows: [
@@ -209,6 +209,9 @@ test("uses invoice-to-receivable writeoff status for the overdue aging date", ()
     invoiceWriteoffRows: [
       { 核销记录号: "BM-PAID", 来源单据号: "INV-PAID", 来源分录内码: 101, 目标单据号: "AR-PAID", 目标分录内码: 11, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 100 },
       { 核销记录号: "BM-UNPAID", 来源单据号: "INV-UNPAID", 来源分录内码: 102, 目标单据号: "AR-UNPAID", 目标分录内码: 12, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 80 },
+    ],
+    receiptWriteoffRows: [
+      { 来源单据号: "AR-PAID", 目标单据号: "RC-PAID", 来源单据类型: "AR_receivable", 目标单据类型: "AR_RECEIVEBILL", 未收款核销金额: 0 },
     ],
     asOfDate: "2026-08-14",
     minimumDays: 180,
@@ -240,6 +243,7 @@ test("executes the overdue receivable tool with current business date and visibl
     requests.push(payload);
     if (payload.FormId === "IV_SALESIC") return [[101, "INV1", 1001, "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100, "0"]];
     if (payload.FormId === "AR_RECEIVABLE") return [[1, 2001, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
+    if (payload.FormId === "AR_MATCHRECORD") return [];
     if (payload.FormId === "AR_BILLINGMATCHRECORD") return [["BM1", "2026-03-01", "INV1", 1001, "AR1", 2001, "IV_SALESIC", "AR_receivable", 100, 100, 0, "SP-1"]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
     if (payload.FormId === "AR_REFUNDBILL") return [[20, "RF1", "2026-03-02T00:00:00", "SP-1", "销售子项目一", 5]];
@@ -253,7 +257,7 @@ test("executes the overdue receivable tool with current business date and visibl
     now: () => new Date("2026-08-13T03:00:00Z"),
   });
   const result = await engine.execute(identity, { tool: "overdue_receivables", arguments: { minimumDays: 180, limit: 1 } });
-  assert.equal(requests.length, 7);
+  assert.equal(requests.length, 8);
   assert.equal(requests[0].FormId, "IV_SALESIC");
   assert.match(requests[0].FilterString, /FINVOICEDATE<'2026-02-14'/);
   assert.equal(requests[0].Limit, 5000);
@@ -262,11 +266,13 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[2].FormId, "AR_RECEIVABLE");
   assert.doesNotMatch(requests[2].FilterString, /FDate|FEndDate/);
   assert.equal(requests[2].Limit, 5000);
-  assert.equal(requests[3].FormId, "AR_BILLINGMATCHRECORD");
-  assert.equal(requests[4].FormId, "AR_RECEIVEBILL");
-  assert.equal(requests[5].FormId, "AR_REFUNDBILL");
-  assert.equal(requests[6].FormId, "SAL_SaleOrder");
-  assert.match(requests[6].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
+  assert.equal(requests[3].FormId, "AR_MATCHRECORD");
+  assert.match(requests[3].FilterString, /FSRCBILLNO IN \('AR1'\)/);
+  assert.equal(requests[4].FormId, "AR_BILLINGMATCHRECORD");
+  assert.equal(requests[5].FormId, "AR_RECEIVEBILL");
+  assert.equal(requests[6].FormId, "AR_REFUNDBILL");
+  assert.equal(requests[7].FormId, "SAL_SaleOrder");
+  assert.match(requests[7].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
   assert.equal(result.count, 1);
   assert.equal(result.statistics.outstandingAmount, 100);
   assert.equal(result.statistics.actualReceiptAmount, 75);
@@ -290,7 +296,7 @@ test("keeps the list date tied to the overdue invoice query, not the full invoic
       ];
     }
     if (payload.FormId === "AR_RECEIVABLE") return [[1, 2002, "AR-DATE", "客户", "组织", "部门", "SP-DATE", "日期项目", 150, 0, 150, 0]];
-    if (payload.FormId === "AR_BILLINGMATCHRECORD") return [];
+    if (payload.FormId === "AR_MATCHRECORD" || payload.FormId === "AR_BILLINGMATCHRECORD") return [];
     if (payload.FormId === "SAL_SaleOrder") return [];
     if (payload.FormId === "AR_RECEIVEBILL" || payload.FormId === "AR_REFUNDBILL") return [];
     throw new Error(`unexpected form ${payload.FormId}`);
