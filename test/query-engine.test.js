@@ -116,6 +116,9 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   assert.equal(result.statistics.unreconciledAmount, 120);
   assert.equal(result.statistics.invoiceOnlyCount, 1);
   assert.equal(result.statistics.invoiceOnlyAmount, 80);
+  assert.equal(result.statistics.unreceiptedCount, 1);
+  assert.equal(result.statistics.fullyUnreceiptedCount, 1);
+  assert.equal(result.statistics.partiallyUnreceiptedCount, 0);
   assert.equal(result.statistics.missingInvoiceDateSubprojects, 1);
   assert.equal(result.statistics.completelyUnpaidCount, 0);
   assert.equal(result.statistics.partiallyPaidCount, 1);
@@ -131,7 +134,22 @@ test("aggregates one row per sales subproject from an invoice date", () => {
   assert.equal(result.rows[0]["未回款金额"], 120);
   assert.equal(result.rows[0]["到期日"], undefined);
   assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-3"), false);
-  assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-4" && row["回款状态"] === "发票未生成应收"), true);
+  assert.equal(result.rows.some((row) => row["销售子项目编码"] === "SP-4" && row["回款状态"] === "完全未形成应收"), true);
+});
+
+test("distinguishes a partially formed receivable from no receivable", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 11, 应收单号: "AR-PART", 客户: "客户戊", 销售子项目编码: "SP-PART", 销售子项目名称: "部分应收项目", 已开票金额: 60, 已收金额: 0, 未收金额: 60, 已核销金额: 0 },
+  ], {
+    invoiceRows: [{ 销售发票号: "INV-PART", 开票日期: "2026-01-01T00:00:00", 销售子项目编码: "SP-PART", 销售子项目名称: "部分应收项目", 客户: "客户戊", 发票金额: 100 }],
+    asOfDate: "2026-08-13",
+    minimumDays: 180,
+  });
+  assert.equal(result.statistics.unreceiptedCount, 1);
+  assert.equal(result.statistics.fullyUnreceiptedCount, 0);
+  assert.equal(result.statistics.partiallyUnreceiptedCount, 1);
+  assert.equal(result.rows[0]["回款状态"], "未完全形成应收");
+  assert.equal(result.rows[0]["未生成应收金额"], 40);
 });
 
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {

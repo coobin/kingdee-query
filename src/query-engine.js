@@ -413,7 +413,9 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     const hasRisk = outstandingAmount > 0.004 || unreceiptedInvoiceAmount > 0.004;
     if (!hasRisk) return null;
     let status = "完全未回款";
-    if (unreceiptedInvoiceAmount > 0.004) status = "发票未生成应收";
+    if (unreceiptedInvoiceAmount > 0.004) {
+      status = subproject.receivableAmount > 0.004 ? "未完全形成应收" : "完全未形成应收";
+    }
     else if (outstandingAmount <= 0.004) status = "已结清";
     else if (actualReceiptAmount > 0.004 || writtenOffAmount > 0.004) status = "部分回款未结清";
     return {
@@ -437,7 +439,9 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
 
   const completelyUnpaid = rows.filter((row) => row["回款状态"] === "完全未回款");
   const partiallyPaid = rows.filter((row) => row["回款状态"] === "部分回款未结清");
-  const invoiceOnly = rows.filter((row) => row["回款状态"] === "发票未生成应收");
+  const unreceipted = rows.filter((row) => row["未生成应收金额"] > 0.004);
+  const fullyUnreceipted = rows.filter((row) => row["回款状态"] === "完全未形成应收");
+  const partiallyUnreceipted = rows.filter((row) => row["回款状态"] === "未完全形成应收");
   const outstandingAmount = sumMoney(rows, "未回款金额");
   const actualReceiptAmount = sumMoney(rows, "实际回款净额");
   const unreconciledAmount = sumMoney(rows, "未核销金额");
@@ -458,8 +462,14 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     completelyUnpaidAmount: sumMoney(completelyUnpaid, "未回款金额"),
     partiallyPaidCount: partiallyPaid.length,
     partiallyPaidAmount: sumMoney(partiallyPaid, "未回款金额"),
-    invoiceOnlyCount: invoiceOnly.length,
-    invoiceOnlyAmount: sumMoney(invoiceOnly, "未生成应收金额"),
+    unreceiptedCount: unreceipted.length,
+    fullyUnreceiptedCount: fullyUnreceipted.length,
+    fullyUnreceiptedAmount: sumMoney(fullyUnreceipted, "未生成应收金额"),
+    partiallyUnreceiptedCount: partiallyUnreceipted.length,
+    partiallyUnreceiptedAmount: sumMoney(partiallyUnreceipted, "未生成应收金额"),
+    // Deprecated aliases retained for existing API consumers.
+    invoiceOnlyCount: unreceipted.length,
+    invoiceOnlyAmount: sumMoney(unreceipted, "未生成应收金额"),
     oldestDays: rows.reduce((maximum, row) => Math.max(maximum, row["超期天数"]), 0),
     missingInvoiceDateSubprojects,
     rowsWithoutSubproject,
@@ -471,7 +481,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     rowsWithoutSubproject ? `${rowsWithoutSubproject} 条明细缺少销售子项目编码` : "",
   ].filter(Boolean);
   const summary = rows.length
-    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天，未回款金额 ¥${amount}${invoiceOnly.length ? `，其中 ${invoiceOnly.length} 个仅有发票未生成应收` : ""}${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
+    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天，未回款金额 ¥${amount}${unreceipted.length ? `，其中 ${unreceipted.length} 个尚未完全形成应收（完全未形成 ${fullyUnreceipted.length} 个，已部分形成 ${partiallyUnreceipted.length} 个）` : ""}${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
     : `截至 ${asOfDate}，没有找到以开票日期起算超过 ${minimumDays} 天且存在未回款或未生成应收金额的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
   return { rows, statistics, summary };
 }
