@@ -332,6 +332,7 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[7].FieldKeys, "FBillNo,FName,FRecConditionStr");
   assert.equal(requests[7].FilterString, "FBillNo IN ('SP-1')");
   assert.equal(result.count, 1);
+  assert.equal(result.columns.at(-1), "收款条件");
   assert.equal(result.statistics.receivableOutstandingAmount, 25);
   assert.equal(result.statistics.receivedAmount, 75);
   assert.equal(result.statistics.paymentUnreconciledAmount, 0);
