@@ -69,6 +69,7 @@
     "queryType": "overdue_receivables",
     "fields": [
       ["FID", "应收内码"],
+      ["FEntityDetail_FENTRYID", "应收分录内码"],
       ["FBillNo", "应收单号"],
       ["FCustomerID.FName", "客户"],
       ["FSettleOrgId.FName", "结算组织"],
@@ -83,7 +84,9 @@
     "invoiceDateSource": {
       "formId": "IV_SALESIC",
       "fields": [
+        ["FID", "销售发票内码"],
         ["FBillNo", "销售发票号"],
+        ["FSALESICENTRY_FENTRYID", "销售发票分录内码"],
         ["FINVOICEDATE", "开票日期"],
         ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
         ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
@@ -92,6 +95,24 @@
         ["FRedBlue", "红蓝字标识"]
       ],
       "defaultOrder": "FINVOICEDATE ASC,FBillNo ASC"
+    },
+    "invoiceWriteoffSource": {
+      "formId": "AR_BILLINGMATCHRECORD",
+      "fields": [
+        ["FBillNo", "核销记录号"],
+        ["FVERIFYDATE", "核销日期"],
+        ["FSRCBILLNO", "来源单据号"],
+        ["FSRCROWID", "来源分录内码"],
+        ["FTargetBillNO", "目标单据号"],
+        ["FTargetEntryId", "目标分录内码"],
+        ["FSourceFromId", "来源单据类型"],
+        ["FTargetFromId", "目标单据类型"],
+        ["FCUROPENAMOUNTFOR", "本次开票核销金额"],
+        ["FOPENAMOUNTFOR", "累计开票核销金额"],
+        ["FNOTOPENAMOUNTFOR", "未开票核销金额"],
+        ["F_PARA_SRCSALESUBPROID.FNumber", "销售子项目编码"]
+      ],
+      "defaultOrder": "FVERIFYDATE ASC,FBillNo ASC"
     },
     "paymentConditionSource": {
       "formId": "SAL_SaleOrder",

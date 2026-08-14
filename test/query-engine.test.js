@@ -192,13 +192,55 @@ test("rejects a future invoice from the aging candidate set", () => {
   assert.equal(result.rows[0]["超期发票数"], 1);
 });
 
+test("uses invoice-to-receivable writeoff status for the overdue aging date", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 1, 应收分录内码: 11, 应收单号: "AR-PAID", 客户: "客户甲", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 已开票金额: 100, 已收金额: 100, 未收金额: 0, 已核销金额: 100 },
+    { 应收内码: 2, 应收分录内码: 12, 应收单号: "AR-UNPAID", 客户: "客户甲", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 已开票金额: 80, 已收金额: 0, 未收金额: 80, 已核销金额: 0 },
+  ], {
+    invoiceRows: [
+      { 销售发票号: "INV-PAID", 销售发票分录内码: 101, 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 客户: "客户甲", 发票金额: 100 },
+      { 销售发票号: "INV-UNPAID", 销售发票分录内码: 102, 开票日期: "2025-12-04T00:00:00", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 客户: "客户甲", 发票金额: 80 },
+      { 销售发票号: "INV-FUTURE", 销售发票分录内码: 103, 开票日期: "2026-04-08T00:00:00", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 客户: "客户甲", 发票金额: 50 },
+    ],
+    overdueInvoiceRows: [
+      { 销售发票号: "INV-PAID", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 客户: "客户甲", 发票金额: 100 },
+      { 销售发票号: "INV-UNPAID", 开票日期: "2025-12-04T00:00:00", 销售子项目编码: "SP-STRICT", 销售子项目名称: "严格核销项目", 客户: "客户甲", 发票金额: 80 },
+    ],
+    invoiceWriteoffRows: [
+      { 核销记录号: "BM-PAID", 来源单据号: "INV-PAID", 来源分录内码: 101, 目标单据号: "AR-PAID", 目标分录内码: 11, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 100 },
+      { 核销记录号: "BM-UNPAID", 来源单据号: "INV-UNPAID", 来源分录内码: 102, 目标单据号: "AR-UNPAID", 目标分录内码: 12, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 80 },
+    ],
+    asOfDate: "2026-08-14",
+    minimumDays: 180,
+  });
+  assert.equal(result.rows[0]["开票日期"], "2025-12-04");
+  assert.equal(result.rows[0]["超期发票数"], 1);
+  assert.equal(result.rows[0]["未回款金额"], 80);
+  assert.equal(result.rows[0]["未生成应收金额"], 0);
+  assert.equal(result.rows[0]["开票金额"], 230);
+});
+
+test("counts an old invoice without an invoice-to-receivable match as unformed", () => {
+  const result = aggregateOverdueReceivables([], {
+    invoiceRows: [{ 销售发票号: "INV-NO-AR", 销售发票分录内码: 201, 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-NO-AR", 销售子项目名称: "未形成应收项目", 客户: "客户乙", 发票金额: 60 }],
+    overdueInvoiceRows: [{ 销售发票号: "INV-NO-AR", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-NO-AR", 销售子项目名称: "未形成应收项目", 客户: "客户乙", 发票金额: 60 }],
+    invoiceWriteoffRows: [],
+    asOfDate: "2026-08-14",
+    minimumDays: 180,
+  });
+  assert.equal(result.rows[0]["回款状态"], "完全未形成应收");
+  assert.equal(result.rows[0]["未生成应收金额"], 60);
+  assert.equal(result.rows[0]["超期发票数"], 1);
+});
+
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {
   const requests = [];
   const kingdee = { executeBillQuery: async (username, payload) => {
     assert.equal(username, "240001");
     requests.push(payload);
-    if (payload.FormId === "IV_SALESIC") return [["INV1", "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100, "0"]];
-    if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
+    if (payload.FormId === "IV_SALESIC") return [[101, "INV1", 1001, "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100, "0"]];
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, 2001, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
+    if (payload.FormId === "AR_BILLINGMATCHRECORD") return [["BM1", "2026-03-01", "INV1", 1001, "AR1", 2001, "IV_SALESIC", "AR_receivable", 100, 100, 0, "SP-1"]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
     if (payload.FormId === "AR_REFUNDBILL") return [[20, "RF1", "2026-03-02T00:00:00", "SP-1", "销售子项目一", 5]];
     if (payload.FormId === "SAL_SaleOrder") return [["SP-1", "销售子项目一", "月结30天"]];
@@ -211,7 +253,7 @@ test("executes the overdue receivable tool with current business date and visibl
     now: () => new Date("2026-08-13T03:00:00Z"),
   });
   const result = await engine.execute(identity, { tool: "overdue_receivables", arguments: { minimumDays: 180, limit: 1 } });
-  assert.equal(requests.length, 6);
+  assert.equal(requests.length, 7);
   assert.equal(requests[0].FormId, "IV_SALESIC");
   assert.match(requests[0].FilterString, /FINVOICEDATE<'2026-02-14'/);
   assert.equal(requests[0].Limit, 5000);
@@ -220,10 +262,11 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[2].FormId, "AR_RECEIVABLE");
   assert.doesNotMatch(requests[2].FilterString, /FDate|FEndDate/);
   assert.equal(requests[2].Limit, 5000);
-  assert.equal(requests[3].FormId, "AR_RECEIVEBILL");
-  assert.equal(requests[4].FormId, "AR_REFUNDBILL");
-  assert.equal(requests[5].FormId, "SAL_SaleOrder");
-  assert.match(requests[5].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
+  assert.equal(requests[3].FormId, "AR_BILLINGMATCHRECORD");
+  assert.equal(requests[4].FormId, "AR_RECEIVEBILL");
+  assert.equal(requests[5].FormId, "AR_REFUNDBILL");
+  assert.equal(requests[6].FormId, "SAL_SaleOrder");
+  assert.match(requests[6].FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP-1'\)/);
   assert.equal(result.count, 1);
   assert.equal(result.statistics.outstandingAmount, 100);
   assert.equal(result.statistics.actualReceiptAmount, 75);
@@ -239,14 +282,15 @@ test("keeps the list date tied to the overdue invoice query, not the full invoic
     assert.equal(username, "240001");
     if (payload.FormId === "IV_SALESIC") {
       if (payload.FilterString.includes("FINVOICEDATE<")) {
-        return [["INV-OVERDUE", "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"]];
+        return [[102, "INV-OVERDUE", 1002, "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"]];
       }
       return [
-        ["INV-OLDER", "2025-01-01T00:00:00", "SP-DATE", "日期项目", "客户", 50, "0"],
-        ["INV-OVERDUE", "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"],
+        [102, "INV-OLDER", 1003, "2025-01-01T00:00:00", "SP-DATE", "日期项目", "客户", 50, "0"],
+        [102, "INV-OVERDUE", 1002, "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"],
       ];
     }
-    if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR-DATE", "客户", "组织", "部门", "SP-DATE", "日期项目", 150, 0, 150, 0]];
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, 2002, "AR-DATE", "客户", "组织", "部门", "SP-DATE", "日期项目", 150, 0, 150, 0]];
+    if (payload.FormId === "AR_BILLINGMATCHRECORD") return [];
     if (payload.FormId === "SAL_SaleOrder") return [];
     if (payload.FormId === "AR_RECEIVEBILL" || payload.FormId === "AR_REFUNDBILL") return [];
     throw new Error(`unexpected form ${payload.FormId}`);

@@ -221,6 +221,10 @@ class QueryEngine {
     const invoiceRows = rowsToObjects(allInvoices.rows, invoiceSource.fields);
     const receivableSource = { ...item, fields: item.fields };
     const receivables = await this.queryBySubprojects(identity, receivableSource, candidateSubprojects, ["FDocumentStatus='C'", "FCancelStatus='A'", "FIVALLAMOUNTFOR>0"], pageSize);
+    const invoiceWriteoffSource = item.invoiceWriteoffSource;
+    const invoiceWriteoffs = invoiceWriteoffSource
+      ? await this.queryBySubprojects(identity, invoiceWriteoffSource, candidateSubprojects, [], pageSize)
+      : { rows: [] };
     const receiptSource = item.receiptSource;
     const refundSource = item.refundSource;
     const receipts = receiptSource
@@ -236,6 +240,7 @@ class QueryEngine {
     const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
       invoiceRows,
       overdueInvoiceRows,
+      invoiceWriteoffRows: invoiceWriteoffSource ? rowsToObjects(invoiceWriteoffs.rows, invoiceWriteoffSource.fields) : [],
       receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
       refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
       paymentConditionRows: paymentConditionSource ? rowsToObjects(paymentConditions.rows, paymentConditionSource.fields) : [],
@@ -325,7 +330,124 @@ class QueryEngine {
   }
 }
 
-function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
+function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, cutoffDate) {
+  const candidateNumbers = new Set(agingInvoiceRows.map((row) => String(row["销售发票号"] || "").trim()).filter(Boolean));
+  const invoices = new Map();
+  for (const row of invoiceRows) {
+    const invoiceNumber = String(row["销售发票号"] || "").trim();
+    if (!invoiceNumber) continue;
+    let invoice = invoices.get(invoiceNumber);
+    if (!invoice) {
+      invoice = {
+        invoiceNumber,
+        code: String(row["销售子项目编码"] || "").trim(),
+        name: row["销售子项目名称"],
+        customer: row["客户"],
+        date: "",
+        amount: 0,
+      };
+      invoices.set(invoiceNumber, invoice);
+    }
+    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!invoice.date || invoiceDate < invoice.date)) invoice.date = invoiceDate;
+    const amount = signedInvoiceAmount(row);
+    invoice.amount += amount;
+  }
+
+  const arDetails = new Map();
+  const arBills = new Map();
+  for (const row of sourceRows) {
+    const billNo = String(row["应收单号"] || "").trim();
+    if (!billNo) continue;
+    const detailId = String(row["应收分录内码"] || "").trim();
+    const invoiceAmount = Math.max(0, Number(row["已开票金额"]) || 0);
+    const receivedAmount = Math.max(0, Number(row["已收金额"]) || 0);
+    const outstanding = Math.min(Math.max(0, Number(row["未收金额"]) || 0), Math.max(0, invoiceAmount - receivedAmount));
+    const record = { amount: invoiceAmount, outstanding };
+    if (detailId) {
+      const key = `${billNo}|${detailId}`;
+      const existing = arDetails.get(key);
+      if (existing) {
+        existing.amount = Math.max(existing.amount, record.amount);
+        existing.outstanding = Math.max(existing.outstanding, record.outstanding);
+      } else arDetails.set(key, record);
+    }
+    const bill = arBills.get(billNo) || { amount: 0, outstanding: 0 };
+    bill.amount += invoiceAmount;
+    bill.outstanding += outstanding;
+    arBills.set(billNo, bill);
+  }
+
+  const relationRows = invoiceWriteoffRows
+    .filter((row) => row["来源单据类型"] === "IV_SALESIC" && row["目标单据类型"] === "AR_receivable")
+    .map((row) => {
+      const currentAmount = Number(row["本次开票核销金额"]);
+      const cumulativeAmount = Number(row["累计开票核销金额"]);
+      return {
+        invoiceNumber: String(row["来源单据号"] || "").trim(),
+        invoiceEntryId: String(row["来源分录内码"] || "").trim(),
+        billNo: String(row["目标单据号"] || "").trim(),
+        detailId: String(row["目标分录内码"] || "").trim(),
+        amount: Math.max(0, Number.isFinite(currentAmount) && currentAmount > 0 ? currentAmount : cumulativeAmount || 0),
+      };
+    })
+    .filter((row) => row.invoiceNumber && row.amount > 0);
+  const relationsByInvoice = new Map();
+  for (const relation of relationRows) {
+    const list = relationsByInvoice.get(relation.invoiceNumber) || [];
+    list.push(relation);
+    relationsByInvoice.set(relation.invoiceNumber, list);
+  }
+  const relationsByTarget = new Map();
+  for (const relation of relationRows) {
+    const key = `${relation.billNo}|${relation.detailId}`;
+    const list = relationsByTarget.get(key) || [];
+    list.push(relation);
+    relationsByTarget.set(key, list);
+  }
+  const unpaidByInvoice = new Map();
+  for (const [targetKey, relations] of relationsByTarget) {
+    const [billNo] = targetKey.split("|");
+    const detail = arDetails.get(targetKey);
+    const bill = arBills.get(billNo) || { amount: 0, outstanding: 0 };
+    const totalLinked = relations.reduce((total, relation) => total + relation.amount, 0);
+    const denominator = Math.max(totalLinked, detail?.amount || bill.amount);
+    const outstanding = detail?.outstanding ?? (bill.amount > 0 ? bill.outstanding * (totalLinked / bill.amount) : 0);
+    if (denominator <= 0 || outstanding <= 0) continue;
+    for (const relation of relations) {
+      const unpaid = relation.amount * outstanding / denominator;
+      unpaidByInvoice.set(relation.invoiceNumber, (unpaidByInvoice.get(relation.invoiceNumber) || 0) + unpaid);
+    }
+  }
+
+  const result = new Map();
+  for (const invoice of invoices.values()) {
+    if (!candidateNumbers.has(invoice.invoiceNumber) || !invoice.date || (cutoffDate && invoice.date >= cutoffDate)) continue;
+    const linkedAmount = (relationsByInvoice.get(invoice.invoiceNumber) || [])
+      .reduce((total, relation) => total + relation.amount, 0);
+    // Matching records are line-level.  A positive invoice balance that has
+    // no corresponding AR matching record is still an unformed receivable.
+    const unreceiptedAmount = Math.max(0, invoice.amount - linkedAmount);
+    const outstandingAmount = Math.max(0, unpaidByInvoice.get(invoice.invoiceNumber) || 0);
+    if (unreceiptedAmount <= 0.004 && outstandingAmount <= 0.004) continue;
+    const key = normalizeSubprojectKey(invoice.code);
+    const list = result.get(key) || [];
+    list.push({
+      invoiceNumber: invoice.invoiceNumber,
+      code: invoice.code,
+      name: invoice.name,
+      customer: invoice.customer,
+      date: invoice.date,
+      unreceiptedAmount,
+      outstandingAmount,
+    });
+    result.set(key, list);
+  }
+  return result;
+}
+
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], invoiceWriteoffRows = null, receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
+  const strictInvoiceMatching = Array.isArray(invoiceWriteoffRows);
   // The full invoice set is used for amount reconciliation, while the
   // candidate set is the source of the aging date and overdue invoice count.
   // Keep the fallback for direct callers that predate this distinction.
@@ -341,6 +463,9 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       return /^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && invoiceDate < cutoffDate;
     })
     : candidateInvoiceRows;
+  const strictRiskBySubproject = strictInvoiceMatching
+    ? aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows, invoiceWriteoffRows, cutoffDate)
+    : new Map();
   const subprojects = new Map();
   let rowsWithoutSubproject = 0;
   const getSubproject = (row, codeValue = row["销售子项目编码"]) => {
@@ -368,21 +493,48 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
         refundAmount: 0,
         writtenOffBills: new Set(),
         writtenOffKnown: false,
+        hasValidAgingCandidate: false,
+        strictOutstandingAmount: 0,
+        strictUnreceiptedAmount: 0,
       };
       subprojects.set(key, subproject);
     }
     return subproject;
   };
 
-  for (const row of agingInvoiceRows) {
-    const subproject = getSubproject(row);
-    if (!subproject) continue;
-    addIfPresent(subproject.names, row["销售子项目名称"]);
-    addIfPresent(subproject.customers, row["客户"]);
-    addIfPresent(subproject.overdueInvoiceNumbers, row["销售发票号"]);
-    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!subproject.firstOverdueInvoiceDate || invoiceDate < subproject.firstOverdueInvoiceDate)) {
-      subproject.firstOverdueInvoiceDate = invoiceDate;
+  if (strictInvoiceMatching) {
+    for (const risks of strictRiskBySubproject.values()) {
+      for (const risk of risks) {
+        const subproject = getSubproject(risk, risk.code);
+        if (!subproject) continue;
+        addIfPresent(subproject.names, risk.name);
+        addIfPresent(subproject.customers, risk.customer);
+        addIfPresent(subproject.overdueInvoiceNumbers, risk.invoiceNumber);
+        subproject.strictOutstandingAmount += risk.outstandingAmount;
+        subproject.strictUnreceiptedAmount += risk.unreceiptedAmount;
+        if (!subproject.firstOverdueInvoiceDate || risk.date < subproject.firstOverdueInvoiceDate) subproject.firstOverdueInvoiceDate = risk.date;
+      }
+    }
+  } else {
+    for (const row of agingInvoiceRows) {
+      const subproject = getSubproject(row);
+      if (!subproject) continue;
+      addIfPresent(subproject.names, row["销售子项目名称"]);
+      addIfPresent(subproject.customers, row["客户"]);
+      addIfPresent(subproject.overdueInvoiceNumbers, row["销售发票号"]);
+      const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) {
+        subproject.hasValidAgingCandidate = true;
+        if (!subproject.firstOverdueInvoiceDate || invoiceDate < subproject.firstOverdueInvoiceDate) subproject.firstOverdueInvoiceDate = invoiceDate;
+      }
+    }
+  }
+
+  if (strictInvoiceMatching) {
+    for (const row of agingInvoiceRows) {
+      const subproject = getSubproject(row);
+      if (!subproject) continue;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(row["开票日期"] || "").slice(0, 10))) subproject.hasValidAgingCandidate = true;
     }
   }
 
@@ -441,15 +593,23 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
 
   let missingInvoiceDateSubprojects = 0;
   const rows = [...subprojects.values()].map((subproject) => {
-    if (!subproject.firstOverdueInvoiceDate) { missingInvoiceDateSubprojects += 1; return null; }
+    if (!subproject.firstOverdueInvoiceDate) {
+      // In strict invoice matching mode a valid old invoice that is already
+      // fully formed and fully written off is intentionally omitted, rather
+      // than reported as a missing-date subproject.
+      if (!strictInvoiceMatching || !subproject.hasValidAgingCandidate) missingInvoiceDateSubprojects += 1;
+      return null;
+    }
     const firstDate = subproject.firstOverdueInvoiceDate;
     const invoiceAmount = roundMoney(subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount);
-    const outstandingAmount = roundMoney(subproject.outstandingAmount);
+    const outstandingAmount = roundMoney(strictInvoiceMatching ? subproject.strictOutstandingAmount : subproject.outstandingAmount);
     const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
     const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
     const writtenOffAmount = roundMoney(subproject.writtenOffKnown ? subproject.writtenOffAmount : fallbackWrittenOff);
     const unreconciledAmount = roundMoney(Math.max(0, actualReceiptAmount - writtenOffAmount));
-    const unreceiptedInvoiceAmount = roundMoney(Math.max(0, invoiceAmount - subproject.receivableAmount));
+    const unreceiptedInvoiceAmount = roundMoney(strictInvoiceMatching
+      ? subproject.strictUnreceiptedAmount
+      : Math.max(0, invoiceAmount - subproject.receivableAmount));
     const hasRisk = outstandingAmount > 0.004 || unreceiptedInvoiceAmount > 0.004;
     if (!hasRisk) return null;
     let status = "完全未回款";
