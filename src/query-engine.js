@@ -231,6 +231,7 @@ class QueryEngine {
       : { rows: [] };
     const result = aggregateOverdueReceivables(rowsToObjects(receivables.rows, item.fields), {
       invoiceRows,
+      overdueInvoiceRows,
       receiptRows: receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [],
       refundRows: refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [],
       asOfDate,
@@ -319,7 +320,11 @@ class QueryEngine {
   }
 }
 
-function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows = [], refundRows = [], asOfDate, minimumDays, partial = false }) {
+function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], receiptRows = [], refundRows = [], asOfDate, minimumDays, partial = false }) {
+  // The full invoice set is used for amount reconciliation, while the
+  // candidate set is the source of the aging date and overdue invoice count.
+  // Keep the fallback for direct callers that predate this distinction.
+  const agingInvoiceRows = overdueInvoiceRows.length ? overdueInvoiceRows : invoiceRows;
   const subprojects = new Map();
   let rowsWithoutSubproject = 0;
   const getSubproject = (row, codeValue = row["销售子项目编码"]) => {
@@ -336,7 +341,8 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
         organizations: new Set(),
         departments: new Set(),
         invoiceNumbers: new Set(),
-        firstInvoiceDate: "",
+        overdueInvoiceNumbers: new Set(),
+        firstOverdueInvoiceDate: "",
         invoiceAmount: 0,
         receivableAmount: 0,
         outstandingAmount: 0,
@@ -351,6 +357,18 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     return subproject;
   };
 
+  for (const row of agingInvoiceRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) continue;
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    addIfPresent(subproject.customers, row["客户"]);
+    addIfPresent(subproject.overdueInvoiceNumbers, row["销售发票号"]);
+    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!subproject.firstOverdueInvoiceDate || invoiceDate < subproject.firstOverdueInvoiceDate)) {
+      subproject.firstOverdueInvoiceDate = invoiceDate;
+    }
+  }
+
   for (const row of invoiceRows) {
     const subproject = getSubproject(row);
     if (!subproject) { rowsWithoutSubproject += 1; continue; }
@@ -358,8 +376,6 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
     addIfPresent(subproject.customers, row["客户"]);
     addIfPresent(subproject.invoiceNumbers, row["销售发票号"]);
     subproject.invoiceAmount += signedInvoiceAmount(row);
-    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate) && (!subproject.firstInvoiceDate || invoiceDate < subproject.firstInvoiceDate)) subproject.firstInvoiceDate = invoiceDate;
   }
 
   for (const row of sourceRows) {
@@ -401,8 +417,8 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
 
   let missingInvoiceDateSubprojects = 0;
   const rows = [...subprojects.values()].map((subproject) => {
-    if (!subproject.firstInvoiceDate) { missingInvoiceDateSubprojects += 1; return null; }
-    const firstDate = subproject.firstInvoiceDate;
+    if (!subproject.firstOverdueInvoiceDate) { missingInvoiceDateSubprojects += 1; return null; }
+    const firstDate = subproject.firstOverdueInvoiceDate;
     const invoiceAmount = roundMoney(subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount);
     const outstandingAmount = roundMoney(subproject.outstandingAmount);
     const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
@@ -424,7 +440,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], receiptRows
       销售子项目名称: joinValues(subproject.names),
       开票日期: firstDate,
       超期天数: elapsedDays(firstDate, asOfDate),
-      超期发票数: subproject.invoiceNumbers.size,
+      超期发票数: subproject.overdueInvoiceNumbers.size,
       应收单数: subproject.billNumbers.size,
       结算组织: joinValues(subproject.organizations),
       销售部门: joinValues(subproject.departments),

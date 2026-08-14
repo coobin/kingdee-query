@@ -152,6 +152,25 @@ test("distinguishes a partially formed receivable from no receivable", () => {
   assert.equal(result.rows[0]["未生成应收金额"], 40);
 });
 
+test("uses the earliest overdue invoice for aging date and count", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 21, 应收单号: "AR-AGING", 客户: "客户己", 销售子项目编码: "SP-AGING", 销售子项目名称: "账龄项目", 已开票金额: 150, 已收金额: 0, 未收金额: 150, 已核销金额: 0 },
+  ], {
+    invoiceRows: [
+      { 销售发票号: "INV-NOT-CANDIDATE", 开票日期: "2025-01-01T00:00:00", 销售子项目编码: "SP-AGING", 销售子项目名称: "账龄项目", 客户: "客户己", 发票金额: 100 },
+      { 销售发票号: "INV-OVERDUE", 开票日期: "2026-01-10T00:00:00", 销售子项目编码: "SP-AGING", 销售子项目名称: "账龄项目", 客户: "客户己", 发票金额: 50 },
+    ],
+    overdueInvoiceRows: [
+      { 销售发票号: "INV-OVERDUE", 开票日期: "2026-01-10T00:00:00", 销售子项目编码: "SP-AGING", 销售子项目名称: "账龄项目", 客户: "客户己", 发票金额: 50 },
+    ],
+    asOfDate: "2026-08-13",
+    minimumDays: 180,
+  });
+  assert.equal(result.rows[0]["开票日期"], "2026-01-10");
+  assert.equal(result.rows[0]["超期发票数"], 1);
+  assert.equal(result.rows[0]["开票金额"], 150);
+});
+
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {
   const requests = [];
   const kingdee = { executeBillQuery: async (username, payload) => {
