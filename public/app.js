@@ -260,7 +260,7 @@ function renderStatistics(statistics) {
     ["涉及客户", `${statistics.customerCount} 家`, `截至 ${statistics.asOfDate}`],
     ["完全未回款", `${statistics.completelyUnpaidCount} 个`, formatMoney(statistics.completelyUnpaidAmount)],
     ["部分回款未结清", `${statistics.partiallyPaidCount} 个`, formatMoney(statistics.partiallyPaidAmount)],
-    ["最长开票账龄", `${statistics.oldestDays} 天`, "以开票日期起算"],
+    ["最长超期发票账龄", `${statistics.oldestDays} 天`, "以子项目第一张超期发票开票日期起算"],
   ];
   items.forEach(([label, value, note, variant]) => {
     const item = document.createElement("div");

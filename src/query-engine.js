@@ -511,8 +511,8 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
     rowsWithoutSubproject ? `${rowsWithoutSubproject} 条明细缺少销售子项目编码` : "",
   ].filter(Boolean);
   const summary = rows.length
-    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以开票日期起算超过 ${minimumDays} 天，未回款金额 ¥${amount}${unreceipted.length ? `，其中 ${unreceipted.length} 个尚未完全形成应收（完全未形成 ${fullyUnreceipted.length} 个，已部分形成 ${partiallyUnreceipted.length} 个）` : ""}${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
-    : `截至 ${asOfDate}，没有找到以开票日期起算超过 ${minimumDays} 天且存在未回款或未生成应收金额的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
+    ? `截至 ${asOfDate}，共 ${rows.length} 个销售子项目以第一张超期发票的开票日期起算超过 ${minimumDays} 天，未回款金额 ¥${amount}${unreceipted.length ? `，其中 ${unreceipted.length} 个尚未完全形成应收（完全未形成 ${fullyUnreceipted.length} 个，已部分形成 ${partiallyUnreceipted.length} 个）` : ""}${partial ? "（已达到扫描上限，结果可能不完整）" : ""}${exclusions.length ? `；另有${exclusions.join("、")}未纳入` : ""}。`
+    : `截至 ${asOfDate}，没有找到以第一张超期发票的开票日期起算超过 ${minimumDays} 天且存在未回款或未生成应收金额的销售子项目${exclusions.length ? `；${exclusions.join("、")}未纳入` : ""}。`;
   return { rows, statistics, summary };
 }
 

@@ -214,3 +214,31 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["回款状态"], "部分回款未结清");
 });
+
+test("keeps the list date tied to the overdue invoice query, not the full invoice query", async () => {
+  const kingdee = { executeBillQuery: async (username, payload) => {
+    assert.equal(username, "240001");
+    if (payload.FormId === "IV_SALESIC") {
+      if (payload.FilterString.includes("FINVOICEDATE<")) {
+        return [["INV-OVERDUE", "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"]];
+      }
+      return [
+        ["INV-OLDER", "2025-01-01T00:00:00", "SP-DATE", "日期项目", "客户", 50, "0"],
+        ["INV-OVERDUE", "2026-01-10T00:00:00", "SP-DATE", "日期项目", "客户", 100, "0"],
+      ];
+    }
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, "AR-DATE", "客户", "组织", "部门", "SP-DATE", "日期项目", 150, 0, 150, 0]];
+    if (payload.FormId === "SAL_SaleOrder") return [];
+    if (payload.FormId === "AR_RECEIVEBILL" || payload.FormId === "AR_REFUNDBILL") return [];
+    throw new Error(`unexpected form ${payload.FormId}`);
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 5000, aggregationMaxRows: 5000 } },
+    now: () => new Date("2026-08-13T03:00:00Z"),
+  });
+  const result = await engine.execute(identity, { tool: "overdue_receivables", arguments: { minimumDays: 180, subprojectNumber: "SP-DATE", limit: 1 } });
+  assert.equal(result.rows[0]["开票日期"], "2026-01-10");
+  assert.equal(result.rows[0]["超期发票数"], 1);
+});
