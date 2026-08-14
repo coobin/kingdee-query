@@ -240,12 +240,13 @@ test("uses invoice-to-receivable writeoff status for the overdue aging date", ()
     asOfDate: "2026-08-14",
     minimumDays: 180,
   });
-  assert.equal(result.rows[0]["开票日期"], "2025-12-04");
-  assert.equal(result.rows[0]["超期发票数"], 1);
+  assert.equal(result.rows[0]["开票日期"], "2025-11-19");
+  assert.equal(result.rows[0]["超期发票数"], 2);
   assert.equal(result.rows[0]["应收未收款金额"], 80);
-  assert.equal(result.rows[0]["未回款金额"], 230);
+  assert.equal(result.rows[0]["已收款金额"], 100);
+  assert.equal(result.rows[0]["未回款金额"], 80);
   assert.equal(result.rows[0]["未生成应收金额"], 0);
-  assert.equal(result.rows[0]["开票金额"], 230);
+  assert.equal(result.rows[0]["开票金额"], 180);
 });
 
 test("counts an old invoice without an invoice-to-receivable match as unformed", () => {
@@ -269,7 +270,7 @@ test("executes the overdue receivable tool with current business date and visibl
     assert.equal(username, "240001");
     requests.push(payload);
     if (payload.FormId === "IV_SALESIC") return [[101, "INV1", 1001, "2026-01-10T00:00:00", "SP-1", "销售子项目一", "客户甲", 100, "0"]];
-    if (payload.FormId === "AR_RECEIVABLE") return [[1, 2001, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 0, 100, 0]];
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, 2001, "AR1", "客户甲", "湖南承希科技有限公司", "销售部", "SP-1", "销售子项目一", 100, 75, 25, 75]];
     if (payload.FormId === "AR_MATCHRECORD") return [];
     if (payload.FormId === "AR_BILLINGMATCHRECORD") return [["BM1", "2026-03-01", "INV1", 1001, "AR1", 2001, "IV_SALESIC", "AR_receivable", 100, 100, 0, "SP-1"]];
     if (payload.FormId === "AR_RECEIVEBILL") return [[10, "RC1", "2026-03-01T00:00:00", "SP-1", "销售子项目一", 80]];
@@ -302,16 +303,16 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(requests[7].FieldKeys, "FBillNo,FName,FRecConditionStr");
   assert.equal(requests[7].FilterString, "FBillNo IN ('SP-1')");
   assert.equal(result.count, 1);
-  assert.equal(result.statistics.receivableOutstandingAmount, 100);
+  assert.equal(result.statistics.receivableOutstandingAmount, 25);
   assert.equal(result.statistics.receivedAmount, 75);
-  assert.equal(result.statistics.paymentUnreconciledAmount, 75);
+  assert.equal(result.statistics.paymentUnreconciledAmount, 0);
   assert.equal(result.statistics.unpaidAmount, 25);
   assert.equal(result.rows[0]["销售子项目编码"], "SP-1");
   assert.equal(result.rows[0]["收款条件"], "月结30天");
   assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["回款状态"], "部分回款未结清");
   assert.equal(result.rows[0]["已收款金额"], 75);
-  assert.equal(result.rows[0]["应收未收款金额"], 100);
+  assert.equal(result.rows[0]["应收未收款金额"], 25);
   assert.equal(result.rows[0]["未回款金额"], 25);
 });
 

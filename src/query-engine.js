@@ -530,6 +530,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
         overdueInvoiceNumbers: new Set(),
         firstOverdueInvoiceDate: "",
         paymentConditions: new Set(),
+        overdueInvoiceAmount: 0,
         invoiceAmount: 0,
         receivableAmount: 0,
         outstandingAmount: 0,
@@ -552,34 +553,26 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       for (const risk of risks) {
         const subproject = getSubproject(risk, risk.code);
         if (!subproject) continue;
-        addIfPresent(subproject.names, risk.name);
-        addIfPresent(subproject.customers, risk.customer);
-        addIfPresent(subproject.overdueInvoiceNumbers, risk.invoiceNumber);
         subproject.strictOutstandingAmount += risk.outstandingAmount;
         subproject.strictUnreceiptedAmount += risk.unreceiptedAmount;
-        if (!subproject.firstOverdueInvoiceDate || risk.date < subproject.firstOverdueInvoiceDate) subproject.firstOverdueInvoiceDate = risk.date;
-      }
-    }
-  } else {
-    for (const row of agingInvoiceRows) {
-      const subproject = getSubproject(row);
-      if (!subproject) continue;
-      addIfPresent(subproject.names, row["销售子项目名称"]);
-      addIfPresent(subproject.customers, row["客户"]);
-      addIfPresent(subproject.overdueInvoiceNumbers, row["销售发票号"]);
-      const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) {
-        subproject.hasValidAgingCandidate = true;
-        if (!subproject.firstOverdueInvoiceDate || invoiceDate < subproject.firstOverdueInvoiceDate) subproject.firstOverdueInvoiceDate = invoiceDate;
       }
     }
   }
 
-  if (strictInvoiceMatching) {
-    for (const row of agingInvoiceRows) {
-      const subproject = getSubproject(row);
-      if (!subproject) continue;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(String(row["开票日期"] || "").slice(0, 10))) subproject.hasValidAgingCandidate = true;
+  // Every public amount in this report must use the same overdue-invoice
+  // scope. Do not let a future/non-overdue invoice change the totals for a
+  // subproject that has an overdue invoice.
+  for (const row of agingInvoiceRows) {
+    const subproject = getSubproject(row);
+    if (!subproject) continue;
+    addIfPresent(subproject.names, row["销售子项目名称"]);
+    addIfPresent(subproject.customers, row["客户"]);
+    addIfPresent(subproject.overdueInvoiceNumbers, row["销售发票号"]);
+    subproject.overdueInvoiceAmount += signedInvoiceAmount(row);
+    const invoiceDate = String(row["开票日期"] || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) {
+      subproject.hasValidAgingCandidate = true;
+      if (!subproject.firstOverdueInvoiceDate || invoiceDate < subproject.firstOverdueInvoiceDate) subproject.firstOverdueInvoiceDate = invoiceDate;
     }
   }
 
@@ -646,24 +639,33 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       return null;
     }
     const firstDate = subproject.firstOverdueInvoiceDate;
-    const invoiceAmount = roundMoney(subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount);
+    const invoiceAmount = roundMoney(strictInvoiceMatching
+      ? subproject.overdueInvoiceAmount
+      : (subproject.invoiceNumbers.size ? subproject.invoiceAmount : subproject.receivableAmount));
     const outstandingAmount = roundMoney(strictInvoiceMatching ? subproject.strictOutstandingAmount : subproject.outstandingAmount);
-    const actualReceiptAmount = roundMoney(subproject.actualReceiptAmount - subproject.refundAmount);
-    const unpaidAmount = roundMoney(Math.max(0, invoiceAmount - actualReceiptAmount));
-    const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
-    const writtenOffAmount = roundMoney(subproject.writtenOffKnown ? subproject.writtenOffAmount : fallbackWrittenOff);
-    const unreconciledAmount = roundMoney(Math.max(0, actualReceiptAmount - writtenOffAmount));
     const unreceiptedInvoiceAmount = roundMoney(strictInvoiceMatching
       ? subproject.strictUnreceiptedAmount
       : Math.max(0, invoiceAmount - subproject.receivableAmount));
+    // In strict mode the amount is allocated to the overdue invoice scope
+    // from invoice-to-receivable matching. This keeps all displayed amounts
+    // on one aging basis and avoids including receipts for future invoices.
+    const receivedAmount = roundMoney(strictInvoiceMatching
+      ? Math.max(0, invoiceAmount - outstandingAmount - unreceiptedInvoiceAmount)
+      : subproject.actualReceiptAmount - subproject.refundAmount);
+    const unpaidAmount = roundMoney(Math.max(0, invoiceAmount - receivedAmount));
+    const fallbackWrittenOff = Math.max(0, subproject.receivableAmount - outstandingAmount);
+    const writtenOffAmount = strictInvoiceMatching
+      ? receivedAmount
+      : roundMoney(subproject.writtenOffKnown ? subproject.writtenOffAmount : fallbackWrittenOff);
+    const unreconciledAmount = roundMoney(Math.max(0, receivedAmount - writtenOffAmount));
     const hasRisk = outstandingAmount > 0.004 || unreceiptedInvoiceAmount > 0.004;
     if (!hasRisk) return null;
     let status = "完全未回款";
     if (unreceiptedInvoiceAmount > 0.004) {
-      status = subproject.receivableAmount > 0.004 ? "未完全形成应收" : "完全未形成应收";
+      status = invoiceAmount - unreceiptedInvoiceAmount > 0.004 ? "未完全形成应收" : "完全未形成应收";
     }
     else if (outstandingAmount <= 0.004) status = "已结清";
-    else if (actualReceiptAmount > 0.004 || writtenOffAmount > 0.004) status = "部分回款未结清";
+    else if (receivedAmount > 0.004 || writtenOffAmount > 0.004) status = "部分回款未结清";
     return {
       客户: joinValues(subproject.customers),
       销售子项目编码: subproject.code,
@@ -676,7 +678,7 @@ function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvo
       结算组织: joinValues(subproject.organizations),
       销售部门: joinValues(subproject.departments),
       开票金额: invoiceAmount,
-      已收款金额: actualReceiptAmount,
+      已收款金额: receivedAmount,
       收款未核销金额: unreconciledAmount,
       未生成应收金额: unreceiptedInvoiceAmount,
       应收未收款金额: outstandingAmount,
