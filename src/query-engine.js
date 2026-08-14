@@ -422,15 +422,21 @@ function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows,
     .map((row) => {
       const currentAmount = Number(row["本次开票核销金额"]);
       const cumulativeAmount = Number(row["累计开票核销金额"]);
+      // Keep red-invoice reversal amounts. Dropping negative matching records
+      // makes the invoice-to-receivable link gross while invoice totals are
+      // net of red and blue invoices.
+      const amount = Number.isFinite(currentAmount) && Math.abs(currentAmount) > 0.004
+        ? currentAmount
+        : (Number.isFinite(cumulativeAmount) ? cumulativeAmount : 0);
       return {
         invoiceNumber: String(row["来源单据号"] || "").trim(),
         invoiceEntryId: String(row["来源分录内码"] || "").trim(),
         billNo: String(row["目标单据号"] || "").trim(),
         detailId: String(row["目标分录内码"] || "").trim(),
-        amount: Math.max(0, Number.isFinite(currentAmount) && currentAmount > 0 ? currentAmount : cumulativeAmount || 0),
+        amount,
       };
     })
-    .filter((row) => row.invoiceNumber && row.amount > 0);
+    .filter((row) => row.invoiceNumber && Math.abs(row.amount) > 0.004);
   const relationsByInvoice = new Map();
   for (const relation of relationRows) {
     const list = relationsByInvoice.get(relation.invoiceNumber) || [];
@@ -465,28 +471,45 @@ function aggregateInvoiceWriteoffRisk(invoiceRows, agingInvoiceRows, sourceRows,
     }
   }
 
-  const result = new Map();
+  // Net red/blue invoices and their invoice-to-receivable links at the
+  // subproject level. A red invoice can reverse an earlier blue invoice with
+  // a different invoice number, so calculating `max(invoice - link, 0)` per
+  // invoice would double-count the reversed blue invoice.
+  const effectiveBySubproject = new Map();
   for (const invoice of invoices.values()) {
     if (!candidateNumbers.has(invoice.invoiceNumber) || !invoice.date || (cutoffDate && invoice.date >= cutoffDate)) continue;
     const linkedAmount = (relationsByInvoice.get(invoice.invoiceNumber) || [])
       .reduce((total, relation) => total + relation.amount, 0);
-    // Matching records are line-level.  A positive invoice balance that has
-    // no corresponding AR matching record is still an unformed receivable.
-    const unreceiptedAmount = Math.max(0, invoice.amount - linkedAmount);
     const outstandingAmount = Math.max(0, unpaidByInvoice.get(invoice.invoiceNumber) || 0);
-    if (unreceiptedAmount <= 0.004 && outstandingAmount <= 0.004) continue;
     const key = normalizeSubprojectKey(invoice.code);
-    const list = result.get(key) || [];
-    list.push({
-      invoiceNumber: invoice.invoiceNumber,
+    const aggregate = effectiveBySubproject.get(key) || {
       code: invoice.code,
       name: invoice.name,
       customer: invoice.customer,
       date: invoice.date,
+      invoiceAmount: 0,
+      linkedAmount: 0,
+      outstandingAmount: 0,
+    };
+    aggregate.invoiceAmount += invoice.amount;
+    aggregate.linkedAmount += linkedAmount;
+    aggregate.outstandingAmount += outstandingAmount;
+    if (invoice.date < aggregate.date) aggregate.date = invoice.date;
+    effectiveBySubproject.set(key, aggregate);
+  }
+
+  const result = new Map();
+  for (const [key, aggregate] of effectiveBySubproject) {
+    const unreceiptedAmount = Math.max(0, aggregate.invoiceAmount - aggregate.linkedAmount);
+    if (unreceiptedAmount <= 0.004 && aggregate.outstandingAmount <= 0.004) continue;
+    result.set(key, [{
+      code: aggregate.code,
+      name: aggregate.name,
+      customer: aggregate.customer,
+      date: aggregate.date,
       unreceiptedAmount,
-      outstandingAmount,
-    });
-    result.set(key, list);
+      outstandingAmount: aggregate.outstandingAmount,
+    }]);
   }
   return result;
 }

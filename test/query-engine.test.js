@@ -264,6 +264,35 @@ test("counts an old invoice without an invoice-to-receivable match as unformed",
   assert.equal(result.rows[0]["超期发票数"], 1);
 });
 
+test("nets red and blue invoices before calculating unformed receivables", () => {
+  const result = aggregateOverdueReceivables([
+    { 应收内码: 41, 应收分录内码: 401, 应收单号: "AR-RED-BLUE", 客户: "客户丙", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 已开票金额: 80, 已收金额: 20, 未收金额: 60, 已核销金额: 20 },
+  ], {
+    invoiceRows: [
+      { 销售发票号: "INV-BLUE-OLD", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 100, 红蓝字标识: "0" },
+      { 销售发票号: "INV-RED-REVERSAL", 开票日期: "2025-12-01T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 100, 红蓝字标识: "1" },
+      { 销售发票号: "INV-CURRENT", 开票日期: "2026-01-05T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 80, 红蓝字标识: "0" },
+    ],
+    overdueInvoiceRows: [
+      { 销售发票号: "INV-BLUE-OLD", 开票日期: "2025-11-19T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 100, 红蓝字标识: "0" },
+      { 销售发票号: "INV-RED-REVERSAL", 开票日期: "2025-12-01T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 100, 红蓝字标识: "1" },
+      { 销售发票号: "INV-CURRENT", 开票日期: "2026-01-05T00:00:00", 销售子项目编码: "SP-RED-BLUE", 销售子项目名称: "红蓝字项目", 客户: "客户丙", 发票金额: 80, 红蓝字标识: "0" },
+    ],
+    invoiceWriteoffRows: [
+      { 核销记录号: "BM-CURRENT", 来源单据号: "INV-CURRENT", 来源分录内码: 403, 目标单据号: "AR-RED-BLUE", 目标分录内码: 401, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 80 },
+    ],
+    asOfDate: "2026-08-14",
+    minimumDays: 180,
+  });
+  const row = result.rows[0];
+  assert.equal(row["开票金额"], 80);
+  assert.equal(row["未生成应收金额"], 0);
+  assert.equal(row["应收未收款金额"], 60);
+  assert.equal(row["已收款金额"], 20);
+  assert.equal(row["未回款金额"], 60);
+  assert.equal(row["未回款金额"], row["未生成应收金额"] + row["应收未收款金额"]);
+});
+
 test("executes the overdue receivable tool with current business date and visible row limit", async () => {
   const requests = [];
   const kingdee = { executeBillQuery: async (username, payload) => {
