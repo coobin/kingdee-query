@@ -112,6 +112,7 @@
         ["FNOTOPENAMOUNTFOR", "未开票核销金额"],
         ["F_PARA_SRCSALESUBPROID.FNumber", "销售子项目编码"]
       ],
+      "subprojectFilterField": "F_PARA_SRCSALESUBPROID.FNumber",
       "defaultOrder": "FVERIFYDATE ASC,FBillNo ASC"
     },
     "paymentConditionSource": {

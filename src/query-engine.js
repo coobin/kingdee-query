@@ -128,9 +128,9 @@ function buildOverdueInvoiceFilter(cutoffDate, subprojectNumbers) {
   ].join(" AND ");
 }
 
-function buildSubprojectBatchFilter(subprojectNumbers, extra = []) {
+function buildSubprojectBatchFilter(subprojectNumbers, extra = [], field = "F_PARA_SaleSubProId.FNumber") {
   const quoted = subprojectNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
-  return [...extra, `F_PARA_SaleSubProId.FNumber IN (${quoted})`].join(" AND ");
+  return [...extra, `${field} IN (${quoted})`].join(" AND ");
 }
 
 function rowsToObjects(rows, fields, valueMappings = {}) {
@@ -284,7 +284,7 @@ class QueryEngine {
       rows.push(...await this.queryAllPages(identity, {
         FormId: source.formId,
         FieldKeys: source.fields.map(([key]) => key).join(","),
-        FilterString: buildSubprojectBatchFilter(batch, extraFilter),
+        FilterString: buildSubprojectBatchFilter(batch, extraFilter, source.subprojectFilterField),
         OrderString: source.defaultOrder || "FDATE ASC,FBillNo ASC",
         TopRowCount: 0,
       }, pageSize));
