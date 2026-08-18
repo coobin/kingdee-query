@@ -56,6 +56,13 @@ test("plans the independent AR and receipt aging query", () => {
   assert.equal(plan.arguments.subprojectNumber, "SP-AR");
 });
 
+test("plans the combined overdue risk query with independent thresholds", () => {
+  const plan = localPlan("比较开票超过180天和应收超过270天的未回款风险");
+  assert.equal(plan.tool, "overdue_risk_combined");
+  assert.equal(plan.arguments.invoiceDays, 180);
+  assert.equal(plan.arguments.receivableDays, 270);
+});
+
 test("plans an inventory cycle query for customer pending signoff", () => {
   const plan = localPlan("查询销售子项目 SP1 客户仓待签收超过30天的库存周期");
   assert.equal(plan.tool, "inventory_cycle");

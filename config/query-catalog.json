@@ -363,6 +363,39 @@
     },
     "defaultOrder": "FDate ASC,FBillNo ASC"
   },
+  "overdue_risk_combined": {
+    "label": "超期风险合并",
+    "description": "分别按开票和应收单账龄计算未回款金额，比较后取较高口径作为项目风险金额",
+    "formId": "AR_RECEIVABLE",
+    "queryType": "overdue_risk_combined",
+    "fields": [],
+    "publicColumns": [
+      "客户",
+      "销售子项目编码",
+      "销售子项目名称",
+      "开票未回款金额",
+      "应收未收款金额",
+      "金额差异",
+      "最终超期风险金额",
+      "采用口径",
+      "账龄日期",
+      "超期天数",
+      "超期阈值",
+      "超期发票数",
+      "超期应收单数",
+      "应收未开票金额",
+      "未生成应收金额",
+      "回款状态",
+      "收款条件"
+    ],
+    "filterFields": {
+      "invoiceDays": "FINVOICEDATE",
+      "receivableDays": "FDate",
+      "customerName": "FCustomerID.FName",
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber"
+    },
+    "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC"
+  },
   "purchase_orders": {
     "label": "采购订单",
     "description": "查询采购订单编号、供应商、组织、金额和状态",

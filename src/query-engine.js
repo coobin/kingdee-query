@@ -194,6 +194,7 @@ class QueryEngine {
     const args = plan.arguments || {};
     if (item.queryType === "overdue_receivables") return this.overdueReceivables(identity, item, args);
     if (item.queryType === "receivable_aging") return this.receivableAging(identity, item, args);
+    if (item.queryType === "overdue_risk_combined") return this.overdueRiskCombined(identity, item, args);
     if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
@@ -342,6 +343,35 @@ class QueryEngine {
       rows: result.rows.slice(0, limit),
       count: result.rows.length,
       truncated: result.rows.length > limit,
+      statistics: result.statistics,
+      summary: result.summary,
+    };
+  }
+
+  async overdueRiskCombined(identity, item, args) {
+    const invoiceDays = normalizeMinimumDays(args.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
+    const receivableDays = normalizeMinimumDays(args.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
+    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const sharedArgs = { ...args, limit: this.config.kingdee.maxRows };
+    const [invoiceResult, receivableResult] = await Promise.all([
+      this.overdueReceivables(identity, this.catalog.overdue_receivables, { ...sharedArgs, minimumDays: invoiceDays }),
+      this.receivableAging(identity, this.catalog.receivable_aging, { ...sharedArgs, minimumDays: receivableDays }),
+    ]);
+    const result = aggregateOverdueRiskCombined(invoiceResult, receivableResult, { invoiceDays, receivableDays });
+    return {
+      tool: "overdue_risk_combined",
+      label: item.label,
+      query: {
+        asOfDate: invoiceResult.query.asOfDate,
+        invoiceDays,
+        receivableDays,
+        ...(args.customerName ? { customerName: args.customerName } : {}),
+        ...((args.subprojectNumber || args.projectNumber) ? { subprojectNumber: args.subprojectNumber || args.projectNumber } : {}),
+      },
+      columns: item.publicColumns,
+      rows: result.rows.slice(0, limit),
+      count: result.rows.length,
+      truncated: result.rows.length > limit || invoiceResult.truncated || receivableResult.truncated,
       statistics: result.statistics,
       summary: result.summary,
     };
@@ -852,6 +882,64 @@ function aggregateReceivableAging(sourceRows, { invoiceWriteoffRows = [], paymen
   return { rows, statistics, summary };
 }
 
+function aggregateOverdueRiskCombined(invoiceResult, receivableResult, { invoiceDays, receivableDays }) {
+  const invoiceRows = new Map(invoiceResult.rows.map((row) => [normalizeSubprojectKey(row["销售子项目编码"]), row]));
+  const receivableRows = new Map(receivableResult.rows.map((row) => [normalizeSubprojectKey(row["销售子项目编码"]), row]));
+  const keys = new Set([...invoiceRows.keys(), ...receivableRows.keys()]);
+  const rows = [...keys].map((key) => {
+    const invoice = invoiceRows.get(key);
+    const receivable = receivableRows.get(key);
+    const invoiceAmount = Math.max(0, Number(invoice?.["未回款金额"]) || 0);
+    const receivableAmount = Math.max(0, Number(receivable?.["应收未收款金额"]) || 0);
+    if (invoiceAmount <= 0.004 && receivableAmount <= 0.004) return null;
+    const useInvoice = invoiceAmount > receivableAmount;
+    const selected = useInvoice ? invoice : receivable;
+    return {
+      客户: selected?.["客户"] || invoice?.["客户"] || receivable?.["客户"] || "",
+      销售子项目编码: selected?.["销售子项目编码"] || invoice?.["销售子项目编码"] || receivable?.["销售子项目编码"] || "",
+      销售子项目名称: selected?.["销售子项目名称"] || invoice?.["销售子项目名称"] || receivable?.["销售子项目名称"] || "",
+      开票未回款金额: roundMoney(invoiceAmount),
+      应收未收款金额: roundMoney(receivableAmount),
+      金额差异: roundMoney(invoiceAmount - receivableAmount),
+      最终超期风险金额: roundMoney(Math.max(invoiceAmount, receivableAmount)),
+      采用口径: useInvoice ? "发票超期" : "应收超期",
+      账龄日期: selected?.[useInvoice ? "开票日期" : "应收账龄日期"] || "",
+      超期天数: selected?.[useInvoice ? "超期天数" : "应收超期天数"] || 0,
+      超期阈值: useInvoice ? invoiceDays : receivableDays,
+      超期发票数: invoice?.["超期发票数"] || 0,
+      超期应收单数: receivable?.["应收单数"] || 0,
+      应收未开票金额: roundMoney(Number(receivable?.["应收未开票金额"]) || 0),
+      未生成应收金额: roundMoney(Number(invoice?.["未生成应收金额"]) || 0),
+      回款状态: selected?.["回款状态"] || "",
+      收款条件: selected?.["收款条件"] || invoice?.["收款条件"] || receivable?.["收款条件"] || "",
+    };
+  }).filter(Boolean).sort((left, right) => right["最终超期风险金额"] - left["最终超期风险金额"] || right["超期天数"] - left["超期天数"]);
+
+  const invoiceSelected = rows.filter((row) => row["采用口径"] === "发票超期");
+  const receivableSelected = rows.filter((row) => row["采用口径"] === "应收超期");
+  const finalRiskAmount = sumMoney(rows, "最终超期风险金额");
+  const statistics = {
+    asOfDate: invoiceResult.query.asOfDate,
+    invoiceDays,
+    receivableDays,
+    subprojectCount: rows.length,
+    customerCount: new Set(rows.map((row) => row["客户"]).filter(Boolean)).size,
+    invoiceRiskAmount: sumMoney(rows, "开票未回款金额"),
+    receivableRiskAmount: sumMoney(rows, "应收未收款金额"),
+    finalRiskAmount,
+    invoiceSelectedCount: invoiceSelected.length,
+    invoiceSelectedAmount: sumMoney(invoiceSelected, "最终超期风险金额"),
+    receivableSelectedCount: receivableSelected.length,
+    receivableSelectedAmount: sumMoney(receivableSelected, "最终超期风险金额"),
+    partial: Boolean(invoiceResult.truncated || receivableResult.truncated),
+  };
+  const format = (value) => new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+  const summary = rows.length
+    ? `截至 ${statistics.asOfDate}，按发票超过 ${invoiceDays} 天和应收超过 ${receivableDays} 天比较，共 ${rows.length} 个销售子项目，最终超期风险金额 ¥${format(finalRiskAmount)}；其中 ${invoiceSelected.length} 个采用发票口径，${receivableSelected.length} 个采用应收口径${statistics.partial ? "（扫描结果可能不完整）" : ""}。`
+    : `截至 ${statistics.asOfDate}，没有找到按发票超过 ${invoiceDays} 天或应收超过 ${receivableDays} 天仍有未回款余额的销售子项目。`;
+  return { rows, statistics, summary };
+}
+
 function aggregateOverdueReceivables(sourceRows, { invoiceRows = [], overdueInvoiceRows = [], invoiceWriteoffRows = null, receiptWriteoffRows = [], receiptRows = [], refundRows = [], paymentConditionRows = [], asOfDate, minimumDays, partial = false }) {
   const strictInvoiceMatching = Array.isArray(invoiceWriteoffRows);
   // The full invoice set is used for amount reconciliation, while the
@@ -1179,5 +1267,6 @@ module.exports = {
   buildOverdueInvoiceCandidateFilter,
   buildOverdueInvoiceFilter,
   aggregateReceivableAging,
+  aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
 };

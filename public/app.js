@@ -4,6 +4,7 @@ const TOOL_META = {
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
+  overdue_risk_combined: { action: "统计合并风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
@@ -140,6 +141,7 @@ function validateArguments(tool, args) {
   if (tool === "inventory_cycle" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 0 || Number(args.minimumDays) > 3650)) return "最少库存周期应为 0 到 3650 之间的整数。";
   if (tool === "sales_orders" && !args.billNumber && !args.customerName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、客户名称或日期范围中的一项。";
   if (["overdue_receivables", "receivable_aging"].includes(tool) && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
+  if (tool === "overdue_risk_combined" && (!["invoiceDays", "receivableDays"].every((key) => Number.isInteger(Number(args[key])) && Number(args[key]) >= 1 && Number(args[key]) <= 3650))) return "发票和应收超期天数都应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
   return "";
 }
@@ -268,6 +270,10 @@ function renderStatistics(statistics, tool = "") {
     renderReceivableAgingStatistics(statistics);
     return;
   }
+  if (tool === "overdue_risk_combined" || statistics.type === "overdue_risk_combined") {
+    renderCombinedRiskStatistics(statistics);
+    return;
+  }
   const strip = document.createElement("section");
   strip.className = "aging-summary";
   strip.setAttribute("aria-label", "超期未回款汇总");
@@ -312,6 +318,29 @@ function renderReceivableAgingStatistics(statistics) {
     const item = document.createElement("div");
     item.className = `aging-stat${variant ? ` ${variant}` : ""}`;
     if (variant === "primary") item.dataset.threshold = `${statistics.minimumDays + 1}+`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    item.append(labelNode, valueNode, noteNode); strip.append(item);
+  });
+  els.table.append(strip);
+}
+
+function renderCombinedRiskStatistics(statistics) {
+  const strip = document.createElement("section");
+  strip.className = "aging-summary";
+  strip.setAttribute("aria-label", "超期风险合并汇总");
+  const items = [
+    ["最终超期风险金额", formatMoney(statistics.finalRiskAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
+    ["发票口径风险", formatMoney(statistics.invoiceRiskAmount), `超过 ${statistics.invoiceDays} 天`],
+    ["应收口径风险", formatMoney(statistics.receivableRiskAmount), `超过 ${statistics.receivableDays} 天`],
+    ["采用发票口径", `${statistics.invoiceSelectedCount} 个`, formatMoney(statistics.invoiceSelectedAmount)],
+    ["采用应收口径", `${statistics.receivableSelectedCount} 个`, formatMoney(statistics.receivableSelectedAmount)],
+    ["涉及客户", `${statistics.customerCount} 家`, `截至 ${statistics.asOfDate}`],
+  ];
+  items.forEach(([label, value, note, variant]) => {
+    const item = document.createElement("div");
+    item.className = `aging-stat${variant ? ` ${variant}` : ""}`;
     const labelNode = document.createElement("span"); labelNode.textContent = label;
     const valueNode = document.createElement("strong"); valueNode.textContent = value;
     const noteNode = document.createElement("small"); noteNode.textContent = note;
