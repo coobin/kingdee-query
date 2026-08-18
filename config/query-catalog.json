@@ -177,7 +177,7 @@
     "requiresFilter": true
   },
   "overdue_receivables": {
-    "label": "超期未回款",
+    "label": "发票账龄",
     "description": "按销售子项目统计超期发票范围内的应收未收款、收款未核销、未生成应收和未回款金额",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_receivables",

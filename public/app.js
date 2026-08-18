@@ -2,7 +2,7 @@ const TOOL_META = {
   inventory: { action: "查询即时库存", conditionLabels: { materialNumber: "物料编码" } },
   inventory_cycle: { action: "查询库存周期", conditionLabels: { materialNumber: "物料编码", materialName: "物料名称", subprojectNumber: "销售子项目编码", warehouseName: "仓库名称", warehouseScope: "查看范围", minimumDays: "最少库存周期" } },
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
-  overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
+  overdue_receivables: { action: "统计发票账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   overdue_risk_combined: { action: "统计合并风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
@@ -276,7 +276,7 @@ function renderStatistics(statistics, tool = "") {
   }
   const strip = document.createElement("section");
   strip.className = "aging-summary";
-  strip.setAttribute("aria-label", "超期未回款汇总");
+  strip.setAttribute("aria-label", "发票账龄汇总");
   const items = [
     ["未回款金额", formatMoney(statistics.unpaidAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
     ["已收款金额", formatMoney(statistics.receivedAmount), "收款单减退款单"],

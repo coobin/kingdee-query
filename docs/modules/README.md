@@ -9,7 +9,7 @@
 | [即时库存](inventory.md) | `inventory` | 库存明细行 | 按物料、仓库和库存组织查看库存 |
 | [库存周期](inventory-cycle.md) | `inventory_cycle` | 当前公司仓/项目仓/客户仓库存明细行 | 串联收料入库、直接调拨和客户签收计算库存周期 |
 | [销售订单](sales-orders.md) | `sales_orders` | 销售订单单据头 | 按单据、客户或日期查询销售订单 |
-| [超期未回款](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
+| [发票账龄](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
 | [应收账龄](receivable-aging.md) | `receivable_aging` | 销售子项目应收风险汇总行 | 按应收单日期核对已形成应收的长期未收款余额 |
 | [超期风险合并](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 分别按发票和应收账龄计算，取项目较高风险金额 |
 | [采购订单](purchase-orders.md) | `purchase_orders` | 采购订单单据头 | 按单据、供应商或日期查询采购订单 |
@@ -21,7 +21,7 @@
 - “外部参数”是页面、Dify 或结构化 API 可以提交的参数名；“金蝶字段”是服务端目录中的 `FieldKeys` 或筛选字段。
 - 普通模块的 `rows` 按对应文档的数据粒度返回，`columns` 是页面和导出的公开列。审批进度没有固定列，返回已配置自定义接口的结构化 payload。
 - 普通模块的编码、单据号和组织编码采用精确匹配；名称字段采用包含匹配；`dateFrom` 包含当天，`dateTo` 通过“结束日期的下一天”实现闭区间效果。
-- 页面当前按请求发送 `limit=100`；服务端默认值为 50，并受 `KINGDEE_MAX_ROWS` 限制（默认 200，代码上限 1000）。超期未回款会按数据来源分页读取，不能把页面返回行数理解为后台只扫描了同样多的记录。
+- 页面当前按请求发送 `limit=100`；服务端默认值为 50，并受 `KINGDEE_MAX_ROWS` 限制（默认 200，代码上限 1000）。发票账龄会按数据来源分页读取，不能把页面返回行数理解为后台只扫描了同样多的记录。
 - 费用金额求和使用 `aggregation=sum_amount`，按当前查询实际读取的单据头金额汇总；达到 `KINGDEE_AGGREGATION_MAX_ROWS` 时会标记为可能不完整。
 
 ## 统一权限和安全边界

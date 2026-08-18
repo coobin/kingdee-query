@@ -237,7 +237,7 @@ class QueryEngine {
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const pageSize = this.config.kingdee.queryPageSize || 5000;
     const invoiceSource = item.invoiceDateSource;
-    if (!invoiceSource) throw new Error("超期未回款查询缺少开票日期来源配置。");
+    if (!invoiceSource) throw new Error("发票账龄查询缺少开票日期来源配置。");
     const rawInvoiceRows = await this.queryAllPages(identity, {
       FormId: invoiceSource.formId,
       FieldKeys: invoiceSource.fields.map(([key]) => key).join(","),

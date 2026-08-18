@@ -13,10 +13,10 @@ function localPlan(question) {
   else if (/库存周期|库存库龄|库存账龄|呆在仓库|呆滞物料|待签收/.test(text)) tool = "inventory_cycle";
   else if (/合并.*(?:超期|账龄)|(?:开票|发票).*(?:和|与|及).*(?:应收)|应收.*(?:和|与|及).*(?:开票|发票)|两个口径|双口径/.test(text)) tool = "overdue_risk_combined";
   else if (/按应收|应收单(?:超期|账龄|维度)|应收单和收款|应收和收款/.test(text)) tool = "receivable_aging";
-  else if (/未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
+  else if (/(?:发票|开票)账龄|未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
   else if (/销售|客户|订单/.test(text)) tool = "sales_orders";
   else if (/库存|仓库|物料|存量/.test(text)) tool = "inventory";
-  else throw Object.assign(new Error("暂时无法判断你要查询库存、订单、超期未回款、报销还是审批进度，请说得具体一点。"), { statusCode: 400 });
+  else throw Object.assign(new Error("暂时无法判断你要查询库存、订单、发票账龄、报销还是审批进度，请说得具体一点。"), { statusCode: 400 });
 
   const quoted = [...text.matchAll(/[“\"']([^”\"']{1,40})[”\"']/g)].map((match) => match[1]);
   const bill = text.match(/(?:单号|编号|订单|报销单)\s*[：:=是为]?\s*([A-Za-z]{1,12}[-_]?\d{3,})/i);

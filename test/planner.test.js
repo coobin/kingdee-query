@@ -42,6 +42,12 @@ test("plans an overdue invoiced receivable query", () => {
   assert.equal(plan.arguments.dateFrom, undefined);
 });
 
+test("plans the invoice aging query by its user-facing name", () => {
+  const plan = localPlan("查询发票账龄超过180天的项目");
+  assert.equal(plan.tool, "overdue_receivables");
+  assert.equal(plan.arguments.minimumDays, 180);
+});
+
 test("plans an overdue receivable query for a sales subproject", () => {
   const plan = localPlan("查询销售子项目 QC-JE2019060-61 超过365天未回款");
   assert.equal(plan.tool, "overdue_receivables");
