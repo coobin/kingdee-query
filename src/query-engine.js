@@ -227,14 +227,14 @@ class QueryEngine {
     };
   }
 
-  async overdueReceivables(identity, item, args) {
+  async overdueReceivables(identity, item, args, { returnAll = false } = {}) {
     const asOfDate = businessDate(this.now());
     const minimumDays = normalizeMinimumDays(args.minimumDays);
     const cutoffDate = shiftDate(asOfDate, -minimumDays);
     const accepted = { asOfDate, minimumDays, cutoffDate };
     if (args.customerName) accepted.customerName = args.customerName;
     if (args.subprojectNumber || args.projectNumber) accepted.subprojectNumber = args.subprojectNumber || args.projectNumber;
-    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const limit = returnAll ? Number.MAX_SAFE_INTEGER : normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const pageSize = this.config.kingdee.queryPageSize || 5000;
     const invoiceSource = item.invoiceDateSource;
     if (!invoiceSource) throw new Error("发票账龄查询缺少开票日期来源配置。");
@@ -306,10 +306,10 @@ class QueryEngine {
     };
   }
 
-  async receivableAging(identity, item, args) {
+  async receivableAging(identity, item, args, { returnAll = false } = {}) {
     const asOfDate = businessDate(this.now());
     const { filter, accepted } = buildReceivableAgingCandidateFilter(args, asOfDate);
-    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const limit = returnAll ? Number.MAX_SAFE_INTEGER : normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const pageSize = this.config.kingdee.queryPageSize || 5000;
     const rawRows = await this.queryAllPages(identity, {
       FormId: item.formId,
@@ -351,11 +351,12 @@ class QueryEngine {
   async overdueRiskCombined(identity, item, args) {
     const invoiceDays = normalizeMinimumDays(args.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
     const receivableDays = normalizeMinimumDays(args.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
-    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
-    const sharedArgs = { ...args, limit: this.config.kingdee.maxRows };
+    const limit = Number.MAX_SAFE_INTEGER;
+    const sharedArgs = { ...args };
+    const returnAll = { returnAll: true };
     const [invoiceResult, receivableResult] = await Promise.all([
-      this.overdueReceivables(identity, this.catalog.overdue_receivables, { ...sharedArgs, minimumDays: invoiceDays }),
-      this.receivableAging(identity, this.catalog.receivable_aging, { ...sharedArgs, minimumDays: receivableDays }),
+      this.overdueReceivables(identity, this.catalog.overdue_receivables, { ...sharedArgs, minimumDays: invoiceDays }, returnAll),
+      this.receivableAging(identity, this.catalog.receivable_aging, { ...sharedArgs, minimumDays: receivableDays }, returnAll),
     ]);
     const result = aggregateOverdueRiskCombined(invoiceResult, receivableResult, { invoiceDays, receivableDays });
     return {

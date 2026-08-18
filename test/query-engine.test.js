@@ -454,18 +454,44 @@ test("passes independent invoice and receivable day thresholds to the combined t
     kingdee: {},
     config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 5000, aggregationMaxRows: 5000 } },
   });
-  engine.overdueReceivables = async (identity, item, args) => {
+  engine.overdueReceivables = async (identity, item, args, options) => {
     assert.equal(args.minimumDays, 180);
+    assert.equal(options.returnAll, true);
     return { query: { asOfDate: "2026-08-18" }, truncated: false, rows: [{ 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "项目一", 未回款金额: 100, 开票日期: "2025-01-01", 超期天数: 594, 超期发票数: 1, 未生成应收金额: 0, 回款状态: "部分回款未结清", 收款条件: "月结" }] };
   };
-  engine.receivableAging = async (identity, item, args) => {
+  engine.receivableAging = async (identity, item, args, options) => {
     assert.equal(args.minimumDays, 270);
+    assert.equal(options.returnAll, true);
     return { query: { asOfDate: "2026-08-18" }, truncated: false, rows: [{ 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "项目一", 应收未收款金额: 80, 应收账龄日期: "2025-03-01", 应收超期天数: 535, 应收单数: 1, 应收未开票金额: 20, 回款状态: "部分回款未结清", 收款条件: "月结" }] };
   };
   const result = await engine.execute(identity, { tool: "overdue_risk_combined", arguments: { invoiceDays: 180, receivableDays: 270, limit: 1 } });
   assert.equal(result.query.invoiceDays, 180);
   assert.equal(result.query.receivableDays, 270);
   assert.equal(result.rows[0]["最终超期风险金额"], 100);
+});
+
+test("returns every combined risk row instead of applying the ordinary row limit", async () => {
+  const engine = new QueryEngine({
+    catalog,
+    kingdee: {},
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 1, queryPageSize: 5000, aggregationMaxRows: 5000 } },
+  });
+  engine.overdueReceivables = async (identity, item, args, options) => {
+    assert.equal(options.returnAll, true);
+    return { query: { asOfDate: "2026-08-18" }, truncated: false, rows: [
+      { 客户: "客户甲", 销售子项目编码: "SP-1", 销售子项目名称: "项目一", 未回款金额: 100, 开票日期: "2025-01-01", 超期天数: 594, 超期发票数: 1, 未生成应收金额: 0, 回款状态: "部分回款未结清", 收款条件: "月结" },
+      { 客户: "客户乙", 销售子项目编码: "SP-2", 销售子项目名称: "项目二", 未回款金额: 80, 开票日期: "2025-02-01", 超期天数: 563, 超期发票数: 1, 未生成应收金额: 0, 回款状态: "完全未回款", 收款条件: "现款" },
+    ] };
+  };
+  engine.receivableAging = async (identity, item, args, options) => {
+    assert.equal(options.returnAll, true);
+    return { query: { asOfDate: "2026-08-18" }, truncated: false, rows: [] };
+  };
+  const result = await engine.execute(identity, { tool: "overdue_risk_combined", arguments: { invoiceDays: 180, receivableDays: 270, limit: 1 } });
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.count, 2);
+  assert.equal(result.truncated, false);
+  assert.equal(result.statistics.partial, false);
 });
 
 test("keeps the list date tied to the overdue invoice query, not the full invoice query", async () => {
