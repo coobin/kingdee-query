@@ -63,3 +63,10 @@ test("plans an inventory cycle query for company warehouse", () => {
   assert.equal(plan.arguments.warehouseScope, "company");
   assert.equal(plan.arguments.minimumDays, 60);
 });
+
+test("plans an inventory cycle query using only the age threshold", () => {
+  const plan = localPlan("查询库存周期超过180天的物料");
+  assert.equal(plan.tool, "inventory_cycle");
+  assert.equal(plan.arguments.minimumDays, 180);
+  assert.equal(plan.arguments.materialNumber, undefined);
+});

@@ -133,7 +133,7 @@ function collectArguments(panel) {
 function validateArguments(tool, args) {
   if (args.dateFrom && args.dateTo && args.dateFrom > args.dateTo) return "开始日期不能晚于结束日期。";
   if (tool === "inventory" && !args.materialNumber) return "请输入完整物料编码。";
-  if (tool === "inventory_cycle" && !args.materialNumber && !args.materialName && !args.subprojectNumber && !args.warehouseName && args.warehouseScope === "all") return "请至少填写物料、销售子项目或仓库条件中的一项，或选择限定的仓库范围。";
+  if (tool === "inventory_cycle" && !args.materialNumber && !args.materialName && !args.subprojectNumber && !args.warehouseName && args.warehouseScope === "all" && !(Number(args.minimumDays) > 0)) return "请至少填写物料、销售子项目或仓库条件中的一项，或填写最少库存周期。";
   if (tool === "inventory_cycle" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 0 || Number(args.minimumDays) > 3650)) return "最少库存周期应为 0 到 3650 之间的整数。";
   if (tool === "sales_orders" && !args.billNumber && !args.customerName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、客户名称或日期范围中的一项。";
   if (tool === "overdue_receivables" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
