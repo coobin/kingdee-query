@@ -280,7 +280,8 @@ class QueryEngine {
   }
 
   async inventoryCycle(identity, item, args) {
-    const hasScopeFilter = [args.materialNumber, args.materialName, args.warehouseName, args.subprojectNumber].some((value) => String(value || "").trim());
+    const hasScopeFilter = [args.materialNumber, args.materialName, args.warehouseName, args.subprojectNumber].some((value) => String(value || "").trim())
+      || ["company", "project", "customer"].includes(String(args.warehouseScope || ""));
     if (!hasScopeFilter) {
       throw Object.assign(new Error("请至少填写物料编码、物料名称、仓库名称或销售子项目编码中的一项。"), { statusCode: 400 });
     }
@@ -298,7 +299,8 @@ class QueryEngine {
     const allWarehouses = warehouseRows.map((row) => ({
       ...row,
       stage: warehouseStage(row["仓库名称"]),
-    })).filter((row) => row.stage === "项目仓" || row.stage === "客户仓");
+    })).filter((row) => ["公司仓", "项目仓", "客户仓"].includes(row.stage)
+      && (row.stage === "公司仓" || String(row["销售项目编码"] || "").trim() || String(row["销售子项目编码"] || "").trim()));
     const selectedWarehouses = allWarehouses.filter((row) => this.matchesInventoryWarehouse(row, args));
     const selectedCodes = [...new Set(selectedWarehouses.map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
     const selectedSubprojects = new Set(selectedWarehouses.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean));
@@ -307,17 +309,16 @@ class QueryEngine {
       const subproject = String(row["销售子项目编码"] || "").trim();
       return selectedCodes.includes(code) || (subproject && selectedSubprojects.has(subproject));
     });
-    const projectCodes = [...new Set(relatedWarehouses.filter((row) => row.stage === "项目仓").map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
-    const customerCodes = [...new Set(relatedWarehouses.filter((row) => row.stage === "客户仓").map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
+    const relatedCodes = [...new Set(relatedWarehouses.map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
     const materialFilters = [];
     if (args.materialNumber) materialFilters.push(`FMaterialId.FNumber='${escapeValue(args.materialNumber)}'`);
     if (args.materialName) materialFilters.push(`FMaterialId.FName LIKE '%${escapeValue(args.materialName)}%'`);
     const currentRows = rowsToObjects(await this.queryByCodeBatches(identity, sources.inventorySource, selectedCodes, "FStockId.FNumber", ["FBaseQty<>0", ...materialFilters], pageSize), sources.inventorySource.fields);
     const movementFilters = ["FDocumentStatus='C'", "FCancelStatus='A'", `FDate<'${nextDay(asOfDate)}'`, ...materialFilters];
     if (args.subprojectNumber) movementFilters.push(`F_PARA_SaleSubProId.FNumber LIKE '%${escapeValue(args.subprojectNumber)}%'`);
-    const inboundRows = rowsToObjects(await this.queryByCodeBatches(identity, sources.inboundSource, projectCodes, "FStockId.FNumber", ["FBaseUnitQty<>0", ...movementFilters], pageSize), sources.inboundSource.fields);
+    const inboundRows = rowsToObjects(await this.queryByCodeBatches(identity, sources.inboundSource, relatedCodes, "FStockId.FNumber", ["FBaseUnitQty<>0", ...movementFilters], pageSize), sources.inboundSource.fields);
     const transferFilters = [...movementFilters];
-    const transferRows = rowsToObjects(await this.queryByTransferBatches(identity, sources.transferSource, projectCodes, customerCodes, transferFilters, pageSize), sources.transferSource.fields);
+    const transferRows = rowsToObjects(await this.queryByTransferBatches(identity, sources.transferSource, relatedCodes, relatedCodes, transferFilters, pageSize), sources.transferSource.fields);
     const sourceBillNumbers = [...new Set(transferRows.map((row) => String(row["源单编号"] || "").trim()).filter(Boolean))];
     const signoffMaterialFilters = [];
     if (args.materialNumber) signoffMaterialFilters.push(`FMaterialID.FNumber='${escapeValue(args.materialNumber)}'`);
@@ -329,9 +330,13 @@ class QueryEngine {
   matchesInventoryWarehouse(row, args) {
     const stage = warehouseStage(row["仓库名称"]);
     const scope = String(args.warehouseScope || "all");
-    if (stage !== "项目仓" && stage !== "客户仓") return false;
+    if (!["公司仓", "项目仓", "客户仓"].includes(stage)) return false;
+    if ((stage === "项目仓" || stage === "客户仓")
+      && !String(row["销售项目编码"] || "").trim()
+      && !String(row["销售子项目编码"] || "").trim()) return false;
     if (scope === "project" && stage !== "项目仓") return false;
     if (scope === "customer" && stage !== "客户仓") return false;
+    if (scope === "company" && stage !== "公司仓") return false;
     if (args.warehouseName && !String(row["仓库名称"] || "").includes(String(args.warehouseName).trim())) return false;
     if (args.subprojectNumber) {
       const needle = String(args.subprojectNumber).trim().toUpperCase();

@@ -83,7 +83,7 @@ h1 em::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px;
 .scope-lock small { margin-top: 3px; color: var(--muted); font-size: 10px; }
 .scope-lock.aging-lock { border-left-color: var(--amber); background: #f5f0df; }
 .scope-lock.aging-lock > span { width: 32px; height: 32px; border-radius: 0; background: var(--amber); font-family: var(--utility); font-size: 9px; font-weight: 800; }
-.cycle-rail { display: grid; grid-template-columns: 1fr 58px 1fr 58px 1fr; align-items: center; gap: 10px; margin-top: 24px; padding: 18px 0 3px; }
+.cycle-rail { display: grid; grid-template-columns: 1fr 42px 1fr 42px 1fr 42px 1fr; align-items: center; gap: 8px; margin-top: 24px; padding: 18px 0 3px; }
 .cycle-step { min-height: 70px; display: flex; flex-direction: column; justify-content: center; gap: 5px; padding: 12px 14px; border: 1px solid var(--line); background: var(--paper); }
 .cycle-step span { color: var(--amber); font-family: var(--utility); font-size: 9px; font-weight: 800; letter-spacing: .12em; }
 .cycle-step strong { color: var(--forest); font-size: 13px; }
@@ -138,7 +138,7 @@ button.tool:hover, .tool.active { padding-left: 11px; color: var(--forest); back
 .aging-stat.primary::before { content: attr(data-threshold); position: absolute; top: 13px; right: 13px; color: var(--amber); font-family: var(--utility); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
 .aging-stat.primary span, .aging-stat.primary small { color: var(--mint); }
 .aging-stat.primary strong { color: white; font-size: clamp(24px, 3vw, 35px); }
-.cycle-summary { display: grid; grid-template-columns: 1.25fr repeat(4, 1fr); border-bottom: 1px solid var(--line); background: var(--paper); }
+.cycle-summary { display: grid; grid-template-columns: 1.25fr repeat(5, 1fr); border-bottom: 1px solid var(--line); background: var(--paper); }
 .cycle-stat { min-height: 112px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 15px; border-right: 1px solid var(--line); }
 .cycle-stat:last-child { border-right: 0; }
 .cycle-stat span { color: var(--muted); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .08em; }

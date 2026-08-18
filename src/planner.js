@@ -62,7 +62,8 @@ function localPlan(question) {
   if (tool === "inventory_cycle") {
     const minimumDays = text.match(/(?:超过|超|大于|不少于|至少)?\s*(\d{1,4})\s*天/);
     if (minimumDays) arguments_.minimumDays = Number(minimumDays[1]);
-    if (/客户仓待签收|仅?客户仓/.test(text)) arguments_.warehouseScope = "customer";
+    if (/仅?公司仓/.test(text)) arguments_.warehouseScope = "company";
+    else if (/客户仓待签收|仅?客户仓/.test(text)) arguments_.warehouseScope = "customer";
     else if (/仅?项目仓/.test(text)) arguments_.warehouseScope = "project";
     delete arguments_.dateFrom;
     delete arguments_.dateTo;

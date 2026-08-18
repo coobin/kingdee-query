@@ -56,3 +56,10 @@ test("plans an inventory cycle query for customer pending signoff", () => {
   assert.equal(plan.arguments.warehouseScope, "customer");
   assert.equal(plan.arguments.minimumDays, 30);
 });
+
+test("plans an inventory cycle query for company warehouse", () => {
+  const plan = localPlan("查询公司仓库存周期超过60天的物料");
+  assert.equal(plan.tool, "inventory_cycle");
+  assert.equal(plan.arguments.warehouseScope, "company");
+  assert.equal(plan.arguments.minimumDays, 60);
+});

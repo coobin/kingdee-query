@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260818-1">
+  <link rel="stylesheet" href="/styles.css?v=20260818-2">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -69,23 +69,25 @@
           </section>
 
           <section class="query-panel" id="panel-inventory_cycle" role="tabpanel" aria-labelledby="tab-inventory_cycle" data-panel="inventory_cycle" hidden>
-            <div class="panel-copy"><h3>查看物料呆了多久</h3><p>从收料入库开始，串联项目仓发货和客户签收，计算当前项目物料的库存周期。</p></div>
+            <div class="panel-copy"><h3>查看物料呆了多久</h3><p>纳入公司仓、项目仓和客户仓；项目仓、客户仓必须已关联销售项目。</p></div>
             <div class="cycle-rail" aria-label="库存周期业务链路">
               <div class="cycle-step"><span>01</span><strong>收料入库</strong><small>起算日</small></div>
               <div class="cycle-connector" aria-hidden="true"></div>
-              <div class="cycle-step"><span>02</span><strong>项目仓发货</strong><small>进入客户仓</small></div>
+              <div class="cycle-step"><span>02</span><strong>公司仓 / 项目仓</strong><small>当前库存阶段</small></div>
               <div class="cycle-connector" aria-hidden="true"></div>
-              <div class="cycle-step"><span>03</span><strong>客户签收</strong><small>周期结束</small></div>
+              <div class="cycle-step"><span>03</span><strong>项目仓发货</strong><small>进入客户仓</small></div>
+              <div class="cycle-connector" aria-hidden="true"></div>
+              <div class="cycle-step"><span>04</span><strong>客户签收</strong><small>周期结束</small></div>
             </div>
             <div class="field-grid">
               <label class="field"><span>物料编码</span><input name="materialNumber" type="text" maxlength="40" placeholder="例如：1.03.00.522" autocomplete="off"></label>
               <label class="field"><span>物料名称</span><input name="materialName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="例如：JT2024101001-1" autocomplete="off"></label>
               <label class="field"><span>仓库名称</span><input name="warehouseName" type="text" maxlength="100" placeholder="例如：杭州运营分公司" autocomplete="off"></label>
-              <label class="field"><span>查看范围</span><select name="warehouseScope"><option value="all">项目仓 + 客户仓</option><option value="project">仅项目仓</option><option value="customer">仅客户仓</option></select></label>
+              <label class="field"><span>查看范围</span><select name="warehouseScope"><option value="all">公司仓 + 项目仓 + 客户仓</option><option value="company">仅公司仓</option><option value="project">仅项目仓</option><option value="customer">仅客户仓</option></select></label>
               <label class="field"><span>最少库存周期</span><input name="minimumDays" type="number" min="0" max="3650" step="1" value="0" placeholder="0 表示全部"></label>
             </div>
-            <div class="scope-lock cycle-note"><span aria-hidden="true">↗</span><div><strong>统计日：今天 · 只看即时库存</strong><small>库龄来自收料入库、销售发货和客户签收单据；物流签收字段不参与计算。</small></div></div>
+            <div class="scope-lock cycle-note"><span aria-hidden="true">↗</span><div><strong>统计日：今天 · 只看即时库存</strong><small>公司仓也纳入；项目仓、客户仓只保留已关联项目的仓库。物流签收字段不参与计算。</small></div></div>
           </section>
 
           <section class="query-panel" id="panel-sales_orders" role="tabpanel" aria-labelledby="tab-sales_orders" data-panel="sales_orders" hidden>
@@ -153,6 +155,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260818-1" defer></script>
+  <script src="/app.js?v=20260818-2" defer></script>
 </body>
 </html>

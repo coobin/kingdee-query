@@ -143,7 +143,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 默认白名单包括：
 
 - `inventory`：即时库存
-- `inventory_cycle`：按“收料入库 → 项目仓发货 → 客户签收”核算当前项目仓、客户仓物料的库存周期和客户仓待签收天数
+- `inventory_cycle`：按“收料入库 → 公司仓/项目仓调拨 → 客户签收”核算公司仓、项目仓、客户仓物料的库存周期和客户仓待签收天数；项目仓和客户仓必须关联项目
 - `sales_orders`：销售订单
 - `overdue_receivables`：按销售子项目汇总已开票且超过指定天数仍未结清的应收，默认超过 180 天；输出销售子项目编码、名称和开票日期
 - `purchase_orders`：采购订单

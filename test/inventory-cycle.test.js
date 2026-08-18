@@ -44,6 +44,57 @@ test("excludes signed quantity while leaving a partial customer quantity pending
   assert.equal(result.rows[0]["客户签收单"], "");
 });
 
+test("includes company warehouse stock and follows company to project to customer transfers", () => {
+  const rows = buildInventoryCycleResult({
+    warehouseRows: [
+      { "仓库编码": "GSCK001", "仓库名称": "公司总仓-湖南承希", "销售项目编码": "", "销售子项目编码": "" },
+      { "仓库编码": "CK255", "仓库名称": "项目仓-湖南承希-测试项目", "销售项目编码": "P1", "销售项目名称": "测试项目", "销售子项目编码": "SP1", "销售子项目名称": "测试子项目" },
+      { "仓库编码": "KHCK002", "仓库名称": "客户仓-湖南承希-测试项目", "销售项目编码": "P1", "销售项目名称": "测试项目", "销售子项目编码": "SP1", "销售子项目名称": "测试子项目" },
+    ],
+    inventoryRows: [
+      { "仓库编码": "GSCK001", "物料编码": "M1", "物料名称": "设备", "批号": "L1", "基本库存数量": 3 },
+      { "仓库编码": "KHCK002", "物料编码": "M1", "物料名称": "设备", "批号": "L1", "基本库存数量": 2 },
+    ],
+    inboundRows: [{ "仓库编码": "GSCK001", "物料编码": "M1", "物料名称": "设备", "批号": "L1", "基本入库数量": 5, "日期": "2025-03-01", "单据编号": "IN1" }],
+    transferRows: [
+      { "单据编号": "TR1", "日期": "2025-04-01", "调出仓库编码": "GSCK001", "调入仓库编码": "CK255", "物料编码": "M1", "物料名称": "设备", "调出批号": "L1", "调入批号": "L1", "调拨基本数量": 2, "销售子项目编码": "SP1" },
+      { "单据编号": "TR2", "日期": "2025-05-01", "调出仓库编码": "CK255", "调入仓库编码": "KHCK002", "物料编码": "M1", "物料名称": "设备", "调出批号": "L1", "调入批号": "L1", "调拨基本数量": 2, "销售子项目编码": "SP1" },
+    ],
+    signoffRows: [],
+    asOfDate: "2025-05-29",
+    args: { materialNumber: "M1" },
+    limit: 200,
+  });
+  const company = rows.rows.find((row) => row["库存阶段"] === "公司仓");
+  const customer = rows.rows.find((row) => row["库存阶段"] === "客户仓");
+  assert.equal(rows.count, 2);
+  assert.equal(company["公司仓库龄"], 89);
+  assert.equal(company["当前库存数量"], 3);
+  assert.equal(customer["项目仓库龄"], 30);
+  assert.equal(customer["客户仓待签收"], 28);
+  assert.equal(customer["销售发货单"], "TR2");
+});
+
+test("excludes project and customer warehouses without project associations", () => {
+  const result = buildInventoryCycleResult({
+    warehouseRows: [
+      { "仓库编码": "CK999", "仓库名称": "项目仓-未关联项目" },
+      { "仓库编码": "KHCK999", "仓库名称": "客户仓-未关联项目" },
+    ],
+    inventoryRows: [
+      { "仓库编码": "CK999", "物料编码": "M1", "物料名称": "设备", "批号": "L1", "基本库存数量": 1 },
+      { "仓库编码": "KHCK999", "物料编码": "M1", "物料名称": "设备", "批号": "L1", "基本库存数量": 1 },
+    ],
+    inboundRows: [],
+    transferRows: [],
+    signoffRows: [],
+    asOfDate: "2025-05-29",
+    args: { materialNumber: "M1" },
+    limit: 200,
+  });
+  assert.equal(result.count, 0);
+});
+
 test("queries the validated warehouse and three document sources", async () => {
   const requests = [];
   const kingdee = { executeBillQuery: async (username, request) => {

@@ -29,7 +29,7 @@
   },
   "inventory_cycle": {
     "label": "库存周期",
-    "description": "按收料入库、项目仓发货和客户签收核算当前项目物料库存周期",
+    "description": "按收料入库、公司仓/项目仓调拨、客户签收核算当前项目物料库存周期；项目仓和客户仓必须关联项目",
     "formId": "STK_Inventory",
     "queryType": "inventory_cycle",
     "fields": [

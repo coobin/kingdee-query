@@ -7,7 +7,7 @@
 | 模块 | 工具 ID | 数据粒度 | 说明 |
 | --- | --- | --- | --- |
 | [即时库存](inventory.md) | `inventory` | 库存明细行 | 按物料、仓库和库存组织查看库存 |
-| [库存周期](inventory-cycle.md) | `inventory_cycle` | 当前项目仓/客户仓库存明细行 | 串联收料入库、直接调拨和客户签收计算库存周期 |
+| [库存周期](inventory-cycle.md) | `inventory_cycle` | 当前公司仓/项目仓/客户仓库存明细行 | 串联收料入库、直接调拨和客户签收计算库存周期 |
 | [销售订单](sales-orders.md) | `sales_orders` | 销售订单单据头 | 按单据、客户或日期查询销售订单 |
 | [超期未回款](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
 | [采购订单](purchase-orders.md) | `purchase_orders` | 采购订单单据头 | 按单据、供应商或日期查询采购订单 |

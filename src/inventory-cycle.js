@@ -12,6 +12,7 @@ const INVENTORY_CYCLE_COLUMNS = [
   "收料入库日期",
   "发货日期",
   "客户签收日期",
+  "公司仓库龄",
   "项目仓库龄",
   "客户仓待签收",
   "总库存周期",
@@ -47,7 +48,12 @@ function warehouseStage(name) {
   const value = stringValue(name);
   if (value.startsWith("项目仓-")) return "项目仓";
   if (value.startsWith("客户仓-")) return "客户仓";
+  if (value.startsWith("公司仓-") || value.startsWith("公司总仓-")) return "公司仓";
   return "其他仓库";
+}
+
+function warehouseHasProject(info) {
+  return Boolean(info?.projectNumber || info?.subprojectNumber);
 }
 
 function daysBetween(from, to) {
@@ -74,9 +80,12 @@ function warehouseInfo(row) {
 
 function matchesWarehouse(info, args) {
   const scope = stringValue(args.warehouseScope || "all");
+  if (info.stage === "项目仓" || info.stage === "客户仓") {
+    if (!warehouseHasProject(info)) return false;
+  } else if (info.stage !== "公司仓") return false;
   if (scope === "project" && info.stage !== "项目仓") return false;
   if (scope === "customer" && info.stage !== "客户仓") return false;
-  if (info.stage !== "项目仓" && info.stage !== "客户仓") return false;
+  if (scope === "company" && info.stage !== "公司仓") return false;
   if (args.warehouseName && !info.warehouseName.includes(stringValue(args.warehouseName))) return false;
   if (args.subprojectNumber) {
     const needle = normalized(args.subprojectNumber);
@@ -85,9 +94,15 @@ function matchesWarehouse(info, args) {
   return true;
 }
 
+function resolveWarehouse(warehouseMap, number, name = "") {
+  const candidates = warehouseMap.get(stringValue(number)) || [];
+  const exactName = candidates.find((warehouse) => !name || warehouse.warehouseName === stringValue(name));
+  return exactName || candidates[0] || null;
+}
+
 function currentInventoryInfo(row, warehouseMap) {
   const warehouseNumber = stringValue(row["仓库编码"]);
-  const warehouse = warehouseMap.get(warehouseNumber);
+  const warehouse = resolveWarehouse(warehouseMap, warehouseNumber, row["仓库"]);
   if (!warehouse) return null;
   return {
     warehouse,
@@ -107,6 +122,8 @@ function materialMatches(row, args) {
 
 function lineMatch(line, target, options = {}) {
   if (line.warehouseNumber && target.warehouseNumber && line.warehouseNumber !== target.warehouseNumber) return false;
+  const lineWarehouseName = line.warehouse?.warehouseName || line.warehouseName;
+  if (lineWarehouseName && target.warehouseName && lineWarehouseName !== target.warehouseName) return false;
   if (line.materialNumber && target.materialNumber && normalized(line.materialNumber) !== normalized(target.materialNumber)) return false;
   if (target.lot && line.lot && normalized(line.lot) !== normalized(target.lot)) return false;
   if (target.lot && !line.lot && options.requireLot) return false;
@@ -117,7 +134,7 @@ function lineMatch(line, target, options = {}) {
 function makeReceiptLayers(rows, warehouseMap, args, asOfDate) {
   return rows.map((row, index) => {
     const warehouseNumber = stringValue(row["仓库编码"]);
-    const warehouse = warehouseMap.get(warehouseNumber);
+    const warehouse = resolveWarehouse(warehouseMap, warehouseNumber, row["仓库"]);
     const date = dateValue(row["日期"]);
     const quantity = quantityValue(row["基本入库数量"]);
     return {
@@ -135,18 +152,25 @@ function makeReceiptLayers(rows, warehouseMap, args, asOfDate) {
       billNumber: stringValue(row["单据编号"]),
       sourceBillNumber: stringValue(row["源单编号"]),
       projectNumber: stringValue(row["项目编号"]),
+      companyEntryDate: date,
+      projectEntryDate: warehouse?.stage === "项目仓" ? date : "",
+      customerEntryDate: warehouse?.stage === "客户仓" ? date : "",
       invalidDate: !date || date > asOfDate,
       _source: "收料入库",
     };
-  }).filter((layer) => layer.warehouse?.stage === "项目仓" && layer.quantity > EPSILON && !layer.invalidDate && materialMatches(layer, args));
+  }).filter((layer) => ["公司仓", "项目仓", "客户仓"].includes(layer.warehouse?.stage)
+    && (layer.warehouse.stage === "公司仓" || warehouseHasProject(layer.warehouse))
+    && layer.quantity > EPSILON
+    && !layer.invalidDate
+    && materialMatches(layer, args));
 }
 
 function makeTransferLines(rows, warehouseMap, args, asOfDate) {
   return rows.map((row, index) => {
     const sourceWarehouseNumber = stringValue(row["调出仓库编码"]);
     const destinationWarehouseNumber = stringValue(row["调入仓库编码"]);
-    const sourceWarehouse = warehouseMap.get(sourceWarehouseNumber);
-    const destinationWarehouse = warehouseMap.get(destinationWarehouseNumber);
+    const sourceWarehouse = resolveWarehouse(warehouseMap, sourceWarehouseNumber, row["调出仓库"]);
+    const destinationWarehouse = resolveWarehouse(warehouseMap, destinationWarehouseNumber, row["调入仓库"]);
     const date = dateValue(row["日期"]);
     const quantity = quantityValue(row["调拨基本数量"]);
     return {
@@ -157,8 +181,10 @@ function makeTransferLines(rows, warehouseMap, args, asOfDate) {
       businessDate: dateValue(row["入库日期"]),
       sourceWarehouseNumber,
       sourceWarehouse,
+      sourceWarehouseName: stringValue(row["调出仓库"]),
       destinationWarehouseNumber,
       destinationWarehouse,
+      destinationWarehouseName: stringValue(row["调入仓库"]),
       materialNumber: stringValue(row["物料编码"]),
       materialName: stringValue(row["物料名称"]),
       sourceLot: stringValue(row["调出批号"]),
@@ -168,8 +194,10 @@ function makeTransferLines(rows, warehouseMap, args, asOfDate) {
       subprojectName: stringValue(row["销售子项目名称"]),
       invalidDate: !date || date > asOfDate,
     };
-  }).filter((line) => line.sourceWarehouse?.stage === "项目仓"
-    && line.destinationWarehouse?.stage === "客户仓"
+  }).filter((line) => ["公司仓", "项目仓", "客户仓"].includes(line.sourceWarehouse?.stage)
+    && ["公司仓", "项目仓", "客户仓"].includes(line.destinationWarehouse?.stage)
+    && (line.sourceWarehouse?.stage === "公司仓" || warehouseHasProject(line.sourceWarehouse))
+    && (line.destinationWarehouse?.stage === "公司仓" || warehouseHasProject(line.destinationWarehouse))
     && line.quantity > EPSILON
     && !line.invalidDate
     && materialMatches(line, args));
@@ -178,7 +206,7 @@ function makeTransferLines(rows, warehouseMap, args, asOfDate) {
 function makeSignoffLines(rows, warehouseMap, args, asOfDate) {
   return rows.map((row, index) => {
     const warehouseNumber = stringValue(row["仓库编码"]);
-    const warehouse = warehouseMap.get(warehouseNumber);
+    const warehouse = resolveWarehouse(warehouseMap, warehouseNumber, row["仓库"]);
     const date = dateValue(row["日期"]);
     return {
       id: `signoff-${index}`,
@@ -187,6 +215,7 @@ function makeSignoffLines(rows, warehouseMap, args, asOfDate) {
       date,
       warehouseNumber,
       warehouse,
+      warehouseName: stringValue(row["仓库"]),
       materialNumber: stringValue(row["物料编码"]),
       materialName: stringValue(row["物料名称"]),
       lot: stringValue(row["批号"]),
@@ -219,10 +248,16 @@ function allocate(layers, target, quantity, dateField, onTake) {
 
 function layerRow(layer, quantity, asOfDate) {
   const isProject = layer.stage === "项目仓";
-  const projectAge = daysBetween(layer.inboundDate, isProject ? asOfDate : layer.transferDate);
-  const customerAge = isProject ? null : daysBetween(layer.transferDate, asOfDate);
+  const companyAge = layer.stage === "公司仓" ? daysBetween(layer.companyEntryDate || layer.inboundDate, asOfDate) : null;
+  const projectAge = layer.stage === "项目仓"
+    ? daysBetween(layer.projectEntryDate || layer.inboundDate, asOfDate)
+    : (layer.stage === "客户仓" ? daysBetween(layer.projectEntryDate || layer.inboundDate, layer.customerEntryDate || layer.transferDate) : null);
+  const customerAge = layer.stage === "客户仓" ? daysBetween(layer.customerEntryDate || layer.transferDate, asOfDate) : null;
   const totalAge = daysBetween(layer.inboundDate, asOfDate);
   const missingInbound = !layer.inboundDate;
+  const status = missingInbound
+    ? "未匹配收料入库单"
+    : (layer.stage === "公司仓" ? "公司仓库存" : (isProject ? "项目仓待发货" : "客户仓待签收"));
   return {
     "库存阶段": layer.stage,
     "销售子项目编码": layer.subprojectNumber,
@@ -235,10 +270,11 @@ function layerRow(layer, quantity, asOfDate) {
     "收料入库日期": layer.inboundDate,
     "发货日期": layer.transferDate || "",
     "客户签收日期": "",
+    "公司仓库龄": companyAge,
     "项目仓库龄": projectAge,
     "客户仓待签收": customerAge,
     "总库存周期": totalAge,
-    "状态": missingInbound ? "未匹配收料入库单" : (isProject ? "项目仓待发货" : "客户仓待签收"),
+    "状态": status,
     "收料入库单": layer.inboundBillNumber,
     "销售发货单": layer.transferBillNumber || "",
     "客户签收单": "",
@@ -258,12 +294,16 @@ function currentRowLayer(row, warehouse, stage, quantity) {
     transferDate: "",
     inboundBillNumber: "",
     transferBillNumber: "",
+    companyEntryDate: "",
+    projectEntryDate: "",
+    customerEntryDate: "",
     remaining: quantity,
   };
 }
 
 function currentLayerMatches(layer, row) {
   if (layer.warehouseNumber !== row.warehouse.warehouseNumber) return false;
+  if (layer.warehouse?.warehouseName && row.warehouse.warehouseName && layer.warehouse.warehouseName !== row.warehouse.warehouseName) return false;
   if (normalized(layer.materialNumber) !== normalized(row.materialNumber)) return false;
   if (row.lot && normalized(layer.lot) !== normalized(row.lot)) return false;
   if (row.warehouse.subprojectNumber && layer.subprojectNumber && normalized(layer.subprojectNumber) !== normalized(row.warehouse.subprojectNumber)) return false;
@@ -296,51 +336,67 @@ function buildCurrentRows(currentRows, layers, asOfDate, stage) {
 }
 
 function buildInventoryCycleResult({ warehouseRows, inventoryRows, inboundRows, transferRows, signoffRows, asOfDate, args = {}, limit = 200 }) {
-  const allWarehouses = warehouseRows.map(warehouseInfo).filter((warehouse) => warehouse.stage === "项目仓" || warehouse.stage === "客户仓");
+  const allWarehouses = warehouseRows.map(warehouseInfo).filter((warehouse) => ["公司仓", "项目仓", "客户仓"].includes(warehouse.stage)
+    && (warehouse.stage === "公司仓" || warehouseHasProject(warehouse)));
   const warehouses = allWarehouses.filter((warehouse) => matchesWarehouse(warehouse, args));
-  const warehouseMap = new Map(allWarehouses.map((warehouse) => [warehouse.warehouseNumber, warehouse]));
-  const currentRows = inventoryRows.map((row) => currentInventoryInfo(row, warehouseMap)).filter(Boolean).filter((row) => materialMatches(row, args));
+  const warehouseMap = new Map();
+  for (const warehouse of allWarehouses) {
+    const candidates = warehouseMap.get(warehouse.warehouseNumber) || [];
+    candidates.push(warehouse);
+    warehouseMap.set(warehouse.warehouseNumber, candidates);
+  }
+  const selectedWarehouseKeys = new Set(warehouses.map((warehouse) => `${warehouse.warehouseNumber}|${warehouse.warehouseName}`));
+  const currentRows = inventoryRows.map((row) => currentInventoryInfo(row, warehouseMap))
+    .filter((row) => row && selectedWarehouseKeys.has(`${row.warehouse.warehouseNumber}|${row.warehouse.warehouseName}`))
+    .filter((row) => materialMatches(row, args));
   const inboundLayers = makeReceiptLayers(inboundRows, warehouseMap, args, asOfDate);
   const transfers = makeTransferLines(transferRows, warehouseMap, args, asOfDate).sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
   const signoffs = makeSignoffLines(signoffRows, warehouseMap, args, asOfDate).sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
-  const projectLayers = inboundLayers.map((layer) => ({
+  const stockLayers = inboundLayers.map((layer) => ({
     ...layer,
-    stage: "项目仓",
-    warehouseNumber: layer.warehouseNumber,
+    stage: layer.warehouse.stage,
     inboundDate: layer.date,
     inboundBillNumber: layer.billNumber,
     transferDate: "",
     transferBillNumber: "",
+    remaining: layer.quantity,
   }));
-  const customerLayers = [];
 
   for (const transfer of transfers) {
     const target = {
       warehouseNumber: transfer.sourceWarehouseNumber,
+      warehouseName: transfer.sourceWarehouseName,
       materialNumber: transfer.materialNumber,
       lot: transfer.sourceLot,
       subprojectNumber: transfer.subprojectNumber || transfer.sourceWarehouse?.subprojectNumber || "",
     };
-    let remaining = allocate(projectLayers, target, transfer.quantity, "inboundDate", (sourceLayer, taken) => {
-      customerLayers.push({
+    let remaining = allocate(stockLayers, target, transfer.quantity, "inboundDate", (sourceLayer, taken) => {
+      const destinationStage = transfer.destinationWarehouse.stage;
+      stockLayers.push({
         ...sourceLayer,
         id: `${transfer.id}-${sourceLayer.id}`,
-        stage: "客户仓",
+        stage: destinationStage,
         warehouseNumber: transfer.destinationWarehouseNumber,
         warehouse: transfer.destinationWarehouse,
+        warehouseName: transfer.destinationWarehouseName,
         lot: transfer.destinationLot,
         transferDate: transfer.date,
         transferBillNumber: transfer.billNumber,
         sourceBillNumber: transfer.sourceBillNumber,
+        companyEntryDate: destinationStage === "公司仓" ? transfer.date : sourceLayer.companyEntryDate,
+        projectEntryDate: destinationStage === "项目仓" ? transfer.date : sourceLayer.projectEntryDate,
+        customerEntryDate: destinationStage === "客户仓" ? transfer.date : sourceLayer.customerEntryDate,
         remaining: taken,
       });
     });
     if (remaining > EPSILON) {
-      customerLayers.push({
+      const destinationStage = transfer.destinationWarehouse.stage;
+      stockLayers.push({
         id: `${transfer.id}-unmatched`,
-        stage: "客户仓",
+        stage: destinationStage,
         warehouseNumber: transfer.destinationWarehouseNumber,
         warehouse: transfer.destinationWarehouse,
+        warehouseName: transfer.destinationWarehouseName,
         materialNumber: transfer.materialNumber,
         materialName: transfer.materialName,
         lot: transfer.destinationLot,
@@ -351,6 +407,9 @@ function buildInventoryCycleResult({ warehouseRows, inventoryRows, inboundRows, 
         transferDate: transfer.date,
         transferBillNumber: transfer.billNumber,
         sourceBillNumber: transfer.sourceBillNumber,
+        companyEntryDate: destinationStage === "公司仓" ? transfer.date : "",
+        projectEntryDate: destinationStage === "项目仓" ? transfer.date : "",
+        customerEntryDate: destinationStage === "客户仓" ? transfer.date : "",
         remaining,
       });
     }
@@ -360,23 +419,26 @@ function buildInventoryCycleResult({ warehouseRows, inventoryRows, inboundRows, 
   for (const signoff of signoffs) {
     const target = {
       warehouseNumber: signoff.warehouseNumber,
+      warehouseName: signoff.warehouseName,
       materialNumber: signoff.materialNumber,
       lot: signoff.lot,
       subprojectNumber: signoff.subprojectNumber,
       sourceBillNumber: signoff.sourceBillNumber,
     };
-    const remaining = allocate(customerLayers, target, signoff.quantity, "transferDate", (layer) => { signoffMatched.add(layer.id); });
+    const remaining = allocate(stockLayers, target, signoff.quantity, "transferDate", (layer) => { signoffMatched.add(layer.id); });
     if (remaining > EPSILON && signoff.sourceBillNumber) {
-      allocate(customerLayers, { ...target, warehouseNumber: "" }, remaining, "transferDate", (layer) => { signoffMatched.add(layer.id); });
+      allocate(stockLayers, { ...target, warehouseNumber: "", warehouseName: "" }, remaining, "transferDate", (layer) => { signoffMatched.add(layer.id); });
     }
   }
 
+  const companyCurrent = currentRows.filter((row) => row.warehouse.stage === "公司仓");
   const projectCurrent = currentRows.filter((row) => row.warehouse.stage === "项目仓");
   const customerCurrent = currentRows.filter((row) => row.warehouse.stage === "客户仓");
   const scope = stringValue(args.warehouseScope || "all");
   const rows = [
-    ...(scope !== "customer" ? buildCurrentRows(projectCurrent, projectLayers, asOfDate, "项目仓") : []),
-    ...(scope !== "project" ? buildCurrentRows(customerCurrent, customerLayers, asOfDate, "客户仓") : []),
+    ...(["all", "company"].includes(scope) ? buildCurrentRows(companyCurrent, stockLayers, asOfDate, "公司仓") : []),
+    ...(["all", "project"].includes(scope) ? buildCurrentRows(projectCurrent, stockLayers, asOfDate, "项目仓") : []),
+    ...(["all", "customer"].includes(scope) ? buildCurrentRows(customerCurrent, stockLayers, asOfDate, "客户仓") : []),
   ].filter((row) => {
     const threshold = Number(args.minimumDays || 0);
     return !threshold || (Number.isFinite(Number(row["总库存周期"])) && Number(row["总库存周期"]) >= threshold);
@@ -393,8 +455,10 @@ function buildInventoryCycleResult({ warehouseRows, inventoryRows, inboundRows, 
     currentRowCount: currentRows.length,
     rowCount: rows.length,
     totalQuantity: sum(rows),
+    companyQuantity: sum(rows.filter((row) => row["库存阶段"] === "公司仓")),
     projectQuantity: sum(projectResultRows),
     customerQuantity: sum(customerResultRows),
+    companyRowCount: rows.filter((row) => row["库存阶段"] === "公司仓").length,
     projectRowCount: projectResultRows.length,
     customerRowCount: customerResultRows.length,
     oldestDays,
@@ -404,8 +468,8 @@ function buildInventoryCycleResult({ warehouseRows, inventoryRows, inboundRows, 
   };
   const quantityText = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(statistics.totalQuantity);
   const summary = rows.length
-    ? `截至 ${asOfDate}，项目仓与客户仓共有 ${quantityText} 个基本单位库存，项目仓 ${projectResultRows.length} 条，客户仓待签收 ${customerResultRows.length} 条${unmatchedCount ? `，另有 ${unmatchedCount} 条单据链路未完全匹配` : ""}。`
-    : `截至 ${asOfDate}，没有找到符合条件的项目仓或客户仓库存。`;
+    ? `截至 ${asOfDate}，公司仓、项目仓与客户仓共有 ${quantityText} 个基本单位库存，公司仓 ${statistics.companyRowCount} 条，项目仓 ${projectResultRows.length} 条，客户仓待签收 ${customerResultRows.length} 条${unmatchedCount ? `，另有 ${unmatchedCount} 条单据链路未完全匹配` : ""}。`
+    : `截至 ${asOfDate}，没有找到符合条件的公司仓、项目仓或客户仓库存。`;
   return {
     tool: "inventory_cycle",
     label: "库存周期",
