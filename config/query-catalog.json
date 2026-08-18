@@ -27,6 +27,120 @@
     "defaultOrder": "FMaterialId.FNumber ASC",
     "requiresFilter": true
   },
+  "inventory_cycle": {
+    "label": "库存周期",
+    "description": "按收料入库、项目仓发货和客户签收核算当前项目物料库存周期",
+    "formId": "STK_Inventory",
+    "queryType": "inventory_cycle",
+    "fields": [
+      ["FStockId.FNumber", "仓库编码"],
+      ["FStockId.FName", "仓库"],
+      ["FMaterialId.FNumber", "物料编码"],
+      ["FMaterialId.FName", "物料名称"],
+      ["FLot.FNumber", "批号"],
+      ["FBaseQty", "基本库存数量"],
+      ["FProjectNo", "项目编号"]
+    ],
+    "filterFields": {
+      "materialNumber": "FMaterialId.FNumber",
+      "materialName": "FMaterialId.FName",
+      "warehouseName": "FStockId.FName",
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber",
+      "warehouseScope": "warehouseScope",
+      "minimumDays": "minimumDays"
+    },
+    "defaultOrder": "FStockId.FNumber ASC,FMaterialId.FNumber ASC",
+    "requiresFilter": true,
+    "warehouseSource": {
+      "formId": "BD_STOCK",
+      "fields": [
+        ["FNumber", "仓库编码"],
+        ["FName", "仓库名称"],
+        ["F_PARA_SaleProId.FNumber", "销售项目编码"],
+        ["F_PARA_SaleProId.FName", "销售项目名称"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FForbidStatus", "禁用状态"]
+      ],
+      "defaultOrder": "FNumber ASC"
+    },
+    "inventorySource": {
+      "formId": "STK_Inventory",
+      "fields": [
+        ["FStockId.FNumber", "仓库编码"],
+        ["FStockId.FName", "仓库"],
+        ["FMaterialId.FNumber", "物料编码"],
+        ["FMaterialId.FName", "物料名称"],
+        ["FLot.FNumber", "批号"],
+        ["FBaseQty", "基本库存数量"],
+        ["FProjectNo", "项目编号"]
+      ],
+      "defaultOrder": "FStockId.FNumber ASC,FMaterialId.FNumber ASC"
+    },
+    "inboundSource": {
+      "formId": "STK_InStock",
+      "fields": [
+        ["FBillNo", "单据编号"],
+        ["FDate", "日期"],
+        ["FDocumentStatus", "审核状态"],
+        ["FCancelStatus", "作废状态"],
+        ["FMaterialId.FNumber", "物料编码"],
+        ["FMaterialId.FName", "物料名称"],
+        ["FStockId.FNumber", "仓库编码"],
+        ["FStockId.FName", "仓库"],
+        ["FBaseUnitQty", "基本入库数量"],
+        ["FLot.FNumber", "批号"],
+        ["FProjectNo", "项目编号"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FSrcBillNo", "源单编号"]
+      ],
+      "defaultOrder": "FDate ASC,FBillNo ASC"
+    },
+    "transferSource": {
+      "formId": "STK_TransferDirect",
+      "fields": [
+        ["FBillNo", "单据编号"],
+        ["FDate", "日期"],
+        ["FDocumentStatus", "审核状态"],
+        ["FCancelStatus", "作废状态"],
+        ["FMaterialId.FNumber", "物料编码"],
+        ["FMaterialId.FName", "物料名称"],
+        ["FSrcStockId.FNumber", "调出仓库编码"],
+        ["FSrcStockId.FName", "调出仓库"],
+        ["FDestStockId.FNumber", "调入仓库编码"],
+        ["FDestStockId.FName", "调入仓库"],
+        ["FBaseQty", "调拨基本数量"],
+        ["FLot.FNumber", "调出批号"],
+        ["FDestLot.FNumber", "调入批号"],
+        ["FProjectNo", "项目编号"],
+        ["FBusinessDate", "入库日期"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["FSrcBillNo", "源单编号"]
+      ],
+      "defaultOrder": "FDate ASC,FBillNo ASC"
+    },
+    "signoffSource": {
+      "formId": "SAL_OUTSTOCK",
+      "fields": [
+        ["FBillNo", "单据编号"],
+        ["FDate", "日期"],
+        ["FDocumentStatus", "审核状态"],
+        ["FCancelStatus", "作废状态"],
+        ["FMaterialID.FNumber", "物料编码"],
+        ["FMaterialID.FName", "物料名称"],
+        ["FStockID.FNumber", "仓库编码"],
+        ["FStockID.FName", "仓库"],
+        ["FBaseUnitQty", "签收基本数量"],
+        ["FLot.FNumber", "批号"],
+        ["FSrcBillNo", "源单编号"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"]
+      ],
+      "defaultOrder": "FDate ASC,FBillNo ASC"
+    }
+  },
   "sales_orders": {
     "label": "销售订单",
     "description": "查询销售订单编号、客户、组织、金额和状态",

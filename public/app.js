@@ -1,5 +1,6 @@
 const TOOL_META = {
   inventory: { action: "查询即时库存", conditionLabels: { materialNumber: "物料编码" } },
+  inventory_cycle: { action: "查询库存周期", conditionLabels: { materialNumber: "物料编码", materialName: "物料名称", subprojectNumber: "销售子项目编码", warehouseName: "仓库名称", warehouseScope: "查看范围", minimumDays: "最少库存周期" } },
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
@@ -132,6 +133,8 @@ function collectArguments(panel) {
 function validateArguments(tool, args) {
   if (args.dateFrom && args.dateTo && args.dateFrom > args.dateTo) return "开始日期不能晚于结束日期。";
   if (tool === "inventory" && !args.materialNumber) return "请输入完整物料编码。";
+  if (tool === "inventory_cycle" && !args.materialNumber && !args.materialName && !args.subprojectNumber && !args.warehouseName) return "请至少填写物料、销售子项目或仓库条件中的一项。";
+  if (tool === "inventory_cycle" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 0 || Number(args.minimumDays) > 3650)) return "最少库存周期应为 0 到 3650 之间的整数。";
   if (tool === "sales_orders" && !args.billNumber && !args.customerName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、客户名称或日期范围中的一项。";
   if (tool === "overdue_receivables" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
@@ -178,8 +181,13 @@ function renderResult(payload) {
     card.innerHTML = `<span>${escapeHtml(result.aggregate.label)}</span><strong>${formatMoney(result.aggregate.value)}</strong><small>${result.aggregate.records} 笔单据${result.aggregate.partial ? " · 汇总达到上限" : " · 已完整汇总"}</small>`;
     els.table.append(card);
   }
-  if (result.statistics) renderStatistics(result.statistics);
-  if (!result.rows?.length) { if (!result.aggregate) els.table.replaceChildren(document.querySelector("#empty-template").content.cloneNode(true)); els.export.hidden = true; return; }
+  if (result.statistics) renderStatistics(result.statistics, plan.tool);
+  if (!result.rows?.length) {
+    if (!result.aggregate && !result.statistics) els.table.replaceChildren(document.querySelector("#empty-template").content.cloneNode(true));
+    else if (result.statistics) els.table.append(document.querySelector("#empty-template").content.cloneNode(true));
+    els.export.hidden = true;
+    return;
+  }
   renderResultTable(result);
   els.export.hidden = false;
 }
@@ -248,7 +256,11 @@ function compareCell(left, right, column) {
   return String(left).localeCompare(String(right), "zh-CN", { numeric: true, sensitivity: "base" });
 }
 
-function renderStatistics(statistics) {
+function renderStatistics(statistics, tool = "") {
+  if (tool === "inventory_cycle" || statistics.type === "inventory_cycle") {
+    renderInventoryCycleStatistics(statistics);
+    return;
+  }
   const strip = document.createElement("section");
   strip.className = "aging-summary";
   strip.setAttribute("aria-label", "超期未回款汇总");
@@ -275,9 +287,32 @@ function renderStatistics(statistics) {
   els.table.append(strip);
 }
 
+function renderInventoryCycleStatistics(statistics) {
+  const strip = document.createElement("section");
+  strip.className = "cycle-summary";
+  strip.setAttribute("aria-label", "库存周期汇总");
+  const items = [
+    ["当前库存量", formatQuantity(statistics.totalQuantity), "项目仓 + 客户仓基本单位", "primary"],
+    ["项目仓库存", formatQuantity(statistics.projectQuantity), `${statistics.projectRowCount} 条库存明细`],
+    ["客户仓待签收", formatQuantity(statistics.customerQuantity), `${statistics.customerRowCount} 条库存明细`],
+    ["最长库存周期", `${statistics.oldestDays} 天`, `截至 ${statistics.asOfDate}`],
+    ["链路核对", statistics.unmatchedCount ? `${statistics.unmatchedCount} 条待核对` : "已对齐", statistics.unmatchedCount ? "请查看数据状态列" : "单据与即时库存已匹配", statistics.unmatchedCount ? "caution" : ""],
+  ];
+  items.forEach(([label, value, note, variant]) => {
+    const item = document.createElement("div");
+    item.className = `cycle-stat${variant ? ` ${variant}` : ""}`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    item.append(labelNode, valueNode, noteNode); strip.append(item);
+  });
+  els.table.append(strip);
+}
+
 function setLoading(loading) { els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
-function formatCell(value, column) { if (value == null || value === "") return "—"; if (/金额/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
+function formatCell(value, column) { if (value == null || value === "") return "—"; if (/金额/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
+function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
 async function api(url, options = {}) { const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(payload.message || `请求失败 (${response.status})`), payload); return payload; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }

@@ -10,6 +10,7 @@ function localPlan(question) {
   if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
   else if (/采购|供应商/.test(text)) tool = "purchase_orders";
+  else if (/库存周期|库存库龄|库存账龄|呆在仓库|呆滞物料|待签收/.test(text)) tool = "inventory_cycle";
   else if (/未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
   else if (/销售|客户|订单/.test(text)) tool = "sales_orders";
   else if (/库存|仓库|物料|存量/.test(text)) tool = "inventory";
@@ -42,6 +43,9 @@ function localPlan(question) {
   if (bill) arguments_.billNumber = bill[1];
   if (material) arguments_.materialNumber = material[1];
   if (warehouse) arguments_.warehouseName = warehouse[1];
+  const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
+    || text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+  if (subproject) arguments_.subprojectNumber = subproject[1];
   if (applicant) arguments_.applicantName = applicant[1];
   if (/总金额|合计金额|金额合计|总计|一共.*(?:多少|金额)|累计.*金额/.test(text)) arguments_.aggregation = "sum_amount";
   if (tool === "overdue_receivables") {
@@ -52,6 +56,14 @@ function localPlan(question) {
     if (minimumDays) arguments_.minimumDays = Number(minimumDays[1]);
     if (customer) arguments_.customerName = customer[1];
     if (subproject) arguments_.subprojectNumber = subproject[1];
+    delete arguments_.dateFrom;
+    delete arguments_.dateTo;
+  }
+  if (tool === "inventory_cycle") {
+    const minimumDays = text.match(/(?:超过|超|大于|不少于|至少)?\s*(\d{1,4})\s*天/);
+    if (minimumDays) arguments_.minimumDays = Number(minimumDays[1]);
+    if (/客户仓待签收|仅?客户仓/.test(text)) arguments_.warehouseScope = "customer";
+    else if (/仅?项目仓/.test(text)) arguments_.warehouseScope = "project";
     delete arguments_.dateFrom;
     delete arguments_.dateTo;
   }

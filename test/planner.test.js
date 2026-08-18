@@ -48,3 +48,11 @@ test("plans an overdue receivable query for a sales subproject", () => {
   assert.equal(plan.arguments.minimumDays, 365);
   assert.equal(plan.arguments.subprojectNumber, "QC-JE2019060-61");
 });
+
+test("plans an inventory cycle query for customer pending signoff", () => {
+  const plan = localPlan("查询销售子项目 SP1 客户仓待签收超过30天的库存周期");
+  assert.equal(plan.tool, "inventory_cycle");
+  assert.equal(plan.arguments.subprojectNumber, "SP1");
+  assert.equal(plan.arguments.warehouseScope, "customer");
+  assert.equal(plan.arguments.minimumDays, 30);
+});

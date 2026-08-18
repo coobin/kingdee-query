@@ -1,4 +1,5 @@
 const { KingdeeError } = require("./kingdee");
+const { buildInventoryCycleResult, warehouseStage } = require("./inventory-cycle");
 
 function escapeValue(value) {
   return String(value).replaceAll("'", "''").replace(/[\u0000-\u001f]/g, "");
@@ -133,6 +134,11 @@ function buildSubprojectBatchFilter(subprojectNumbers, extra = [], field = "F_PA
   return [...extra, `${field} IN (${quoted})`].join(" AND ");
 }
 
+function buildInFilter(field, values) {
+  const quoted = values.map((value) => `'${escapeValue(value)}'`).join(",");
+  return `${field} IN (${quoted})`;
+}
+
 function buildBillBatchFilter(billNumbers) {
   const quoted = billNumbers.map((value) => `'${escapeValue(value)}'`).join(",");
   return `(FSRCBILLNO IN (${quoted}) OR FTargetBillNO IN (${quoted}))`;
@@ -162,6 +168,7 @@ class QueryEngine {
     if (!item) throw Object.assign(new Error(`不支持的查询工具：${plan.tool}`), { statusCode: 400 });
     const args = plan.arguments || {};
     if (item.queryType === "overdue_receivables") return this.overdueReceivables(identity, item, args);
+    if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -270,6 +277,119 @@ class QueryEngine {
       statistics: result.statistics,
       summary: result.summary,
     };
+  }
+
+  async inventoryCycle(identity, item, args) {
+    const hasScopeFilter = [args.materialNumber, args.materialName, args.warehouseName, args.subprojectNumber].some((value) => String(value || "").trim());
+    if (!hasScopeFilter) {
+      throw Object.assign(new Error("请至少填写物料编码、物料名称、仓库名称或销售子项目编码中的一项。"), { statusCode: 400 });
+    }
+    const asOfDate = args.asOfDate ? isoDate(args.asOfDate) : businessDate(this.now());
+    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const pageSize = this.config.kingdee.queryPageSize || 5000;
+    const sources = item;
+    const warehouseRows = rowsToObjects(await this.queryAllPages(identity, {
+      FormId: sources.warehouseSource.formId,
+      FieldKeys: sources.warehouseSource.fields.map(([key]) => key).join(","),
+      FilterString: "FForbidStatus='A'",
+      OrderString: sources.warehouseSource.defaultOrder || "FNumber ASC",
+      TopRowCount: 0,
+    }, pageSize), sources.warehouseSource.fields);
+    const allWarehouses = warehouseRows.map((row) => ({
+      ...row,
+      stage: warehouseStage(row["仓库名称"]),
+    })).filter((row) => row.stage === "项目仓" || row.stage === "客户仓");
+    const selectedWarehouses = allWarehouses.filter((row) => this.matchesInventoryWarehouse(row, args));
+    const selectedCodes = [...new Set(selectedWarehouses.map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
+    const selectedSubprojects = new Set(selectedWarehouses.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean));
+    const relatedWarehouses = allWarehouses.filter((row) => {
+      const code = String(row["仓库编码"] || "").trim();
+      const subproject = String(row["销售子项目编码"] || "").trim();
+      return selectedCodes.includes(code) || (subproject && selectedSubprojects.has(subproject));
+    });
+    const projectCodes = [...new Set(relatedWarehouses.filter((row) => row.stage === "项目仓").map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
+    const customerCodes = [...new Set(relatedWarehouses.filter((row) => row.stage === "客户仓").map((row) => String(row["仓库编码"] || "").trim()).filter(Boolean))];
+    const materialFilters = [];
+    if (args.materialNumber) materialFilters.push(`FMaterialId.FNumber='${escapeValue(args.materialNumber)}'`);
+    if (args.materialName) materialFilters.push(`FMaterialId.FName LIKE '%${escapeValue(args.materialName)}%'`);
+    const currentRows = rowsToObjects(await this.queryByCodeBatches(identity, sources.inventorySource, selectedCodes, "FStockId.FNumber", ["FBaseQty<>0", ...materialFilters], pageSize), sources.inventorySource.fields);
+    const movementFilters = ["FDocumentStatus='C'", "FCancelStatus='A'", `FDate<'${nextDay(asOfDate)}'`, ...materialFilters];
+    if (args.subprojectNumber) movementFilters.push(`F_PARA_SaleSubProId.FNumber LIKE '%${escapeValue(args.subprojectNumber)}%'`);
+    const inboundRows = rowsToObjects(await this.queryByCodeBatches(identity, sources.inboundSource, projectCodes, "FStockId.FNumber", ["FBaseUnitQty<>0", ...movementFilters], pageSize), sources.inboundSource.fields);
+    const transferFilters = [...movementFilters];
+    const transferRows = rowsToObjects(await this.queryByTransferBatches(identity, sources.transferSource, projectCodes, customerCodes, transferFilters, pageSize), sources.transferSource.fields);
+    const sourceBillNumbers = [...new Set(transferRows.map((row) => String(row["源单编号"] || "").trim()).filter(Boolean))];
+    const signoffMaterialFilters = [];
+    if (args.materialNumber) signoffMaterialFilters.push(`FMaterialID.FNumber='${escapeValue(args.materialNumber)}'`);
+    if (args.materialName) signoffMaterialFilters.push(`FMaterialID.FName LIKE '%${escapeValue(args.materialName)}%'`);
+    const signoffRows = rowsToObjects(await this.queryByBillBatches(identity, sources.signoffSource, sourceBillNumbers, ["FDate<'" + nextDay(asOfDate) + "'", "FDocumentStatus='C'", "FCancelStatus='A'", ...signoffMaterialFilters, ...(args.subprojectNumber ? [`F_PARA_SaleSubProId.FNumber LIKE '%${escapeValue(args.subprojectNumber)}%'`] : [])], pageSize), sources.signoffSource.fields);
+    return buildInventoryCycleResult({ warehouseRows, inventoryRows: currentRows, inboundRows, transferRows, signoffRows, asOfDate, args, limit });
+  }
+
+  matchesInventoryWarehouse(row, args) {
+    const stage = warehouseStage(row["仓库名称"]);
+    const scope = String(args.warehouseScope || "all");
+    if (stage !== "项目仓" && stage !== "客户仓") return false;
+    if (scope === "project" && stage !== "项目仓") return false;
+    if (scope === "customer" && stage !== "客户仓") return false;
+    if (args.warehouseName && !String(row["仓库名称"] || "").includes(String(args.warehouseName).trim())) return false;
+    if (args.subprojectNumber) {
+      const needle = String(args.subprojectNumber).trim().toUpperCase();
+      const number = String(row["销售子项目编码"] || "").toUpperCase();
+      const name = String(row["销售子项目名称"] || "").toUpperCase();
+      if (!number.includes(needle) && !name.includes(needle)) return false;
+    }
+    return true;
+  }
+
+  async queryByCodeBatches(identity, source, codes, field, extraFilter, pageSize) {
+    if (!codes.length) return [];
+    const rows = [];
+    for (const batch of chunkValues(codes, 120)) {
+      rows.push(...await this.queryAllPages(identity, {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: [...extraFilter, buildInFilter(field, batch)].join(" AND "),
+        OrderString: source.defaultOrder || "FDate ASC,FBillNo ASC",
+        TopRowCount: 0,
+      }, pageSize));
+    }
+    return rows;
+  }
+
+  async queryByTransferBatches(identity, source, sourceCodes, destinationCodes, extraFilter, pageSize) {
+    if (!sourceCodes.length || !destinationCodes.length) return [];
+    const rows = [];
+    for (const sourceBatch of chunkValues(sourceCodes, 100)) {
+      const filter = [
+        ...extraFilter,
+        buildInFilter("FSrcStockId.FNumber", sourceBatch),
+        buildInFilter("FDestStockId.FNumber", destinationCodes),
+      ].join(" AND ");
+      rows.push(...await this.queryAllPages(identity, {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: filter,
+        OrderString: source.defaultOrder || "FDate ASC,FBillNo ASC",
+        TopRowCount: 0,
+      }, pageSize));
+    }
+    return rows;
+  }
+
+  async queryByBillBatches(identity, source, billNumbers, extraFilter, pageSize) {
+    if (!billNumbers.length) return [];
+    const rows = [];
+    for (const batch of chunkValues(billNumbers, 150)) {
+      rows.push(...await this.queryAllPages(identity, {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: [...extraFilter, buildInFilter("FSrcBillNo", batch)].join(" AND "),
+        OrderString: source.defaultOrder || "FDate ASC,FBillNo ASC",
+        TopRowCount: 0,
+      }, pageSize));
+    }
+    return rows;
   }
 
   async queryAllPages(identity, request, pageSize) {
