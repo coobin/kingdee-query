@@ -49,6 +49,13 @@ test("plans an overdue receivable query for a sales subproject", () => {
   assert.equal(plan.arguments.subprojectNumber, "QC-JE2019060-61");
 });
 
+test("plans the independent AR and receipt aging query", () => {
+  const plan = localPlan("按应收单和收款维度统计销售子项目 SP-AR 超过180天未收款");
+  assert.equal(plan.tool, "receivable_aging");
+  assert.equal(plan.arguments.minimumDays, 180);
+  assert.equal(plan.arguments.subprojectNumber, "SP-AR");
+});
+
 test("plans an inventory cycle query for customer pending signoff", () => {
   const plan = localPlan("查询销售子项目 SP1 客户仓待签收超过30天的库存周期");
   assert.equal(plan.tool, "inventory_cycle");

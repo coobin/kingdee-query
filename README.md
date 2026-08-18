@@ -146,6 +146,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 - `inventory_cycle`：按“收料入库 → 公司仓/项目仓调拨 → 客户签收”核算公司仓、项目仓、客户仓物料的库存周期和客户仓待签收天数；项目仓和客户仓必须关联项目
 - `sales_orders`：销售订单
 - `overdue_receivables`：按销售子项目汇总已开票且超过指定天数仍未结清的应收，默认超过 180 天；输出销售子项目编码、名称和开票日期
+- `receivable_aging`：按应收单日期汇总已形成应收且超过指定天数仍有未收款余额的销售子项目；应收未开票金额作为独立辅助维度展示
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
 - `workflow_progress`：审批进度，需要自定义 WebAPI

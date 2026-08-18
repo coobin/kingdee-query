@@ -3,6 +3,7 @@ const TOOL_META = {
   inventory_cycle: { action: "查询库存周期", conditionLabels: { materialNumber: "物料编码", materialName: "物料名称", subprojectNumber: "销售子项目编码", warehouseName: "仓库名称", warehouseScope: "查看范围", minimumDays: "最少库存周期" } },
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   overdue_receivables: { action: "统计超期未回款", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
+  receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
 };
@@ -46,10 +47,12 @@ els.tabs.forEach((tab) => tab.addEventListener("keydown", (event) => {
   const next = (visibleTabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
   visibleTabs[next]?.focus(); visibleTabs[next]?.click();
 }));
-const agingThresholdInput = document.querySelector('[data-panel="overdue_receivables"] [name="minimumDays"]');
-agingThresholdInput?.addEventListener("input", () => {
-  const value = Number(agingThresholdInput.value);
-  document.querySelector("#aging-threshold-badge").textContent = Number.isInteger(value) && value > 0 ? `${value + 1}+` : "AGE";
+document.querySelectorAll('[data-aging-threshold-input]').forEach((input) => {
+  input.addEventListener("input", () => {
+    const value = Number(input.value);
+    const badge = document.querySelector(`[data-aging-threshold-badge="${input.dataset.agingThresholdInput}"]`);
+    if (badge) badge.textContent = Number.isInteger(value) && value > 0 ? `${value + 1}+` : "AGE";
+  });
 });
 els.form.addEventListener("submit", runQuery);
 els.export.addEventListener("click", exportCsv);
@@ -136,7 +139,7 @@ function validateArguments(tool, args) {
   if (tool === "inventory_cycle" && !args.materialNumber && !args.materialName && !args.subprojectNumber && !args.warehouseName && args.warehouseScope === "all" && !(Number(args.minimumDays) > 0)) return "请至少填写物料、销售子项目或仓库条件中的一项，或填写最少库存周期。";
   if (tool === "inventory_cycle" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 0 || Number(args.minimumDays) > 3650)) return "最少库存周期应为 0 到 3650 之间的整数。";
   if (tool === "sales_orders" && !args.billNumber && !args.customerName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、客户名称或日期范围中的一项。";
-  if (tool === "overdue_receivables" && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
+  if (["overdue_receivables", "receivable_aging"].includes(tool) && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
   return "";
 }
@@ -261,6 +264,10 @@ function renderStatistics(statistics, tool = "") {
     renderInventoryCycleStatistics(statistics);
     return;
   }
+  if (tool === "receivable_aging" || statistics.type === "receivable_aging") {
+    renderReceivableAgingStatistics(statistics);
+    return;
+  }
   const strip = document.createElement("section");
   strip.className = "aging-summary";
   strip.setAttribute("aria-label", "超期未回款汇总");
@@ -274,6 +281,32 @@ function renderStatistics(statistics, tool = "") {
     ["完全未回款", `${statistics.completelyUnpaidCount} 个`, formatMoney(statistics.completelyUnpaidAmount)],
     ["部分回款未结清", `${statistics.partiallyPaidCount} 个`, formatMoney(statistics.partiallyPaidAmount)],
     ["最长超期发票账龄", `${statistics.oldestDays} 天`, "以子项目第一张超期发票开票日期起算"],
+  ];
+  items.forEach(([label, value, note, variant]) => {
+    const item = document.createElement("div");
+    item.className = `aging-stat${variant ? ` ${variant}` : ""}`;
+    if (variant === "primary") item.dataset.threshold = `${statistics.minimumDays + 1}+`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    item.append(labelNode, valueNode, noteNode); strip.append(item);
+  });
+  els.table.append(strip);
+}
+
+function renderReceivableAgingStatistics(statistics) {
+  const strip = document.createElement("section");
+  strip.className = "aging-summary";
+  strip.setAttribute("aria-label", "应收账龄汇总");
+  const items = [
+    ["应收未收款金额", formatMoney(statistics.outstandingAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
+    ["应收金额", formatMoney(statistics.receivableAmount), `${statistics.receivableBillCount} 张应收单`],
+    ["应收已收款金额", formatMoney(statistics.receivedAmount), "已分配到应收单的回款"],
+    ["应收未开票金额", formatMoney(statistics.unbilledAmount), `${statistics.unbilledCount} 个销售子项目`],
+    ["涉及客户", `${statistics.customerCount} 家`, `截至 ${statistics.asOfDate}`],
+    ["完全未回款", `${statistics.fullyUnpaidCount} 个`, formatMoney(statistics.fullyUnpaidAmount)],
+    ["部分回款未结清", `${statistics.partiallyPaidCount} 个`, formatMoney(statistics.partiallyPaidAmount)],
+    ["最长应收账龄", `${statistics.oldestDays} 天`, "以最早未收款应收单日期起算"],
   ];
   items.forEach(([label, value, note, variant]) => {
     const item = document.createElement("div");

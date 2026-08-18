@@ -16,7 +16,7 @@ module.exports = function openapi(config) {
             properties: {
               query: { type: "string", example: "查询物料 A100 在原料仓的库存" },
               user: { type: "string", description: "最终用户的金蝶登录账号；未传请求头时必填" },
-              tool: { type: "string", enum: ["inventory", "inventory_cycle", "sales_orders", "overdue_receivables", "purchase_orders", "expense_claims", "workflow_progress"] },
+              tool: { type: "string", enum: ["inventory", "inventory_cycle", "sales_orders", "overdue_receivables", "receivable_aging", "purchase_orders", "expense_claims", "workflow_progress"] },
               arguments: { type: "object", additionalProperties: true },
             }
           } } } },

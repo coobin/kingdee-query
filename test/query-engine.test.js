@@ -6,7 +6,9 @@ const {
   rowsToObjects,
   escapeValue,
   buildOverdueReceivableFilter,
+  buildReceivableAgingCandidateFilter,
   buildOverdueInvoiceFilter,
+  aggregateReceivableAging,
   aggregateOverdueReceivables,
 } = require("../src/query-engine");
 const catalog = require("../config/query-catalog.json");
@@ -67,6 +69,49 @@ test("builds the aging cutoff exclusively on sales invoice date", () => {
 test("rejects invalid overdue day thresholds", () => {
   assert.throws(() => buildOverdueReceivableFilter({ minimumDays: 0 }, "2026-08-13"), /1 到 3650/);
   assert.throws(() => buildOverdueReceivableFilter({ minimumDays: "180.5" }, "2026-08-13"), /1 到 3650/);
+});
+
+test("builds an AR-date aging filter without requiring an invoice", () => {
+  const result = buildReceivableAgingCandidateFilter({ minimumDays: 180, customerName: "客户'甲", subprojectNumber: "AR-SP" }, "2026-08-13");
+  assert.match(result.filter, /FDate<'2026-02-14'/);
+  assert.match(result.filter, /FNORECEIVEAMOUNT>0/);
+  assert.match(result.filter, /FALLAMOUNTFOR<>0/);
+  assert.doesNotMatch(result.filter, /FIVALLAMOUNTFOR/);
+  assert.match(result.filter, /客户''甲/);
+  assert.equal(result.accepted.cutoffDate, "2026-02-14");
+});
+
+test("aggregates overdue AR entries, including entries with no invoice", () => {
+  const result = aggregateReceivableAging([
+    { 应收单号: "AR1", 应收分录内码: 101, 应收日期: "2025-01-10T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-AR", 销售子项目名称: "应收项目", 应收单总额: 1000, 已收金额: 60, 未收金额: 40 },
+    { 应收单号: "AR1", 应收分录内码: 101, 应收日期: "2025-01-10T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-AR", 销售子项目名称: "应收项目", 应收单总额: 1000, 已收金额: 60, 未收金额: 40 },
+    { 应收单号: "AR2", 应收分录内码: 102, 应收日期: "2025-01-15T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-AR", 销售子项目名称: "应收项目", 应收单总额: 1000, 已收金额: 0, 未收金额: 50 },
+    { 应收单号: "AR3", 应收分录内码: 103, 应收日期: "2026-02-20T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-AR", 销售子项目名称: "应收项目", 应收单总额: 1000, 已收金额: 0, 未收金额: 80 },
+  ], {
+    invoiceWriteoffRows: [
+      { 来源单据号: "INV1", 目标单据号: "AR1", 目标分录内码: 101, 来源单据类型: "IV_SALESIC", 目标单据类型: "AR_receivable", 本次开票核销金额: 60 },
+    ],
+    paymentConditionRows: [{ 销售子项目编码: "SP-AR", 收款条件: "月结30天" }],
+    asOfDate: "2026-08-13",
+    minimumDays: 180,
+  });
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0], {
+    客户: "客户甲",
+    销售子项目编码: "SP-AR",
+    销售子项目名称: "应收项目",
+    应收账龄日期: "2025-01-10",
+    应收超期天数: 580,
+    应收单数: 2,
+    应收金额: 150,
+    应收已收款金额: 60,
+    应收未收款金额: 90,
+    应收未开票金额: 90,
+    回款状态: "部分回款未结清",
+    收款条件: "月结30天",
+  });
+  assert.equal(result.statistics.outstandingAmount, 90);
+  assert.equal(result.statistics.unbilledAmount, 90);
 });
 
 test("paginates every page when querying a source", async () => {
@@ -344,6 +389,37 @@ test("executes the overdue receivable tool with current business date and visibl
   assert.equal(result.rows[0]["已收款金额"], 75);
   assert.equal(result.rows[0]["应收未收款金额"], 25);
   assert.equal(result.rows[0]["未回款金额"], 25);
+});
+
+test("executes the independent AR aging tool and keeps unbilled AR in scope", async () => {
+  const requests = [];
+  const kingdee = { executeBillQuery: async (username, payload) => {
+    assert.equal(username, "240001");
+    requests.push(payload);
+    if (payload.FormId === "AR_RECEIVABLE") return [[1, 2001, "AR1", "2025-01-10T00:00:00", "客户甲", "SP-1", "应收项目", 100, 60, 40]];
+    if (payload.FormId === "AR_BILLINGMATCHRECORD") return [["BM1", "INV1", "AR1", 2001, "IV_SALESIC", "AR_receivable", 60, 60]];
+    if (payload.FormId === "PARA_SaleSubProject") return [["SP-1", "月结30天"]];
+    throw new Error(`unexpected form ${payload.FormId}`);
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 5000, aggregationMaxRows: 5000 } },
+    now: () => new Date("2026-08-13T03:00:00Z"),
+  });
+  const result = await engine.execute(identity, { tool: "receivable_aging", arguments: { minimumDays: 180, subprojectNumber: "SP-1", limit: 1 } });
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0].FormId, "AR_RECEIVABLE");
+  assert.match(requests[0].FilterString, /FDate<'2026-02-14'/);
+  assert.match(requests[0].FilterString, /FNORECEIVEAMOUNT>0/);
+  assert.equal(requests[1].FormId, "AR_BILLINGMATCHRECORD");
+  assert.equal(requests[2].FormId, "PARA_SaleSubProject");
+  assert.equal(result.tool, "receivable_aging");
+  assert.equal(result.rows[0]["应收账龄日期"], "2025-01-10");
+  assert.equal(result.rows[0]["应收已收款金额"], 60);
+  assert.equal(result.rows[0]["应收未收款金额"], 40);
+  assert.equal(result.rows[0]["应收未开票金额"], 40);
+  assert.equal(result.rows[0]["收款条件"], "月结30天");
 });
 
 test("keeps the list date tied to the overdue invoice query, not the full invoice query", async () => {

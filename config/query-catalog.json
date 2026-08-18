@@ -300,6 +300,69 @@
     },
     "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC,FBillNo ASC"
   },
+  "receivable_aging": {
+    "label": "应收账龄",
+    "description": "按应收单日期统计已形成应收且仍有未收款余额的销售子项目，并区分应收未开票金额",
+    "formId": "AR_RECEIVABLE",
+    "queryType": "receivable_aging",
+    "fields": [
+      ["FID", "应收内码"],
+      ["FEntityDetail_FENTRYID", "应收分录内码"],
+      ["FBillNo", "应收单号"],
+      ["FDate", "应收日期"],
+      ["FCustomerID.FName", "客户"],
+      ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+      ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+      ["FALLAMOUNTFOR", "应收单总额"],
+      ["FRECEIVEAMOUNT", "已收金额"],
+      ["FNORECEIVEAMOUNT", "未收金额"]
+    ],
+    "invoiceWriteoffSource": {
+      "formId": "AR_BILLINGMATCHRECORD",
+      "fields": [
+        ["FBillNo", "核销记录号"],
+        ["FSRCBILLNO", "来源单据号"],
+        ["FTargetBillNO", "目标单据号"],
+        ["FTargetEntryId", "目标分录内码"],
+        ["FSourceFromId", "来源单据类型"],
+        ["FTargetFromId", "目标单据类型"],
+        ["FCUROPENAMOUNTFOR", "本次开票核销金额"],
+        ["FOPENAMOUNTFOR", "累计开票核销金额"]
+      ],
+      "subprojectFilterField": "F_PARA_SRCSALESUBPROID.FNumber",
+      "defaultOrder": "FBillNo ASC"
+    },
+    "paymentConditionSource": {
+      "formId": "PARA_SaleSubProject",
+      "fields": [
+        ["FBillNo", "销售子项目编码"],
+        ["FRecConditionStr", "收款条件"]
+      ],
+      "subprojectFilterField": "FBillNo",
+      "filters": [],
+      "defaultOrder": "FBillNo ASC"
+    },
+    "publicColumns": [
+      "客户",
+      "销售子项目编码",
+      "销售子项目名称",
+      "应收账龄日期",
+      "应收超期天数",
+      "应收单数",
+      "应收金额",
+      "应收已收款金额",
+      "应收未收款金额",
+      "应收未开票金额",
+      "回款状态",
+      "收款条件"
+    ],
+    "filterFields": {
+      "minimumDays": "FDate",
+      "customerName": "FCustomerID.FName",
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber"
+    },
+    "defaultOrder": "FDate ASC,FBillNo ASC"
+  },
   "purchase_orders": {
     "label": "采购订单",
     "description": "查询采购订单编号、供应商、组织、金额和状态",

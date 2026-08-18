@@ -11,6 +11,7 @@ function localPlan(question) {
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
   else if (/采购|供应商/.test(text)) tool = "purchase_orders";
   else if (/库存周期|库存库龄|库存账龄|呆在仓库|呆滞物料|待签收/.test(text)) tool = "inventory_cycle";
+  else if (/按应收|应收单(?:超期|账龄|维度)|应收单和收款|应收和收款/.test(text)) tool = "receivable_aging";
   else if (/未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
   else if (/销售|客户|订单/.test(text)) tool = "sales_orders";
   else if (/库存|仓库|物料|存量/.test(text)) tool = "inventory";
@@ -48,7 +49,7 @@ function localPlan(question) {
   if (subproject) arguments_.subprojectNumber = subproject[1];
   if (applicant) arguments_.applicantName = applicant[1];
   if (/总金额|合计金额|金额合计|总计|一共.*(?:多少|金额)|累计.*金额/.test(text)) arguments_.aggregation = "sum_amount";
-  if (tool === "overdue_receivables") {
+  if (tool === "overdue_receivables" || tool === "receivable_aging") {
     const minimumDays = text.match(/(?:超过|超|大于)?\s*(\d{1,4})\s*天/);
     const customer = text.match(/客户(?:名称)?\s*[：:=是为]?\s*([^，。,.;；\s]{1,30})/);
     const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
