@@ -119,3 +119,15 @@ test("queries the validated warehouse and three document sources", async () => {
   assert.match(requests[2].FilterString, /FStockId\.FNumber IN/);
   assert.match(requests[3].FilterString, /FSrcStockId\.FNumber IN/);
 });
+
+test("rejects an inventory cycle query with only an age threshold", async () => {
+  const engine = new QueryEngine({
+    catalog,
+    kingdee: { executeBillQuery: async () => { throw new Error("should not query Kingdee"); } },
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 200, queryPageSize: 5000, aggregationMaxRows: 5000 } },
+  });
+  await assert.rejects(
+    () => engine.execute({ kingdeeUsername: "240001", name: "张三" }, { tool: "inventory_cycle", arguments: { minimumDays: 180 } }),
+    { message: "请至少填写物料编码、物料名称、仓库名称或销售子项目编码中的一项，不能只填写最少库存周期。" },
+  );
+});

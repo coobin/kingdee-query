@@ -378,12 +378,10 @@ class QueryEngine {
   }
 
   async inventoryCycle(identity, item, args) {
-    const hasDayFilter = Number.isInteger(Number(args.minimumDays)) && Number(args.minimumDays) > 0;
     const hasScopeFilter = [args.materialNumber, args.materialName, args.warehouseName, args.subprojectNumber].some((value) => String(value || "").trim())
-      || hasDayFilter
       || ["company", "project", "customer"].includes(String(args.warehouseScope || ""));
     if (!hasScopeFilter) {
-      throw Object.assign(new Error("请至少填写物料编码、物料名称、仓库名称或销售子项目编码中的一项。"), { statusCode: 400 });
+      throw Object.assign(new Error("请至少填写物料编码、物料名称、仓库名称或销售子项目编码中的一项，不能只填写最少库存周期。"), { statusCode: 400 });
     }
     const asOfDate = args.asOfDate ? isoDate(args.asOfDate) : businessDate(this.now());
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
