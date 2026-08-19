@@ -19,7 +19,7 @@
 - Dify API 仍支持常见中文问法，也可连接 OpenAI-compatible 模型进行查询规划
 - 提供带 Bearer 认证的 Dify API 和 OpenAPI Schema
 - 记录查询审计日志，并限制字段、过滤条件和最大返回行数
-- 预留只读的审批流程进度自定义 WebAPI
+- 使用金蝶标准只读对象查询本人发起流程的当前节点和处理人
 
 ## 工作方式
 
@@ -74,7 +74,6 @@ AUTH_MODE=dev
 | `KINGDEE_QUERY_PAGE_SIZE` | 发票账龄按销售子项目分页时每页读取行数，默认 5000，最大 5000 |
 | `KINGDEE_AGGREGATION_MAX_ROWS` | 其他汇总查询最大扫描行数；发票账龄按销售子项目分页读取 |
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
-| `KINGDEE_WORKFLOW_METHOD` | 可选的审批进度自定义 WebAPI 方法名 |
 | `AUDIT_LOG_PATH` | 查询审计日志路径 |
 | `LOCAL_AUTH_DATA_PATH` | 超级管理员和模块权限文件路径；只保存加盐密码摘要，不保存明文密码 |
 | `LOCAL_AUTH_SESSION_HOURS` | 超级管理员登录有效小时数，默认 8 小时 |
@@ -150,7 +149,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 - `overdue_risk_combined`：分别按可自定义的发票账龄和应收账龄计算未回款金额，按销售子项目比较后取较高口径
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
-- `workflow_progress`：我发起的流程和当前审批节点，需要自定义 WebAPI
+- `workflow_progress`：我发起且正在审批的流程、当前节点和当前处理人；使用金蝶标准只读对象 `WF_ProcInstBill`
 
 网页每次最多展示 100 条结果。销售和采购订单只返回业务可读字段，不展示金蝶内部主键；销售订单也不展示客户编码。
 
@@ -191,13 +190,9 @@ Compose 默认使用 `172.16.240.0/24`，避免 Docker 自动从 `192.168.0.0/16
 
 ## 审批进度
 
-标准单据查询不能直接返回流程节点和当前处理人。仓库提供了金蝶端只读自定义 WebAPI 源码和 WebUI 配置说明，见 [`kingdee-webapi/README.md`](kingdee-webapi/README.md)。部署后将方法名写入：
+查询台直接调用金蝶标准 `ExecuteBillQuery`，读取只读流程对象 `WF_ProcInstBill`。服务端固定按当前登录账号和“审批中”状态过滤，页面不能提交发起人、状态、表单对象或任意过滤表达式。
 
-```env
-KINGDEE_WORKFLOW_METHOD=Company.K3.WebApi.WorkflowQuery.GetMyProgress,Company.K3.WebApi
-```
-
-配置完成后，查询台的“我发起的流程”页签会显示单据编号、流程名称、当前节点、当前处理人、节点到达时间和发起时间。未配置时，目录仍会展示该能力，但标记为不可用。
+“我发起的流程”页签显示单据编号、流程名称、当前节点、当前处理人、节点到达时间和发起时间。该方案不安装 DLL，也不需要在金蝶云服务器部署自定义组件；使用现有 WebAPI 应用授权即可。
 
 ## 安全边界
 

@@ -86,7 +86,6 @@ function localPlan(question) {
   if (tool === "inventory" && !arguments_.materialNumber && quoted[0]) arguments_.materialName = quoted[0];
   if (tool === "workflow_progress") {
     arguments_.scope = "mine";
-    arguments_.formId = inferFormId(text);
     if (!arguments_.billNumber) {
       const looseBill = text.match(/\b([A-Za-z]{1,12}[A-Za-z0-9_-]*\d{3,})\b/);
       if (looseBill) arguments_.billNumber = looseBill[1];
@@ -95,20 +94,13 @@ function localPlan(question) {
   return { tool, arguments: arguments_, source: "local" };
 }
 
-function inferFormId(text) {
-  if (/报销/.test(text)) return "ER_ExpReimbursement";
-  if (/采购/.test(text)) return "PUR_PurchaseOrder";
-  if (/销售/.test(text)) return "SAL_SaleOrder";
-  return "";
-}
-
 async function aiPlan(question, catalog, config) {
   if (!config.ai.baseUrl || !config.ai.apiKey || !config.ai.model) return localPlan(question);
   const tools = Object.fromEntries(Object.entries(catalog).map(([id, item]) => [id, {
     description: item.description,
     arguments: Object.keys(item.filterFields).concat("limit", "aggregation（金额求和时固定为 sum_amount）"),
   }]));
-  tools.workflow_progress = { description: "查询当前用户发起的流程及当前审批节点", arguments: ["scope（固定为 mine）", "formId", "billNumber", "limit"] };
+  tools.workflow_progress = { description: "查询当前用户发起的流程及当前审批节点", arguments: ["scope（固定为 mine）", "billNumber", "limit"] };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.ai.timeoutMs);
   try {
@@ -139,4 +131,4 @@ async function aiPlan(question, catalog, config) {
 
 function ensureSlash(url) { return url.endsWith("/") ? url : `${url}/`; }
 
-module.exports = { localPlan, aiPlan, inferFormId };
+module.exports = { localPlan, aiPlan };

@@ -17,7 +17,6 @@ test("plans current month expense query", () => {
 test("plans expense workflow progress", () => {
   const plan = localPlan("报销单 BX202608120001 审批到哪里");
   assert.equal(plan.tool, "workflow_progress");
-  assert.equal(plan.arguments.formId, "ER_ExpReimbursement");
   assert.equal(plan.arguments.billNumber, "BX202608120001");
 });
 

@@ -22,10 +22,10 @@ function publicCatalog(catalog, workflowEnabled, canAccess = () => true) {
     tools.push({
       id: "workflow_progress",
       label: "审批进度",
-      description: workflowEnabled ? "查询我发起的流程当前节点和处理人" : "需要配置金蝶自定义工作流查询接口",
-      filters: ["billNumber", "formId"],
-      columns: ["单据编号", "表单", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"],
-      available: workflowEnabled,
+      description: "通过金蝶标准只读接口查询我发起流程的当前节点和处理人",
+      filters: ["billNumber"],
+      columns: ["单据编号", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"],
+      available: true,
     });
   }
   return tools;

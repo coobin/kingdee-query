@@ -50,36 +50,33 @@ function normalizeLimit(value, maxRows) {
   return Math.min(parsed, maxRows);
 }
 
-const workflowColumns = ["单据编号", "表单", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"];
+const workflowColumns = ["单据编号", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"];
+const workflowFieldKeys = [
+  "FNumber",
+  "FCreateTime",
+  "FProcDefName",
+  "FStatus",
+  "FAssignCreateTime",
+  "FRECEIVERNAMES",
+  "FACTIVITYNAME",
+];
 
-function workflowRows(payload) {
-  const rows = Array.isArray(payload?.Rows)
-    ? payload.Rows
-    : Array.isArray(payload?.rows)
-      ? payload.rows
-      : Array.isArray(payload?.Data)
-        ? payload.Data
-        : Array.isArray(payload?.data)
-          ? payload.data
-          : [];
-  return rows.map((row) => {
-    const nodes = Array.isArray(row.CurrentNodes) ? row.CurrentNodes : [];
-    const nodeNames = nodes.map((node) => String(node.NodeName || node.nodeName || "").trim()).filter(Boolean);
-    const handlers = nodes.flatMap((node) => Array.isArray(node.Handlers) ? node.Handlers : [])
-      .map((handler) => String(handler.Name || handler.name || handler.Account || handler.account || "").trim())
-      .filter(Boolean);
-    const arrivalTimes = nodes.map((node) => node.ArrivalTime || node.arrivalTime).filter(Boolean);
-    return {
-      单据编号: row.BillNo || row.billNo || row.BillNumber || row.billNumber || "",
-      表单: row.FormId || row.formId || "",
-      流程名称: row.ProcessName || row.processName || "",
-      当前节点: nodeNames.join("、") || row.CurrentNodeName || row.currentNodeName || "",
-      当前处理人: [...new Set(handlers)].join("、") || row.ReceiverNames || row.receiverNames || "",
-      节点到达时间: arrivalTimes[0] || row.ArrivalTime || row.arrivalTime || "",
-      发起时间: row.CreatedTime || row.createdTime || "",
-      状态: row.StatusName || row.statusName || row.Status || row.status || "审批中",
-    };
-  });
+function workflowBillNumber(processNumber) {
+  const value = String(processNumber || "").trim();
+  const matched = value.match(/^(.+)_\d{14}$/);
+  return matched ? matched[1] : value;
+}
+
+function workflowRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    单据编号: workflowBillNumber(row[0]),
+    流程名称: row[2] || "",
+    当前节点: row[6] || "",
+    当前处理人: row[5] || "",
+    节点到达时间: row[4] || "",
+    发起时间: row[1] || "",
+    状态: String(row[3] || "") === "2" ? "审批中" : (row[3] || ""),
+  }));
 }
 
 function normalizeMinimumDays(value) {
@@ -592,25 +589,33 @@ class QueryEngine {
 
   async workflow(identity, args) {
     const billNumber = String(args.billNumber || "").trim();
-    const formId = String(args.formId || "").trim();
-    const payload = await this.kingdee.workflowProgress(
-      identity.kingdeeUsername,
-      this.config.kingdee.workflowMethod,
-      { Scope: "Mine", ...(formId ? { FormId: formId } : {}), ...(billNumber ? { Number: billNumber } : {}) },
-    );
-    const allRows = workflowRows(payload);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
-    const rows = allRows.slice(0, limit);
-    const query = { scope: "mine", ...(formId ? { formId } : {}), ...(billNumber ? { billNumber } : {}) };
+    const filters = [
+      `FOriginatorId.FUserAccount='${escapeValue(identity.kingdeeUsername)}'`,
+      "FStatus='2'",
+    ];
+    if (billNumber) filters.push(`FNumber LIKE '${escapeValue(billNumber)}%'`);
+    const rawRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+      FormId: "WF_ProcInstBill",
+      FieldKeys: workflowFieldKeys.join(","),
+      FilterString: filters.join(" AND "),
+      OrderString: "FCreateTime DESC",
+      TopRowCount: 0,
+      StartRow: 0,
+      Limit: limit + 1,
+    });
+    const truncated = rawRows.length > limit;
+    const rows = workflowRows(rawRows.slice(0, limit));
+    const query = { scope: "mine", status: "审批中", ...(billNumber ? { billNumber } : {}) };
     return {
       tool: "workflow_progress",
       label: "我发起的流程",
       query,
       columns: workflowColumns,
       rows,
-      count: allRows.length,
-      truncated: Boolean(payload?.Truncated || payload?.truncated) || allRows.length > limit,
-      summary: allRows.length ? `找到 ${allRows.length} 条我发起的流程。` : "没有找到正在审批的流程。",
+      count: rows.length,
+      truncated,
+      summary: rows.length ? `找到 ${rows.length}${truncated ? " 条以上" : " 条"}我发起且正在审批的流程。` : "没有找到正在审批的流程。",
     };
   }
 }

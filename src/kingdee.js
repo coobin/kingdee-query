@@ -114,10 +114,6 @@ class KingdeeClient {
     return result;
   }
 
-  async workflowProgress(username, method, args) {
-    if (!method) throw new KingdeeError("尚未配置工作流进度自定义 WebAPI");
-    return this.call(username, method, [JSON.stringify(args)]);
-  }
 }
 
 module.exports = { KingdeeClient, KingdeeError };

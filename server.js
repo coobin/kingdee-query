@@ -37,7 +37,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/healthz", (req, res) => res.json({ ok: true, service: "kingdee-query-hub", workflowQuery: Boolean(config.kingdee.workflowMethod) }));
+app.get("/healthz", (req, res) => res.json({ ok: true, service: "kingdee-query-hub", workflowQuery: true, workflowSource: "WF_ProcInstBill" }));
 app.use(express.static(path.join(__dirname, "public"), { index: false, maxAge: process.env.NODE_ENV === "production" ? "1h" : 0 }));
 app.get("/login", (req, res) => {
   if (accessControl.readSession(req.headers.cookie)?.isSuperAdmin) return res.redirect(302, "/admin");
@@ -134,7 +134,7 @@ app.post("/api/local-auth/logout", requireSameOrigin, (req, res) => {
 const web = express.Router();
 web.use(browserAuth(config, accessControl));
 web.get("/session", (req, res) => res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model) }));
-web.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, Boolean(config.kingdee.workflowMethod), (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
+web.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, true, (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
 web.post("/query", asyncRoute(async (req, res) => {
   const question = String(req.body?.question || "").slice(0, 1000);
   const plan = req.body?.tool ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "explicit" } : await aiPlan(question, catalog, config);
@@ -246,7 +246,7 @@ app.use("/api/admin", admin);
 
 const dify = express.Router();
 dify.use(difyAuth(config));
-dify.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, Boolean(config.kingdee.workflowMethod), (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
+dify.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, true, (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
 dify.post("/query", asyncRoute(async (req, res) => {
   const question = String(req.body?.query || req.body?.question || "").slice(0, 1000);
   const plan = req.body?.tool

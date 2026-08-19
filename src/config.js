@@ -80,7 +80,6 @@ module.exports = {
     maxRows: Math.min(number("KINGDEE_MAX_ROWS", 200), 1000),
     queryPageSize: Math.min(number("KINGDEE_QUERY_PAGE_SIZE", 5000), 5000),
     aggregationMaxRows: Math.min(number("KINGDEE_AGGREGATION_MAX_ROWS", 5000), 10000),
-    workflowMethod: process.env.KINGDEE_WORKFLOW_METHOD || "",
   },
   ai: {
     baseUrl: process.env.AI_BASE_URL || "",
