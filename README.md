@@ -18,7 +18,7 @@
 - 网页使用结构化查询表单，避免自然语言误判
 - Dify API 仍支持常见中文问法，也可连接 OpenAI-compatible 模型进行查询规划
 - 提供带 Bearer 认证的 Dify API 和 OpenAPI Schema
-- 记录查询审计日志，并限制字段、过滤条件和最大返回行数
+- 记录登录、退出、查询和管理操作审计日志，并在管理员 WebUI 中查看
 - 使用金蝶标准只读对象查询本人发起流程的当前节点和处理人
 
 ## 工作方式
@@ -74,7 +74,9 @@ AUTH_MODE=dev
 | `KINGDEE_QUERY_PAGE_SIZE` | 发票账龄按销售子项目分页时每页读取行数，默认 5000，最大 5000 |
 | `KINGDEE_AGGREGATION_MAX_ROWS` | 其他汇总查询最大扫描行数；发票账龄按销售子项目分页读取 |
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
-| `AUDIT_LOG_PATH` | 查询审计日志路径 |
+| `AUDIT_LOG_PATH` | 操作审计日志路径 |
+| `AUDIT_MAX_BYTES` | 单个审计日志文件上限，默认 10 MiB |
+| `AUDIT_MAX_FILES` | 保留的轮转日志文件数，默认 10 |
 | `LOCAL_AUTH_DATA_PATH` | 超级管理员和模块权限文件路径；只保存加盐密码摘要，不保存明文密码 |
 | `LOCAL_AUTH_SESSION_HOURS` | 超级管理员登录有效小时数，默认 8 小时 |
 | `LOCAL_AUTH_COOKIE_SECURE` | HTTPS 部署时设为 `true`；未填写时根据 `APP_BASE_URL` 判断 |
@@ -183,6 +185,8 @@ curl http://127.0.0.1:8092/healthz
 ```
 
 容器以非 root 用户运行，审计日志默认写入 `data/audit.ndjson`。该目录已被 Git 忽略。
+
+审计日志记录 SSO/管理员登录、退出、查询模块、查询条件、结果数量、成功或失败、耗时、来源 IP 和浏览器标识，不记录密码、密钥或查询结果明细。超级管理员可在 `/admin` 的“操作日志”区域查看最近 500 条记录。日志达到 `AUDIT_MAX_BYTES` 后自动轮转，并按 `AUDIT_MAX_FILES` 控制保留数量。
 
 Compose 默认使用 `172.16.240.0/24`，避免 Docker 自动从 `192.168.0.0/16` 分配网络而与企业内网冲突。若该网段在你的环境中已被使用，请在 `.env` 中把 `DOCKER_SUBNET` 改为经过网络管理员确认的空闲私有网段；不要使用与公司路由重叠的地址段。
 

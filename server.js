@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const config = require("./src/config");
 const { browserAuth, difyAuth, requireSuperAdmin, requireSameOrigin } = require("./src/auth");
 const { loadCatalog, publicCatalog } = require("./src/catalog");
-const { createAuditLogger } = require("./src/audit");
+const { createAuditLogger, readAuditEvents } = require("./src/audit");
 const { AccessControl, normalizeIdentifier } = require("./src/access-control");
 const { KingdeeClient, KingdeeError } = require("./src/kingdee");
 const { QueryEngine } = require("./src/query-engine");
@@ -21,7 +21,7 @@ const moduleIds = [...Object.keys(catalog), "workflow_progress"];
 const accessControl = new AccessControl({ ...config.localAuth, moduleIds });
 const kingdee = new KingdeeClient(config.kingdee);
 const engine = new QueryEngine({ catalog, kingdee, config });
-const audit = createAuditLogger(config.auditPath);
+const audit = createAuditLogger(config.auditPath, config.audit);
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", config.trustProxy);
@@ -58,18 +58,19 @@ app.post("/api/local-auth/login", requireSameOrigin, (req, res) => {
   const password = String(req.body?.password || "").slice(0, 300);
   const attemptKey = `${req.ip}:${normalizeIdentifier(username)}`;
   if (accessControl.isLoginBlocked(attemptKey)) {
+    audit({ requestId: req.requestId, outcome: "error", channel: "local_admin", user: normalizeIdentifier(username), action: "login", error: "rate_limited", ip: req.ip, userAgent: requestUserAgent(req) });
     return res.status(429).json({ error: "login_rate_limited", message: "登录失败次数过多，请 15 分钟后再试。" });
   }
   const identity = accessControl.authenticate(username, password);
   if (!identity) {
     accessControl.recordLoginFailure(attemptKey);
-    audit({ requestId: req.requestId, outcome: "error", channel: "local_admin", user: normalizeIdentifier(username), action: "login", error: "invalid_credentials", ip: req.ip });
+    audit({ requestId: req.requestId, outcome: "error", channel: "local_admin", user: normalizeIdentifier(username), action: "login", error: "invalid_credentials", ip: req.ip, userAgent: requestUserAgent(req) });
     return res.status(401).json({ error: "invalid_credentials", message: "用户名或密码不正确。" });
   }
   accessControl.clearLoginFailures(attemptKey);
   const token = accessControl.createSession(identity);
   res.setHeader("Set-Cookie", accessControl.sessionCookie(token));
-  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: identity.adminUsername, action: "login", ip: req.ip });
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: identity.adminUsername, userName: identity.name, action: "login", ip: req.ip, userAgent: requestUserAgent(req) });
   res.json({ ok: true, user: publicIdentity(identity), redirect: "/admin" });
 });
 
@@ -121,24 +122,30 @@ app.post("/api/local-auth/passkey/login/verify", requireSameOrigin, asyncRoute(a
   const identity = accessControl.adminIdentity(accessControl.findAdmin(admin.username));
   const token = accessControl.createSession(identity);
   res.setHeader("Set-Cookie", [accessControl.sessionCookie(token), accessControl.clearPasskeyChallengeCookie()]);
-  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin_passkey", user: identity.adminUsername, action: "passkey.login", ip: req.ip });
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin_passkey", user: identity.adminUsername, userName: identity.name, action: "passkey.login", ip: req.ip, userAgent: requestUserAgent(req) });
   res.json({ ok: true, user: publicIdentity(identity), redirect: "/admin" });
 }));
 
 app.post("/api/local-auth/logout", requireSameOrigin, (req, res) => {
+  const identity = accessControl.readSession(req.headers.cookie);
   accessControl.revokeSession(req.headers.cookie);
   res.setHeader("Set-Cookie", accessControl.clearCookie());
+  if (identity) audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: identity.adminUsername, userName: identity.name, action: "logout", ip: req.ip, userAgent: requestUserAgent(req) });
   res.json({ ok: true, redirect: "/login" });
 });
 
 const web = express.Router();
 web.use(browserAuth(config, accessControl));
-web.get("/session", (req, res) => res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model) }));
+web.get("/session", (req, res) => {
+  if (req.identity.channel === "browser") {
+    audit({ ...identityAudit(req), outcome: "success", action: "login" });
+  }
+  res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model) });
+});
 web.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, true, (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
 web.post("/query", asyncRoute(async (req, res) => {
   const question = String(req.body?.question || "").slice(0, 1000);
   const plan = req.body?.tool ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "explicit" } : await aiPlan(question, catalog, config);
-  enforceModuleAccess(req.identity, plan.tool);
   const result = await executeAndAudit(req, plan, question);
   res.json({ plan, result, requestId: req.requestId });
 }));
@@ -153,6 +160,10 @@ admin.get("/settings", (req, res) => res.json({
   modules: moduleIds.map((id) => ({ id, label: id === "workflow_progress" ? "审批进度" : catalog[id].label, description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description })),
   moduleAccess: accessControl.getModuleAccess(),
 }));
+admin.get("/audit", (req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
+  res.json({ events: readAuditEvents(config.auditPath, { limit, maxFiles: config.audit.maxFiles }) });
+});
 admin.post("/passkeys/register/options", requireSameOrigin, asyncRoute(async (req, res) => {
   requirePasskeyAvailable();
   const target = String(req.body?.username || req.identity.adminUsername).trim();
@@ -252,7 +263,6 @@ dify.post("/query", asyncRoute(async (req, res) => {
   const plan = req.body?.tool
     ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "dify-explicit" }
     : await aiPlan(question, catalog, config);
-  enforceModuleAccess(req.identity, plan.tool);
   const result = await executeAndAudit(req, plan, question);
   res.json({ answer: result.summary, data: result, plan, request_id: req.requestId });
 }));
@@ -264,11 +274,12 @@ app.get("/openapi.json", (req, res) => res.json(require("./src/openapi")(config)
 async function executeAndAudit(req, plan, question) {
   const started = Date.now();
   try {
+    enforceModuleAccess(req.identity, plan.tool);
     const result = await engine.execute(req.identity, plan);
-    audit({ requestId: req.requestId, outcome: "success", channel: req.identity.channel, user: req.identity.kingdeeUsername, tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, count: result.count, durationMs: Date.now() - started, ip: req.ip });
+    audit({ ...identityAudit(req), action: "query", outcome: "success", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
-    audit({ requestId: req.requestId, outcome: "error", channel: req.identity.channel, user: req.identity.kingdeeUsername, tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, error: error.message, durationMs: Date.now() - started, ip: req.ip });
+    audit({ ...identityAudit(req), action: "query", outcome: "error", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, error: error.message, durationMs: Date.now() - started });
     throw error;
   }
 }
@@ -284,6 +295,18 @@ function toBase64Url(value) { return Buffer.from(value).toString("base64url"); }
 function fromBase64Url(value) { return new Uint8Array(Buffer.from(String(value), "base64url")); }
 function enforceModuleAccess(identity, moduleId) {
   if (!accessControl.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
+}
+function requestUserAgent(req) { return String(req.headers["user-agent"] || "").slice(0, 300); }
+function identityAudit(req) {
+  return {
+    requestId: req.requestId,
+    channel: req.identity.channel,
+    user: req.identity.kingdeeUsername || req.identity.adminUsername || req.identity.userId,
+    userId: req.identity.userId || "",
+    userName: req.identity.name || "",
+    ip: req.ip,
+    userAgent: requestUserAgent(req),
+  };
 }
 function sanitizeArguments(args) { return Object.fromEntries(Object.entries(args || {}).filter(([key]) => !/secret|password|token/i.test(key))); }
 function asyncRoute(handler) { return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next); }

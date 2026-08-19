@@ -89,6 +89,10 @@ module.exports = {
   },
   catalogPath: process.env.QUERY_CATALOG_PATH || path.join(__dirname, "..", "config", "query-catalog.json"),
   auditPath: process.env.AUDIT_LOG_PATH || path.join(__dirname, "..", "data", "audit.ndjson"),
+  audit: {
+    maxBytes: Math.min(Math.max(number("AUDIT_MAX_BYTES", 10 * 1024 * 1024), 1024 * 1024), 100 * 1024 * 1024),
+    maxFiles: Math.min(Math.max(Math.floor(number("AUDIT_MAX_FILES", 10)), 1), 50),
+  },
   logLevel: process.env.LOG_LEVEL || "info",
   trustProxy: bool("TRUST_PROXY", true),
 };

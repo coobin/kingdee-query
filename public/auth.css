@@ -95,6 +95,26 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .module-card label { display: grid; gap: 7px; }
 .field-hint { color: var(--muted); font-size: 9px; line-height: 1.55; }
 .settings-section > .admin-message { margin-top: 18px; }
+.audit-toolbar { display: grid; grid-template-columns: 210px minmax(260px, 1fr) auto; gap: 14px; align-items: end; margin: 20px 0 14px; }
+.audit-toolbar label { display: grid; gap: 7px; }
+.audit-toolbar label > span { font-size: 11px; font-weight: 700; }
+.audit-toolbar select { width: 100%; height: 48px; padding: 0 12px; border: 1px solid var(--line); border-radius: 0; color: var(--ink); background: var(--paper); font: inherit; }
+.audit-toolbar .read-only-badge { min-height: 32px; display: inline-flex; align-items: center; white-space: nowrap; }
+.audit-table-wrap { max-height: 560px; overflow: auto; border: 1px solid var(--line); }
+.audit-table { width: 100%; min-width: 960px; border-collapse: collapse; font-size: 11px; }
+.audit-table th { position: sticky; top: 0; z-index: 1; padding: 11px 12px; color: white; background: var(--forest); text-align: left; font-size: 10px; letter-spacing: .04em; }
+.audit-table td { max-width: 420px; padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.5; }
+.audit-table tbody tr:nth-child(even) { background: var(--paper); }
+.audit-table tbody tr:hover { background: #eef6f1; }
+.audit-time, .audit-ip { white-space: nowrap; font-family: var(--utility); font-size: 10px; }
+.audit-person strong, .audit-person small { display: block; }
+.audit-person small { margin-top: 2px; color: var(--muted); font-family: var(--utility); font-size: 9px; }
+.audit-detail { overflow-wrap: anywhere; }
+.audit-outcome { display: inline-block; padding: 3px 6px; font-size: 9px; font-weight: 700; }
+.audit-outcome.success { color: var(--forest); background: var(--mint); }
+.audit-outcome.error { color: var(--red); background: #fff1ef; }
+.audit-table td > small { color: var(--muted); font-size: 9px; }
+.audit-empty { padding: 32px !important; color: var(--muted); text-align: center; }
 .admin-list { display: grid; gap: 1px; margin-top: 22px; background: var(--line); border: 1px solid var(--line); }
 .admin-card { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 22px; align-items: end; padding: 19px; background: var(--paper); }
 .admin-card-identity { display: flex; align-items: center; gap: 12px; align-self: center; }
@@ -128,6 +148,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .login-intro { min-height: 480px; border-right: 0; border-bottom: 1px solid var(--line); }
   .login-card { min-height: 480px; }
   .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audit-toolbar { grid-template-columns: 1fr 1fr; }
+  .audit-toolbar .read-only-badge { grid-column: 1 / -1; justify-self: start; }
   .admin-card { grid-template-columns: 1fr; align-items: stretch; }
   .passkey-panel { grid-column: auto; }
   .admin-card-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -154,6 +176,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .primary-action { width: 100%; }
   .module-explainer { grid-template-columns: auto 1fr; }
   .module-grid { grid-template-columns: 1fr; }
+  .audit-toolbar { grid-template-columns: 1fr; }
+  .audit-toolbar .read-only-badge { grid-column: auto; }
   .admin-card-fields, .admin-fields { grid-template-columns: 1fr; }
   .admin-card-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .create-admin-heading, .admin-form-footer { align-items: stretch; flex-direction: column; }
