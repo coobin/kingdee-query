@@ -131,7 +131,7 @@
 
           <section class="query-panel" id="panel-overdue_risk_combined" role="tabpanel" aria-labelledby="tab-overdue_risk_combined" data-panel="overdue_risk_combined" hidden>
             <div class="panel-copy"><h3>统计超期风险合并</h3><p>分别计算发票和应收单口径的未回款风险金额，比较后取较高口径；两个账龄天数可以独立调整。</p></div>
-            <div class="scope-lock aging-lock"><span aria-hidden="true">MAX</span><div><strong>按项目取较高风险口径</strong><small>并列展示 A、B 两个金额，避免重复相加。</small></div></div>
+            <div class="scope-lock aging-lock"><span aria-hidden="true">MAX</span><div><strong>按项目取较高风险口径</strong></div></div>
             <div class="field-grid">
               <label class="field"><span>发票超过天数 <b>必填</b></span><input name="invoiceDays" type="number" min="1" max="3650" step="1" value="180" required></label>
               <label class="field"><span>应收超过天数 <b>必填</b></span><input name="receivableDays" type="number" min="1" max="3650" step="1" value="270" required></label>
@@ -152,7 +152,7 @@
 
           <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>
             <div class="panel-copy"><h3>查询我的报销单</h3><p>只查询当前登录人的单据，选择要查看的申请日期范围。</p></div>
-            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人</strong><small>申请人由 SSO 身份确定，页面无法修改。</small></div></div>
+            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人</strong></div></div>
             <div class="field-grid">
               <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
               <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
@@ -162,7 +162,7 @@
 
           <section class="query-panel" id="panel-workflow_progress" role="tabpanel" aria-labelledby="tab-workflow_progress" data-panel="workflow_progress" hidden>
             <div class="panel-copy"><h3>查询我发起的流程</h3><p>只查询当前登录人发起且仍在审批中的流程，直接显示当前节点和处理人。</p></div>
-            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人发起</strong><small>发起人由金蝶当前登录身份确定，页面不能修改。</small></div></div>
+            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人发起</strong></div></div>
             <div class="field-grid one-column">
               <label class="field"><span>单据编号</span><input name="billNumber" type="text" maxlength="80" placeholder="不填则显示全部本人在审流程" autocomplete="off"></label>
             </div>
