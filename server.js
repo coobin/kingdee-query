@@ -157,7 +157,13 @@ admin.get("/settings", (req, res) => res.json({
   currentAdmin: req.identity.adminUsername,
   passkey: { enabled: config.passkey.enabled, available: config.passkey.enabled && config.passkey.available, rpName: config.passkey.rpName },
   admins: accessControl.listAdmins(),
-  modules: moduleIds.map((id) => ({ id, label: id === "workflow_progress" ? "审批进度" : catalog[id].label, description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description })),
+  modules: moduleIds.map((id) => ({
+    id,
+    label: id === "workflow_progress" ? "审批进度" : catalog[id].label,
+    description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description,
+    selfScoped: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
+    defaultOpen: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
+  })),
   moduleAccess: accessControl.getModuleAccess(),
 }));
 admin.get("/audit", (req, res) => {

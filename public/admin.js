@@ -161,13 +161,15 @@ function renderModules() {
     const description = document.createElement("small"); description.textContent = module.description;
     title.append(strong, description); head.append(number, title);
     const label = document.createElement("label");
-    const labelText = document.createElement("span"); labelText.textContent = "允许查看的金蝶用户";
+    const labelText = document.createElement("span"); labelText.textContent = module.selfScoped ? "允许查看的金蝶用户（可选）" : "允许查看的金蝶用户";
     const textarea = document.createElement("textarea");
     textarea.rows = 4;
     textarea.placeholder = "例如：张三";
     const hint = document.createElement("small");
     hint.className = "field-hint";
-    hint.textContent = "直接填写金蝶用户名；多个用户请每行填写一个，也可以用逗号分隔。";
+    hint.textContent = module.selfScoped
+      ? "该模块只返回本人数据，名单留空时默认向所有已登录用户开放。"
+      : "直接填写金蝶用户名；多个用户请每行填写一个，也可以用逗号分隔。";
     textarea.value = (state.settings.moduleAccess[module.id] || []).join("\n");
     textarea.addEventListener("input", () => card.classList.toggle("restricted", Boolean(parsePeople(textarea.value).length)));
     label.append(labelText, textarea, hint); card.append(head, label);

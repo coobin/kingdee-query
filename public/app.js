@@ -9,7 +9,7 @@ const TOOL_META = {
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
-const state = { selectedTool: readSelectedTool(), lastResult: null, tableRows: [], tableSort: { column: "", direction: 1 }, tools: [], accessibleTools: new Set() };
+const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   toolList: document.querySelector("#tool-list"), form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), formError: document.querySelector("#form-error"),
@@ -69,6 +69,8 @@ function selectTool(tool, focus = true) {
   els.button.querySelector("span").textContent = TOOL_META[tool].action;
   els.formError.hidden = true;
   document.querySelectorAll(".tool[data-tool-id]").forEach((item) => item.classList.toggle("active", item.dataset.toolId === tool));
+  renderSelectedResult();
+  syncLoadingState();
   if (focus) els.panels.find((panel) => panel.dataset.panel === tool)?.querySelector("input")?.focus();
 }
 
@@ -99,31 +101,34 @@ function applyCatalogAccess(tools) {
 
 async function runQuery(event) {
   event.preventDefault();
-  const activePanel = els.panels.find((panel) => panel.dataset.panel === state.selectedTool);
+  const tool = state.selectedTool;
+  const activePanel = els.panels.find((panel) => panel.dataset.panel === tool);
   const invalid = activePanel.querySelector(":invalid");
   if (invalid) { invalid.focus(); showFormError("请先填写所有必填条件。"); return; }
   const arguments_ = collectArguments(activePanel);
-  const error = validateArguments(state.selectedTool, arguments_);
+  const error = validateArguments(tool, arguments_);
   if (error) { showFormError(error); return; }
   els.formError.hidden = true;
-  setLoading(true);
-  els.panel.hidden = false;
-  els.tool.textContent = "QUERY IN PROGRESS";
-  els.summary.textContent = "正在向金蝶读取数据…";
-  els.plan.textContent = "";
-  els.table.innerHTML = "";
-  els.panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  state.loadingTools.add(tool);
+  state.resultViews.set(tool, { status: "loading", payload: null, tableRows: [], tableSort: { column: "", direction: 1 } });
+  if (state.selectedTool === tool) {
+    renderSelectedResult();
+    syncLoadingState();
+    els.panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   try {
-    const question = `${TOOL_META[state.selectedTool].action}（结构化表单）`;
-    const payload = await api("/api/query", { method: "POST", body: JSON.stringify({ tool: state.selectedTool, arguments: arguments_, question }) });
-    state.lastResult = payload.result;
-    renderResult(payload);
+    const question = `${TOOL_META[tool].action}（结构化表单）`;
+    const payload = await api("/api/query", { method: "POST", body: JSON.stringify({ tool, arguments: arguments_, question }) });
+    state.resultViews.set(tool, { status: "success", payload, tableRows: [], tableSort: { column: "", direction: 1 } });
   } catch (error_) {
-    els.tool.textContent = "QUERY STOPPED";
-    els.summary.textContent = "这次查询没有完成";
-    els.table.innerHTML = `<div class="error-box">${escapeHtml(error_.message)}${error_.requestId ? `<br><small>请求编号：${escapeHtml(error_.requestId)}</small>` : ""}</div>`;
-    els.export.hidden = true;
-  } finally { setLoading(false); }
+    state.resultViews.set(tool, { status: "error", message: error_.message, requestId: error_.requestId || "", tableRows: [], tableSort: { column: "", direction: 1 } });
+  } finally {
+    state.loadingTools.delete(tool);
+    if (state.selectedTool === tool) {
+      renderSelectedResult();
+      syncLoadingState();
+    }
+  }
 }
 
 function collectArguments(panel) {
@@ -171,10 +176,35 @@ function renderTools(tools) {
   }));
 }
 
-function renderResult(payload) {
+function renderSelectedResult() {
+  const view = state.resultViews.get(state.selectedTool);
+  if (!view) {
+    els.panel.hidden = true;
+    els.export.hidden = true;
+    return;
+  }
+  els.panel.hidden = false;
+  els.plan.replaceChildren();
+  els.table.replaceChildren();
+  if (view.status === "loading") {
+    els.tool.textContent = "QUERY IN PROGRESS";
+    els.summary.textContent = "正在向金蝶读取数据…";
+    els.export.hidden = true;
+    return;
+  }
+  if (view.status === "error") {
+    els.tool.textContent = "QUERY STOPPED";
+    els.summary.textContent = "这次查询没有完成";
+    els.table.innerHTML = `<div class="error-box">${escapeHtml(view.message)}${view.requestId ? `<br><small>请求编号：${escapeHtml(view.requestId)}</small>` : ""}</div>`;
+    els.export.hidden = true;
+    return;
+  }
+  renderResult(view);
+}
+
+function renderResult(view) {
+  const { payload } = view;
   const { result, plan } = payload;
-  state.tableSort = { column: "", direction: 1 };
-  state.tableRows = [];
   els.tool.textContent = `${result.label || plan.tool} · ${String(result.count ?? 0).padStart(2, "0")} ROWS`;
   els.summary.textContent = result.summary || "查询完成";
   const labels = TOOL_META[plan.tool]?.conditionLabels || {};
@@ -194,42 +224,42 @@ function renderResult(payload) {
     els.export.hidden = true;
     return;
   }
-  renderResultTable(result);
+  renderResultTable(result, view);
   els.export.hidden = false;
 }
 
-function renderResultTable(result) {
+function renderResultTable(result, view) {
   els.table.querySelector("table")?.remove();
   const table = document.createElement("table");
   const thead = document.createElement("thead"); const headRow = document.createElement("tr");
   result.columns.forEach((column) => {
     const th = document.createElement("th");
     th.scope = "col";
-    const active = state.tableSort.column === column;
-    th.setAttribute("aria-sort", active ? (state.tableSort.direction === 1 ? "ascending" : "descending") : "none");
+    const active = view.tableSort.column === column;
+    th.setAttribute("aria-sort", active ? (view.tableSort.direction === 1 ? "ascending" : "descending") : "none");
     const button = document.createElement("button");
     button.type = "button";
     button.className = "table-sort";
-    button.setAttribute("aria-label", `按${column}${active && state.tableSort.direction === -1 ? "降序" : "升序"}排序`);
+    button.setAttribute("aria-label", `按${column}${active && view.tableSort.direction === -1 ? "降序" : "升序"}排序`);
     const label = document.createElement("span"); label.textContent = column;
     const indicator = document.createElement("span");
     indicator.className = "table-sort-indicator";
     indicator.setAttribute("aria-hidden", "true");
-    indicator.textContent = active ? (state.tableSort.direction === 1 ? "↑" : "↓") : "↕";
+    indicator.textContent = active ? (view.tableSort.direction === 1 ? "↑" : "↓") : "↕";
     button.append(label, indicator);
     button.addEventListener("click", () => {
-      state.tableSort = {
+      view.tableSort = {
         column,
-        direction: active ? state.tableSort.direction * -1 : 1,
+        direction: active ? view.tableSort.direction * -1 : 1,
       };
-      renderResultTable(result);
+      renderResultTable(result, view);
     });
     th.append(button); headRow.append(th);
   });
   thead.append(headRow); table.append(thead);
   const tbody = document.createElement("tbody");
-  state.tableRows = sortRows(result.rows, state.tableSort);
-  state.tableRows.forEach((row) => {
+  view.tableRows = sortRows(result.rows, view.tableSort);
+  view.tableRows.forEach((row) => {
     const tr = document.createElement("tr");
     result.columns.forEach((column) => { const td = document.createElement("td"); td.textContent = formatCell(row[column], column); tr.append(td); });
     tbody.append(tr);
@@ -373,11 +403,11 @@ function renderInventoryCycleStatistics(statistics) {
   els.table.append(strip);
 }
 
-function setLoading(loading) { els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
+function syncLoadingState() { const loading = state.loadingTools.has(state.selectedTool); els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
 function formatCell(value, column) { if (value == null || value === "") return "—"; if (/金额/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
 async function api(url, options = {}) { const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(payload.message || `请求失败 (${response.status})`), payload); return payload; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
-function exportCsv() { const result = state.lastResult; const rows = Array.isArray(state.tableRows) ? state.tableRows : result?.rows; if (!result?.columns?.length || !rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }
+function exportCsv() { const view = state.resultViews.get(state.selectedTool); const result = view?.payload?.result; const rows = Array.isArray(view?.tableRows) ? view.tableRows : result?.rows; if (!result?.columns?.length || !rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }
