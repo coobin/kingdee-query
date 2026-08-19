@@ -85,6 +85,7 @@ function localPlan(question) {
   }
   if (tool === "inventory" && !arguments_.materialNumber && quoted[0]) arguments_.materialName = quoted[0];
   if (tool === "workflow_progress") {
+    arguments_.scope = "mine";
     arguments_.formId = inferFormId(text);
     if (!arguments_.billNumber) {
       const looseBill = text.match(/\b([A-Za-z]{1,12}[A-Za-z0-9_-]*\d{3,})\b/);
@@ -107,7 +108,7 @@ async function aiPlan(question, catalog, config) {
     description: item.description,
     arguments: Object.keys(item.filterFields).concat("limit", "aggregation（金额求和时固定为 sum_amount）"),
   }]));
-  tools.workflow_progress = { description: "查询某张单据当前审批节点和历史", arguments: ["formId", "billNumber"] };
+  tools.workflow_progress = { description: "查询当前用户发起的流程及当前审批节点", arguments: ["scope（固定为 mine）", "formId", "billNumber", "limit"] };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.ai.timeoutMs);
   try {

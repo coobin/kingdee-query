@@ -50,6 +50,38 @@ function normalizeLimit(value, maxRows) {
   return Math.min(parsed, maxRows);
 }
 
+const workflowColumns = ["单据编号", "表单", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"];
+
+function workflowRows(payload) {
+  const rows = Array.isArray(payload?.Rows)
+    ? payload.Rows
+    : Array.isArray(payload?.rows)
+      ? payload.rows
+      : Array.isArray(payload?.Data)
+        ? payload.Data
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : [];
+  return rows.map((row) => {
+    const nodes = Array.isArray(row.CurrentNodes) ? row.CurrentNodes : [];
+    const nodeNames = nodes.map((node) => String(node.NodeName || node.nodeName || "").trim()).filter(Boolean);
+    const handlers = nodes.flatMap((node) => Array.isArray(node.Handlers) ? node.Handlers : [])
+      .map((handler) => String(handler.Name || handler.name || handler.Account || handler.account || "").trim())
+      .filter(Boolean);
+    const arrivalTimes = nodes.map((node) => node.ArrivalTime || node.arrivalTime).filter(Boolean);
+    return {
+      单据编号: row.BillNo || row.billNo || row.BillNumber || row.billNumber || "",
+      表单: row.FormId || row.formId || "",
+      流程名称: row.ProcessName || row.processName || "",
+      当前节点: nodeNames.join("、") || row.CurrentNodeName || row.currentNodeName || "",
+      当前处理人: [...new Set(handlers)].join("、") || row.ReceiverNames || row.receiverNames || "",
+      节点到达时间: arrivalTimes[0] || row.ArrivalTime || row.arrivalTime || "",
+      发起时间: row.CreatedTime || row.createdTime || "",
+      状态: row.StatusName || row.statusName || row.Status || row.status || "审批中",
+    };
+  });
+}
+
 function normalizeMinimumDays(value) {
   const parsed = Number(value == null || value === "" ? 180 : value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3650) {
@@ -561,21 +593,24 @@ class QueryEngine {
   async workflow(identity, args) {
     const billNumber = String(args.billNumber || "").trim();
     const formId = String(args.formId || "").trim();
-    if (!billNumber || !formId) {
-      throw Object.assign(new Error("查询审批进度需要 formId 和 billNumber。"), { statusCode: 400 });
-    }
     const payload = await this.kingdee.workflowProgress(
       identity.kingdeeUsername,
       this.config.kingdee.workflowMethod,
-      { FormId: formId, Number: billNumber },
+      { Scope: "Mine", ...(formId ? { FormId: formId } : {}), ...(billNumber ? { Number: billNumber } : {}) },
     );
+    const allRows = workflowRows(payload);
+    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const rows = allRows.slice(0, limit);
+    const query = { scope: "mine", ...(formId ? { formId } : {}), ...(billNumber ? { billNumber } : {}) };
     return {
       tool: "workflow_progress",
-      label: "审批进度",
-      query: { formId, billNumber },
-      workflow: payload,
-      count: 1,
-      summary: `已取得单据 ${billNumber} 的审批进度。`,
+      label: "我发起的流程",
+      query,
+      columns: workflowColumns,
+      rows,
+      count: allRows.length,
+      truncated: Boolean(payload?.Truncated || payload?.truncated) || allRows.length > limit,
+      summary: allRows.length ? `找到 ${allRows.length} 条我发起的流程。` : "没有找到正在审批的流程。",
     };
   }
 }
@@ -1268,4 +1303,5 @@ module.exports = {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  workflowRows,
 };

@@ -21,6 +21,13 @@ test("plans expense workflow progress", () => {
   assert.equal(plan.arguments.billNumber, "BX202608120001");
 });
 
+test("plans a current user's workflow list", () => {
+  const plan = localPlan("查询我发起的流程到哪个节点了");
+  assert.equal(plan.tool, "workflow_progress");
+  assert.equal(plan.arguments.scope, "mine");
+  assert.equal(plan.arguments.billNumber, undefined);
+});
+
 test("plans historical expense amount aggregation", () => {
   const plan = localPlan("我历史报销的总金额是多少");
   assert.equal(plan.tool, "expense_claims");

@@ -150,7 +150,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 - `overdue_risk_combined`：分别按可自定义的发票账龄和应收账龄计算未回款金额，按销售子项目比较后取较高口径
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
-- `workflow_progress`：审批进度，需要自定义 WebAPI
+- `workflow_progress`：我发起的流程和当前审批节点，需要自定义 WebAPI
 
 网页每次最多展示 100 条结果。销售和采购订单只返回业务可读字段，不展示金蝶内部主键；销售订单也不展示客户编码。
 
@@ -191,13 +191,13 @@ Compose 默认使用 `172.16.240.0/24`，避免 Docker 自动从 `192.168.0.0/16
 
 ## 审批进度
 
-标准单据查询不能直接返回完整审批轨迹。部署只读自定义 WebAPI 后，将方法名写入：
+标准单据查询不能直接返回流程节点和当前处理人。仓库提供了金蝶端只读自定义 WebAPI 源码和 WebUI 配置说明，见 [`kingdee-webapi/README.md`](kingdee-webapi/README.md)。部署后将方法名写入：
 
 ```env
-KINGDEE_WORKFLOW_METHOD=Company.K3.WebApi.WorkflowQuery.GetProgress,Company.K3.WebApi
+KINGDEE_WORKFLOW_METHOD=Company.K3.WebApi.WorkflowQuery.GetMyProgress,Company.K3.WebApi
 ```
 
-未配置时，目录仍会展示该能力，但标记为不可用。
+配置完成后，查询台的“我发起的流程”页签会显示单据编号、流程名称、当前节点、当前处理人、节点到达时间和发起时间。未配置时，目录仍会展示该能力，但标记为不可用。
 
 ## 安全边界
 

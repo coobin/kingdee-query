@@ -11,6 +11,7 @@ const {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  workflowRows,
 } = require("../src/query-engine");
 const catalog = require("../config/query-catalog.json");
 
@@ -46,6 +47,50 @@ test("maps document status codes to readable Chinese labels", () => {
   const mappings = { 审核状态: { A: "已创建", B: "审核中", C: "已审核" } };
   assert.deepEqual(rowsToObjects([["BX001", "C"]], fields, mappings), [{ 单据编号: "BX001", 审核状态: "已审核" }]);
   assert.deepEqual(rowsToObjects([["BX002", "X"]], fields, mappings), [{ 单据编号: "BX002", 审核状态: "其他状态" }]);
+});
+
+test("maps current workflow nodes and handlers to read-only columns", () => {
+  assert.deepEqual(workflowRows({ Rows: [{
+    BillNo: "FYBX20260803000026",
+    FormId: "ER_ExpReimbursement",
+    ProcessName: "费用报销单",
+    CreatedTime: "2026-08-10T00:30:15.893",
+    StatusName: "审批中",
+    CurrentNodes: [{
+      NodeName: "二级部门主管审核",
+      ArrivalTime: "2026-08-10T00:30:17.177",
+      Handlers: [{ Account: "240498", Name: "田凯" }],
+    }],
+  }] }), [{
+    单据编号: "FYBX20260803000026",
+    表单: "ER_ExpReimbursement",
+    流程名称: "费用报销单",
+    当前节点: "二级部门主管审核",
+    当前处理人: "田凯",
+    节点到达时间: "2026-08-10T00:30:17.177",
+    发起时间: "2026-08-10T00:30:15.893",
+    状态: "审批中",
+  }]);
+});
+
+test("queries my workflows without requiring a bill number", async () => {
+  const requests = [];
+  const kingdee = { workflowProgress: async (username, method, args) => {
+    assert.equal(username, "240001");
+    assert.equal(method, "Company.K3.WebApi.WorkflowQuery.GetMyProgress,Company.K3.WebApi");
+    requests.push(args);
+    return { Rows: [{ BillNo: "BX001", CurrentNodes: [{ NodeName: "部门审核", Handlers: [{ Name: "李四" }] }] }] };
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, workflowMethod: "Company.K3.WebApi.WorkflowQuery.GetMyProgress,Company.K3.WebApi" } },
+  });
+  const result = await engine.workflow(identity, { limit: 20 });
+  assert.deepEqual(requests, [{ Scope: "Mine" }]);
+  assert.equal(result.count, 1);
+  assert.equal(result.rows[0].当前节点, "部门审核");
+  assert.equal(result.rows[0].当前处理人, "李四");
 });
 
 test("builds a strict over-180-day invoiced receivable filter", () => {

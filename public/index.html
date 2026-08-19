@@ -64,6 +64,9 @@
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-expense_claims" id="tab-expense_claims" data-tool="expense_claims">
             <span>个人</span><strong>费用报销</strong>
           </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-workflow_progress" id="tab-workflow_progress" data-tool="workflow_progress">
+            <span>流程</span><strong>我发起的流程</strong>
+          </button>
         </div>
 
         <form id="query-form" novalidate>
@@ -157,6 +160,14 @@
             <label class="check-field"><input name="aggregation" type="checkbox" value="sum_amount" checked><span><strong>计算区间总金额</strong><small>同时展示报销单数量与整单金额合计</small></span></label>
           </section>
 
+          <section class="query-panel" id="panel-workflow_progress" role="tabpanel" aria-labelledby="tab-workflow_progress" data-panel="workflow_progress" hidden>
+            <div class="panel-copy"><h3>查询我发起的流程</h3><p>只查询当前登录人发起且仍在审批中的流程，直接显示当前节点和处理人。</p></div>
+            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人发起</strong><small>发起人由金蝶当前登录身份确定，页面不能修改。</small></div></div>
+            <div class="field-grid one-column">
+              <label class="field"><span>单据编号</span><input name="billNumber" type="text" maxlength="80" placeholder="不填则显示全部本人在审流程" autocomplete="off"></label>
+            </div>
+          </section>
+
           <div class="form-error" id="form-error" role="alert" hidden></div>
           <div class="query-actions">
             <button id="query-button" type="submit"><span>查询即时库存</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
@@ -182,6 +193,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260818-2" defer></script>
+  <script src="/app.js?v=20260819-1" defer></script>
 </body>
 </html>
