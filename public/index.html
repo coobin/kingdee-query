@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260818-2">
+  <link rel="stylesheet" href="/styles.css?v=20260819-3">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -18,6 +18,7 @@
     <div class="session" id="session">
       <span class="status-dot" aria-hidden="true"></span>
       <span id="session-label">正在确认身份</span>
+      <span class="service-state"><span>服务</span><strong id="service-status">连接中</strong></span>
       <a id="admin-link" href="/admin" hidden>管理设置</a>
     </div>
   </header>
@@ -25,18 +26,17 @@
   <main>
     <section class="workspace" aria-labelledby="page-title">
       <div class="intro">
-        <p class="eyebrow">STRUCTURED QUERY · 无需猜测</p>
-        <h1 id="page-title">选择业务，填入条件，<em>直接查询金蝶。</em></h1>
+        <div>
+          <p class="eyebrow">KINGDEE DATA</p>
+          <h1 id="page-title">业务查询</h1>
+        </div>
+        <p>选择模块，填写条件后直接查询。</p>
       </div>
 
       <section class="query-card" aria-labelledby="query-title">
-        <div class="ledger-rule" aria-hidden="true"><span>QUERY FORM / 001</span></div>
         <div class="query-card-head">
-          <div>
-            <p class="eyebrow">选择查询类型</p>
-            <h2 id="query-title">你要查哪类数据？</h2>
-          </div>
-          <span class="read-only-stamp">只读</span>
+          <h2 id="query-title">选择模块</h2>
+          <span class="read-only-stamp">只读查询</span>
         </div>
 
         <div class="query-tabs" role="tablist" aria-label="查询类型">
@@ -151,8 +151,7 @@
           </section>
 
           <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>
-            <div class="panel-copy"><h3>查询我的报销单</h3><p>只查询当前登录人的单据，选择要查看的申请日期范围。</p></div>
-            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人</strong></div></div>
+            <div class="panel-copy"><h3>费用报销</h3><p>按申请日期查询报销单。</p></div>
             <div class="field-grid">
               <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
               <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
@@ -161,8 +160,7 @@
           </section>
 
           <section class="query-panel" id="panel-workflow_progress" role="tabpanel" aria-labelledby="tab-workflow_progress" data-panel="workflow_progress" hidden>
-            <div class="panel-copy"><h3>查询我发起的流程</h3><p>只查询当前登录人发起且仍在审批中的流程，直接显示当前节点和处理人。</p></div>
-            <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>查询范围：仅本人发起</strong></div></div>
+            <div class="panel-copy"><h3>我发起的流程</h3><p>查看在审流程的当前节点和处理人。</p></div>
             <div class="field-grid one-column">
               <label class="field"><span>单据编号</span><input name="billNumber" type="text" maxlength="80" placeholder="不填则显示全部本人在审流程" autocomplete="off"></label>
             </div>
@@ -184,15 +182,9 @@
         <div class="table-wrap" id="table-wrap"></div>
       </section>
     </section>
-
-    <aside class="scope" aria-labelledby="scope-title">
-      <div class="scope-head"><p class="eyebrow">QUERY BOUNDARY</p><h2 id="scope-title">查询边界</h2></div>
-      <div class="tool-list" id="tool-list"><div class="tool-skeleton"></div><div class="tool-skeleton"></div><div class="tool-skeleton"></div></div>
-      <footer><span>服务状态</span><strong id="service-status">连接中</strong></footer>
-    </aside>
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260819-2" defer></script>
+  <script src="/app.js?v=20260819-3" defer></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ const TOOL_META = {
 const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
-  toolList: document.querySelector("#tool-list"), form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), formError: document.querySelector("#form-error"),
+  form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), actions: document.querySelector(".query-actions"), formError: document.querySelector("#form-error"),
   tabs: [...document.querySelectorAll("[data-tool]")], panels: [...document.querySelectorAll("[data-panel]")], panel: document.querySelector("#result-panel"),
   tool: document.querySelector("#result-tool"), summary: document.querySelector("#result-summary"), plan: document.querySelector("#plan-strip"),
   table: document.querySelector("#table-wrap"), export: document.querySelector("#export-button"),
@@ -31,12 +31,11 @@ async function initialize() {
     els.service.textContent = "READY";
     state.tools = catalog.tools;
     applyCatalogAccess(catalog.tools);
-    renderTools(catalog.tools);
   } catch (error) {
     els.session.classList.add("error");
     els.sessionLabel.textContent = "需要通过 SSO 登录";
     els.service.textContent = "AUTH REQUIRED";
-    els.toolList.innerHTML = `<div class="error-box">${escapeHtml(error.message)}</div>`;
+    showFormError(error.message);
     els.button.disabled = true;
   }
 }
@@ -66,12 +65,17 @@ function selectTool(tool, focus = true) {
   persistSelectedTool(tool);
   els.tabs.forEach((tab) => { const active = tab.dataset.tool === tool; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
   els.panels.forEach((panel) => { panel.hidden = panel.dataset.panel !== tool; });
+  placeQueryAction(els.panels.find((panel) => panel.dataset.panel === tool));
   els.button.querySelector("span").textContent = TOOL_META[tool].action;
   els.formError.hidden = true;
-  document.querySelectorAll(".tool[data-tool-id]").forEach((item) => item.classList.toggle("active", item.dataset.toolId === tool));
   renderSelectedResult();
   syncLoadingState();
   if (focus) els.panels.find((panel) => panel.dataset.panel === tool)?.querySelector("input")?.focus();
+}
+
+function placeQueryAction(panel) {
+  const fields = panel?.querySelector(".field-grid");
+  if (fields && els.actions) fields.insertAdjacentElement("afterend", els.actions);
 }
 
 function readSelectedTool() {
@@ -161,19 +165,6 @@ function setDefaultDates() {
   const panel = document.querySelector('[data-panel="expense_claims"]');
   panel.querySelector('[name="dateFrom"]').value = start;
   panel.querySelector('[name="dateTo"]').value = end;
-}
-
-function renderTools(tools) {
-  const visible = tools.filter((tool) => TOOL_META[tool.id] || tool.id === "workflow_progress");
-  els.toolList.replaceChildren(...visible.map((tool) => {
-    const item = document.createElement(TOOL_META[tool.id] ? "button" : "div");
-    if (item.tagName === "BUTTON") item.type = "button";
-    item.className = `tool ${tool.id === state.selectedTool ? "active" : ""}`;
-    item.dataset.toolId = tool.id;
-    item.innerHTML = `<div><strong>${escapeHtml(tool.label)}</strong><p>${escapeHtml(tool.description)}</p></div><span class="tool-state ${tool.available === false ? "off" : ""}" title="${tool.available === false ? "待配置" : "可用"}"></span>`;
-    if (TOOL_META[tool.id]) item.addEventListener("click", () => { selectTool(tool.id); document.querySelector(".query-card").scrollIntoView({ behavior: "smooth", block: "start" }); });
-    return item;
-  }));
 }
 
 function renderSelectedResult() {
