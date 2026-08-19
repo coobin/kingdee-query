@@ -7,6 +7,7 @@ const auditMessage = document.querySelector("#audit-message");
 const auditRows = document.querySelector("#audit-rows");
 const auditSearch = document.querySelector("#audit-search");
 const auditAction = document.querySelector("#audit-action");
+const auditTableWrap = document.querySelector(".audit-table-wrap");
 
 const ACTION_LABELS = {
   login: "登录系统",
@@ -149,6 +150,13 @@ function formatAuditTime(value) {
 document.querySelector("#refresh-audit").addEventListener("click", loadAudit);
 auditSearch.addEventListener("input", renderAudit);
 auditAction.addEventListener("change", renderAudit);
+auditTableWrap.addEventListener("wheel", (event) => {
+  if (event.ctrlKey || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+  const maximum = auditTableWrap.scrollHeight - auditTableWrap.clientHeight;
+  const reachedTop = event.deltaY < 0 && auditTableWrap.scrollTop <= 0;
+  const reachedBottom = event.deltaY > 0 && auditTableWrap.scrollTop >= maximum - 1;
+  if (maximum <= 0 || reachedTop || reachedBottom) event.preventDefault();
+}, { passive: false });
 
 function renderModules() {
   moduleGrid.replaceChildren(...state.settings.modules.map((module, index) => {
