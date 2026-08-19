@@ -208,6 +208,38 @@ function rowsToObjects(rows, fields, valueMappings = {}) {
   })));
 }
 
+function combinedBaseData(number, name) {
+  const cleanNumber = String(number || "").trim();
+  const cleanName = String(name || "").trim();
+  if (cleanNumber && cleanName && cleanNumber !== cleanName) return `${cleanNumber} · ${cleanName}`;
+  return cleanName || cleanNumber;
+}
+
+function combinedDateRange(from, to) {
+  const start = String(from || "").slice(0, 10);
+  const end = String(to || "").slice(0, 10);
+  if (start && end && start !== end) return `${start} 至 ${end}`;
+  return start || end;
+}
+
+function mapExpenseDetailRows(rows, source) {
+  return rowsToObjects(rows, source.fields, source.valueMappings).map((row, index) => ({
+    序号: index + 1,
+    费用项目: row.费用项目 || "",
+    报销类型: row.报销类型 || "",
+    费用承担部门: row.费用承担部门 || "",
+    销售项目: combinedBaseData(row.销售项目编码, row.销售项目名称),
+    销售子项目: combinedBaseData(row.销售子项目编码, row.销售子项目名称),
+    费用日期: combinedDateRange(row.费用开始日期, row.费用结束日期),
+    备注: row.备注 || "",
+    费用金额: roundMoney(row.费用金额),
+    税额: roundMoney(row.税额),
+    申请报销金额: roundMoney(row.申请报销金额),
+    核定报销金额: roundMoney(row.核定报销金额),
+    未付款金额: roundMoney(row.未付款金额),
+  }));
+}
+
 class QueryEngine {
   constructor({ catalog, kingdee, config, now = () => new Date() }) {
     this.catalog = catalog;
@@ -253,6 +285,65 @@ class QueryEngine {
       truncated: aggregation ? aggregate.partial : rows.length >= limit,
       aggregate,
       summary: aggregate ? summarizeAggregate(item.label, aggregate) : summarize(item.label, objects, rows.length >= limit),
+    };
+  }
+
+  async expenseDetails(identity, billNumber) {
+    const item = this.catalog.expense_claims;
+    const source = item?.detailSource;
+    if (!item || !source) throw Object.assign(new Error("费用报销明细查询尚未配置。"), { statusCode: 503 });
+    const normalizedBillNumber = String(billNumber || "").trim();
+    if (!normalizedBillNumber || normalizedBillNumber.length > 80) {
+      throw Object.assign(new Error("单据编号不正确。"), { statusCode: 400 });
+    }
+    const { filter } = buildFilter(item, { billNumber: normalizedBillNumber }, identity, this.config);
+    const headerRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+      FormId: item.formId,
+      FieldKeys: "FBillNo,FExpAmountSum",
+      FilterString: filter,
+      OrderString: "",
+      StartRow: 0,
+      Limit: 1,
+      TopRowCount: 0,
+    });
+    if (!headerRows.length) {
+      throw Object.assign(new Error("没有找到这张费用报销单，或当前账号无权查看。"), { statusCode: 404 });
+    }
+    const maximum = Math.min(Math.max(Number(source.maxRows) || 200, 1), 500);
+    const rawRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+      FormId: item.formId,
+      FieldKeys: source.fields.map(([key]) => key).join(","),
+      FilterString: filter,
+      OrderString: source.defaultOrder || "FEntity_FENTRYID ASC",
+      StartRow: 0,
+      Limit: maximum + 1,
+      TopRowCount: 0,
+    });
+    const truncated = rawRows.length > maximum;
+    const rows = mapExpenseDetailRows(rawRows.slice(0, maximum), source);
+    const totals = Object.fromEntries(source.amountColumns.map((column) => [
+      column,
+      roundMoney(rows.reduce((sum, row) => sum + (Number(row[column]) || 0), 0)),
+    ]));
+    const headerAmount = roundMoney(headerRows[0][1]);
+    const detailAmount = totals["申请报销金额"] || 0;
+    const difference = roundMoney(headerAmount - detailAmount);
+    return {
+      tool: "expense_claims",
+      label: "费用报销明细",
+      billNumber: normalizedBillNumber,
+      columns: source.publicColumns,
+      rows,
+      count: rows.length,
+      truncated,
+      totals,
+      reconciliation: {
+        headerAmount,
+        detailAmount,
+        difference,
+        matches: Math.abs(difference) < 0.01,
+      },
+      summary: truncated ? `已显示前 ${maximum} 条报销明细` : `共 ${rows.length} 条报销明细`,
     };
   }
 
@@ -1308,5 +1399,6 @@ module.exports = {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  mapExpenseDetailRows,
   workflowRows,
 };

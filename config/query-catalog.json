@@ -468,6 +468,53 @@
         "D": "重新审核"
       }
     },
+    "detailSource": {
+      "fields": [
+        ["FEntity_FENTRYID", "明细内码"],
+        ["FExpID.FName", "费用项目"],
+        ["F_PARA_ExType", "报销类型"],
+        ["FExpenseDeptEntryID.FName", "费用承担部门"],
+        ["F_PARA_SaleProId.FNumber", "销售项目编码"],
+        ["F_PARA_SaleProId.FName", "销售项目名称"],
+        ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+        ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+        ["F_ora_BDate", "费用开始日期"],
+        ["F_ora_EDate", "费用结束日期"],
+        ["FRemark", "备注"],
+        ["FTaxSubmitAmt", "费用金额"],
+        ["FTaxAmt", "税额"],
+        ["FExpenseAmount", "申请报销金额"],
+        ["FExpSubmitAmount", "核定报销金额"],
+        ["FReimbNotPayAmount", "未付款金额"]
+      ],
+      "publicColumns": [
+        "序号",
+        "费用项目",
+        "报销类型",
+        "费用承担部门",
+        "销售项目",
+        "销售子项目",
+        "费用日期",
+        "备注",
+        "费用金额",
+        "税额",
+        "申请报销金额",
+        "核定报销金额",
+        "未付款金额"
+      ],
+      "amountColumns": ["费用金额", "税额", "申请报销金额", "核定报销金额", "未付款金额"],
+      "valueMappings": {
+        "报销类型": {
+          "A": "专项",
+          "B": "日常",
+          "C": "差旅",
+          "D": "部门",
+          "E": "行政"
+        }
+      },
+      "defaultOrder": "FEntity_FENTRYID ASC",
+      "maxRows": 200
+    },
     "requiresFilter": true,
     "forceSelfScope": true
   }

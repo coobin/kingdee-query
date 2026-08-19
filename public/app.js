@@ -221,8 +221,20 @@ function renderResult(view) {
 
 function renderResultTable(result, view) {
   els.table.querySelector("table")?.remove();
+  const expandable = result.tool === "expense_claims";
+  if (expandable) {
+    view.expenseDetails ||= new Map();
+    view.expandedBills ||= new Set();
+  }
   const table = document.createElement("table");
   const thead = document.createElement("thead"); const headRow = document.createElement("tr");
+  if (expandable) {
+    const detailHead = document.createElement("th");
+    detailHead.scope = "col";
+    detailHead.className = "expense-expand-column";
+    detailHead.setAttribute("aria-label", "报销明细");
+    headRow.append(detailHead);
+  }
   result.columns.forEach((column) => {
     const th = document.createElement("th");
     th.scope = "col";
@@ -252,10 +264,120 @@ function renderResultTable(result, view) {
   view.tableRows = sortRows(result.rows, view.tableSort);
   view.tableRows.forEach((row) => {
     const tr = document.createElement("tr");
+    const billNumber = String(row["单据编号"] || "");
+    if (expandable) {
+      const expanded = view.expandedBills.has(billNumber);
+      const controlCell = document.createElement("td");
+      controlCell.className = "expense-expand-column";
+      const control = document.createElement("button");
+      control.type = "button";
+      control.className = `expense-expand${expanded ? " expanded" : ""}`;
+      control.setAttribute("aria-expanded", String(expanded));
+      control.setAttribute("aria-label", `${expanded ? "收起" : "展开"}${billNumber}的报销明细`);
+      control.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg>';
+      control.addEventListener("click", () => toggleExpenseDetails(result, view, billNumber));
+      controlCell.append(control);
+      tr.append(controlCell);
+    }
     result.columns.forEach((column) => { const td = document.createElement("td"); td.textContent = formatCell(row[column], column); tr.append(td); });
     tbody.append(tr);
+    if (expandable && view.expandedBills.has(billNumber)) tbody.append(renderExpenseDetailRow(result, view, billNumber));
   });
   table.append(tbody); els.table.append(table);
+}
+
+function toggleExpenseDetails(result, view, billNumber) {
+  if (view.expandedBills.has(billNumber)) {
+    view.expandedBills.delete(billNumber);
+    renderResultTable(result, view);
+    return;
+  }
+  view.expandedBills.add(billNumber);
+  renderResultTable(result, view);
+  if (!view.expenseDetails.has(billNumber)) loadExpenseDetails(result, view, billNumber);
+}
+
+async function loadExpenseDetails(result, view, billNumber) {
+  view.expenseDetails.set(billNumber, { status: "loading" });
+  refreshExpenseTable(result, view);
+  try {
+    const payload = await api(`/api/expense-claims/${encodeURIComponent(billNumber)}/details`);
+    view.expenseDetails.set(billNumber, { status: "success", result: payload.result });
+  } catch (error) {
+    view.expenseDetails.set(billNumber, { status: "error", message: error.message, requestId: error.requestId || "" });
+  }
+  refreshExpenseTable(result, view);
+}
+
+function refreshExpenseTable(result, view) {
+  if (state.selectedTool === "expense_claims" && state.resultViews.get("expense_claims") === view) renderResultTable(result, view);
+}
+
+function renderExpenseDetailRow(result, view, billNumber) {
+  const tr = document.createElement("tr");
+  tr.className = "expense-detail-row";
+  const td = document.createElement("td");
+  td.colSpan = result.columns.length + 1;
+  const shell = document.createElement("div");
+  shell.className = "expense-detail-shell";
+  const detailView = view.expenseDetails.get(billNumber);
+  if (!detailView || detailView.status === "loading") {
+    shell.classList.add("loading");
+    shell.textContent = "正在读取报销明细…";
+  } else if (detailView.status === "error") {
+    const message = document.createElement("span");
+    message.textContent = `${detailView.message}${detailView.requestId ? `（请求编号：${detailView.requestId}）` : ""}`;
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "expense-detail-retry";
+    retry.textContent = "重新加载";
+    retry.addEventListener("click", () => loadExpenseDetails(result, view, billNumber));
+    shell.classList.add("error");
+    shell.append(message, retry);
+  } else {
+    renderExpenseDetails(shell, detailView.result);
+  }
+  td.append(shell); tr.append(td); return tr;
+}
+
+function renderExpenseDetails(shell, detail) {
+  const heading = document.createElement("div");
+  heading.className = "expense-detail-heading";
+  const title = document.createElement("div");
+  const strong = document.createElement("strong"); strong.textContent = `${detail.billNumber} · ${detail.summary}`;
+  const amountCheck = document.createElement("small");
+  amountCheck.textContent = `单据总金额 ${formatMoney(detail.reconciliation.headerAmount)} · 明细申请报销金额 ${formatMoney(detail.reconciliation.detailAmount)}`;
+  title.append(strong, amountCheck);
+  const badge = document.createElement("span");
+  badge.className = `expense-reconciliation ${detail.reconciliation.matches ? "matched" : "mismatched"}`;
+  badge.textContent = detail.reconciliation.matches ? "金额已核对" : `相差 ${formatMoney(Math.abs(detail.reconciliation.difference))}`;
+  heading.append(title, badge); shell.append(heading);
+  if (!detail.rows.length) {
+    const empty = document.createElement("p"); empty.className = "expense-detail-empty"; empty.textContent = "这张报销单没有可显示的费用明细。"; shell.append(empty); return;
+  }
+  const scroll = document.createElement("div"); scroll.className = "expense-detail-scroll";
+  const table = document.createElement("table"); table.className = "expense-detail-table";
+  const thead = document.createElement("thead"); const headRow = document.createElement("tr");
+  detail.columns.forEach((column) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = column; headRow.append(th); });
+  thead.append(headRow); table.append(thead);
+  const tbody = document.createElement("tbody");
+  detail.rows.forEach((row) => {
+    const rowNode = document.createElement("tr");
+    detail.columns.forEach((column) => { const cell = document.createElement("td"); cell.textContent = formatCell(row[column], column); rowNode.append(cell); });
+    tbody.append(rowNode);
+  });
+  table.append(tbody);
+  const tfoot = document.createElement("tfoot"); const totalRow = document.createElement("tr");
+  detail.columns.forEach((column) => {
+    const cell = document.createElement("td");
+    if (column === "费用项目") cell.textContent = "合计";
+    else if (Object.hasOwn(detail.totals, column)) cell.textContent = formatMoney(detail.totals[column]);
+    totalRow.append(cell);
+  });
+  tfoot.append(totalRow); table.append(tfoot); scroll.append(table); shell.append(scroll);
+  if (detail.truncated) {
+    const warning = document.createElement("p"); warning.className = "expense-detail-warning"; warning.textContent = "明细数量已达到显示上限，当前合计可能不完整。"; shell.append(warning);
+  }
 }
 
 function sortRows(rows, sort) {
@@ -395,7 +517,7 @@ function renderInventoryCycleStatistics(statistics) {
 }
 
 function syncLoadingState() { const loading = state.loadingTools.has(state.selectedTool); els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
-function formatCell(value, column) { if (value == null || value === "") return "—"; if (/金额/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
+function formatCell(value, column) { if (value == null || value === "") return "—"; if (/(?:金额|税额)/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }

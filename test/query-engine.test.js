@@ -11,6 +11,7 @@ const {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  mapExpenseDetailRows,
   workflowRows,
 } = require("../src/query-engine");
 const catalog = require("../config/query-catalog.json");
@@ -47,6 +48,70 @@ test("maps document status codes to readable Chinese labels", () => {
   const mappings = { 审核状态: { A: "已创建", B: "审核中", C: "已审核" } };
   assert.deepEqual(rowsToObjects([["BX001", "C"]], fields, mappings), [{ 单据编号: "BX001", 审核状态: "已审核" }]);
   assert.deepEqual(rowsToObjects([["BX002", "X"]], fields, mappings), [{ 单据编号: "BX002", 审核状态: "其他状态" }]);
+});
+
+test("maps expense entry fields without exposing internal or bank fields", () => {
+  const source = catalog.expense_claims.detailSource;
+  const rows = mapExpenseDetailRows([[
+    101, "差旅费", "C", "销售部", "P001", "一号项目", "SP001", "一期",
+    "2026-08-01T00:00:00", "2026-08-03T00:00:00", "客户现场", 280, 20, 300, 290, 90,
+  ]], source);
+  assert.deepEqual(rows, [{
+    序号: 1,
+    费用项目: "差旅费",
+    报销类型: "差旅",
+    费用承担部门: "销售部",
+    销售项目: "P001 · 一号项目",
+    销售子项目: "SP001 · 一期",
+    费用日期: "2026-08-01 至 2026-08-03",
+    备注: "客户现场",
+    费用金额: 280,
+    税额: 20,
+    申请报销金额: 300,
+    核定报销金额: 290,
+    未付款金额: 90,
+  }]);
+  assert.equal("明细内码" in rows[0], false);
+  assert.equal(source.fields.some(([field]) => /bank|account/i.test(field)), false);
+});
+
+test("queries an authorized expense header before returning its entry details", async () => {
+  const requests = [];
+  const kingdee = { executeBillQuery: async (username, request) => {
+    assert.equal(username, "240001");
+    requests.push(request);
+    if (requests.length === 1) return [["BX'001", 300]];
+    return [
+      [101, "交通费", "B", "销售部", "P001", "一号项目", "SP001", "一期", "2026-08-01", "2026-08-01", "去程", 90, 10, 100, 100, 40],
+      [102, "住宿费", "C", "销售部", "P001", "一号项目", "SP001", "一期", "2026-08-02", "2026-08-03", "住宿", 180, 20, 200, 200, 80],
+    ];
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100 } },
+  });
+  const result = await engine.expenseDetails(identity, "BX'001");
+  assert.equal(requests.length, 2);
+  assert.match(requests[0].FilterString, /FBillNo='BX''001'/);
+  assert.match(requests[0].FilterString, /FProposerID\.FName='张三'/);
+  assert.equal(requests[0].FieldKeys, "FBillNo,FExpAmountSum");
+  assert.doesNotMatch(requests[1].FieldKeys, /bank|account/i);
+  assert.equal(result.count, 2);
+  assert.equal(result.totals["申请报销金额"], 300);
+  assert.equal(result.totals["费用金额"], 270);
+  assert.deepEqual(result.reconciliation, { headerAmount: 300, detailAmount: 300, difference: 0, matches: true });
+});
+
+test("does not query expense entries when the scoped header is not visible", async () => {
+  let calls = 0;
+  const engine = new QueryEngine({
+    catalog,
+    kingdee: { executeBillQuery: async () => { calls += 1; return []; } },
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100 } },
+  });
+  await assert.rejects(() => engine.expenseDetails(identity, "BX002"), /无权查看/);
+  assert.equal(calls, 1);
 });
 
 test("maps current workflow nodes and handlers to read-only columns", () => {

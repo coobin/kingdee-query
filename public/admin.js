@@ -13,6 +13,7 @@ const ACTION_LABELS = {
   logout: "退出系统",
   "passkey.login": "Passkey 登录",
   query: "数据查询",
+  "query.detail": "报销明细查询",
   "module_access.update": "修改模块权限",
   "admin.create": "新增管理员",
   "admin.update": "修改管理员",
@@ -69,8 +70,8 @@ function renderAudit() {
   const category = auditAction.value;
   const events = state.auditEvents.filter((event) => {
     if (category === "login" && !["login", "logout", "passkey.login"].includes(event.action)) return false;
-    if (category === "query" && event.action !== "query") return false;
-    if (category === "admin" && ["login", "logout", "passkey.login", "query"].includes(event.action)) return false;
+    if (category === "query" && !String(event.action || "").startsWith("query")) return false;
+    if (category === "admin" && (["login", "logout", "passkey.login"].includes(event.action) || String(event.action || "").startsWith("query"))) return false;
     if (!keyword) return true;
     return auditSearchText(event).includes(keyword);
   });
@@ -112,7 +113,7 @@ function auditOutcomeCell(event) {
   const cell = document.createElement("td");
   const badge = document.createElement("span"); badge.className = `audit-outcome ${event.outcome === "success" ? "success" : "error"}`; badge.textContent = event.outcome === "success" ? "成功" : "失败";
   cell.append(badge);
-  if (event.action === "query" && event.outcome === "success") {
+  if (String(event.action || "").startsWith("query") && event.outcome === "success") {
     const count = document.createElement("small"); count.textContent = ` ${Number(event.count) || 0} 条 · ${Number(event.durationMs) || 0} ms`; cell.append(count);
   } else if (event.error) {
     const error = document.createElement("small"); error.textContent = ` ${event.error}`; cell.append(error);
@@ -121,7 +122,7 @@ function auditOutcomeCell(event) {
 }
 
 function auditDetail(event) {
-  if (event.action === "query") {
+  if (String(event.action || "").startsWith("query")) {
     const tool = TOOL_LABELS[event.tool] || event.tool || "未知模块";
     const detail = event.question || readableArguments(event.arguments);
     return detail ? `${tool}：${detail}` : tool;

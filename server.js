@@ -149,6 +149,10 @@ web.post("/query", asyncRoute(async (req, res) => {
   const result = await executeAndAudit(req, plan, question);
   res.json({ plan, result, requestId: req.requestId });
 }));
+web.get("/expense-claims/:billNumber/details", asyncRoute(async (req, res) => {
+  const result = await executeExpenseDetailsAndAudit(req, req.params.billNumber);
+  res.json({ result, requestId: req.requestId });
+}));
 
 const admin = express.Router();
 admin.use(browserAuth(config, accessControl), requireSuperAdmin);
@@ -286,6 +290,20 @@ async function executeAndAudit(req, plan, question) {
     return result;
   } catch (error) {
     audit({ ...identityAudit(req), action: "query", outcome: "error", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, error: error.message, durationMs: Date.now() - started });
+    throw error;
+  }
+}
+
+async function executeExpenseDetailsAndAudit(req, billNumber) {
+  const started = Date.now();
+  const args = { billNumber: String(billNumber || "").slice(0, 80) };
+  try {
+    enforceModuleAccess(req.identity, "expense_claims");
+    const result = await engine.expenseDetails(req.identity, args.billNumber);
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "expense_claims", arguments: args, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
+    return result;
+  } catch (error) {
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "expense_claims", arguments: args, error: error.message, durationMs: Date.now() - started });
     throw error;
   }
 }
