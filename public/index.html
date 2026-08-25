@@ -154,11 +154,11 @@
           </section>
 
           <section class="query-panel" id="panel-personnel_cost" role="tabpanel" aria-labelledby="tab-personnel_cost" data-panel="personnel_cost" hidden>
-            <div class="panel-copy"><h3>计算人员成本</h3><p>按人员汇总同一期间内已审核工资单的实发金额和已审核费用报销单的核定报销金额。</p></div>
+            <div class="panel-copy"><h3>计算人员成本</h3><p>按人员汇总同一期间内已审核工资单的实发金额和已审核费用报销单的非专项核定报销金额。</p></div>
             <div class="cost-formula" aria-label="人员成本计算公式">
               <div><span>PAYROLL</span><strong>实发工资</strong><small>工资单 · 实发金额</small></div>
               <b aria-hidden="true">+</b>
-              <div><span>EXPENSE</span><strong>核定报销</strong><small>费用报销单 · 核定金额</small></div>
+              <div><span>EXPENSE</span><strong>非专项核定报销</strong><small>费用报销分录 · 排除专项</small></div>
               <b aria-hidden="true">=</b>
               <div class="cost-formula-total"><span>PEOPLE COST</span><strong>人员成本</strong><small>按员工编号归集</small></div>
             </div>
@@ -169,7 +169,7 @@
               <label class="field"><span>员工姓名</span><input name="employeeName" type="text" maxlength="40" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>所属部门</span><input name="departmentName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
             </div>
-            <div class="scope-lock cost-note"><span aria-hidden="true">¥</span><div><strong>仅统计已审核单据 · 最长 366 天</strong><small>工资按工资日期、报销按申请日期纳入；结果完整分页读取并按员工编号汇总。</small></div></div>
+            <div class="scope-lock cost-note"><span aria-hidden="true">¥</span><div><strong>仅统计已审核单据 · 报销排除专项 · 最长 366 天</strong><small>工资按工资日期、报销按申请日期纳入；结果完整分页读取并按员工编号汇总。</small></div></div>
           </section>
 
           <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>

@@ -434,7 +434,7 @@
   },
   "personnel_cost": {
     "label": "人员成本",
-    "description": "按人员汇总已审核工资单实发金额和已审核费用报销核定金额",
+    "description": "按人员汇总已审核工资单实发金额和已审核费用报销非专项分录核定金额",
     "formId": "PARA_PM_PayrollBill",
     "queryType": "personnel_cost",
     "restrictedByDefault": true,
@@ -456,9 +456,10 @@
         ["FProposerID.FName", "姓名"],
         ["FRequestDeptID.FName", "申请部门"],
         ["FCurrencyID.FNumber", "报销币别"],
-        ["FExpAmountSum", "核定报销金额"]
+        ["F_PARA_ExType", "报销类型"],
+        ["FExpSubmitAmount", "核定报销金额"]
       ],
-      "defaultOrder": "FDate ASC,FBillNo ASC"
+      "defaultOrder": "FDate ASC,FBillNo ASC,FEntity_FENTRYID ASC"
     },
     "publicColumns": [
       "员工编号",

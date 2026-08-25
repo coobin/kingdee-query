@@ -463,7 +463,7 @@ function renderPersonnelCostStatistics(statistics) {
   const items = [
     ["人员成本", formatMoney(statistics.totalCost), `${statistics.personnelCount} 人`, "primary"],
     ["实发工资", formatMoney(statistics.payrollAmount), `${statistics.payrollDocuments} 张工资单`],
-    ["核定报销", formatMoney(statistics.expenseAmount), `${statistics.expenseDocuments} 张报销单`],
+    ["非专项核定报销", formatMoney(statistics.expenseAmount), `${statistics.expenseDocuments} 张报销单`],
     ["工资 + 报销", `${statistics.bothCount} 人`, "两类成本均发生"],
     ["仅工资", `${statistics.payrollOnlyCount} 人`, "期间内没有报销"],
     ["仅报销", `${statistics.expenseOnlyCount} 人`, "期间内没有工资单", statistics.expenseOnlyCount ? "caution" : ""],

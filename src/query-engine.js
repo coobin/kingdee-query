@@ -263,7 +263,7 @@ function buildPersonnelCostFilters(args, range) {
     `FDate<'${range.dateToExclusive}'`,
   ];
   const payroll = [...common];
-  const expense = [...common];
+  const expense = [...common, "F_PARA_ExType<>'A'"];
   if (args.employeeNumber) {
     const value = escapeValue(args.employeeNumber);
     payroll.push(`FEmpInfoId.FNumber='${value}'`);
@@ -289,14 +289,16 @@ function personnelKey(number, name) {
 }
 
 function aggregatePersonnelCost(payrollRows, expenseRows, range) {
+  const includedExpenseRows = expenseRows.filter((row) => !["A", "专项"].includes(String(row.报销类型 || "").trim()));
   const currencies = new Set([
     ...payrollRows.map((row) => String(row.工资币别 || "").trim()),
-    ...expenseRows.map((row) => String(row.报销币别 || "").trim()),
+    ...includedExpenseRows.map((row) => String(row.报销币别 || "").trim()),
   ].filter(Boolean));
   if (currencies.size > 1) {
     throw Object.assign(new Error("所选期间包含多个币别，不能直接相加计算人员成本。请缩小查询范围或先统一币别。"), { statusCode: 422 });
   }
   const people = new Map();
+  const expenseDocuments = new Map();
   const ensurePerson = (number, name) => {
     const key = personnelKey(number, name);
     if (!people.has(key)) {
@@ -324,14 +326,17 @@ function aggregatePersonnelCost(payrollRows, expenseRows, range) {
     person.实发工资 = roundMoney(person.实发工资 + (Number(row.实发工资) || 0));
     person.工资单数 += 1;
   }
-  for (const row of expenseRows) {
+  for (const [index, row] of includedExpenseRows.entries()) {
+    const key = personnelKey(row.员工编号, row.姓名);
     const person = ensurePerson(row.员工编号, row.姓名);
     if (!person.所属部门 && row.申请部门) person.所属部门 = String(row.申请部门).trim();
     person.报销金额 = roundMoney(person.报销金额 + (Number(row.核定报销金额) || 0));
-    person.报销单数 += 1;
+    if (!expenseDocuments.has(key)) expenseDocuments.set(key, new Set());
+    expenseDocuments.get(key).add(String(row.报销单号 || "").trim() || `entry:${index}`);
   }
 
-  const rows = [...people.values()].map((person) => {
+  const rows = [...people.entries()].map(([key, person]) => {
+    person.报销单数 = expenseDocuments.get(key)?.size || 0;
     person.人员成本 = roundMoney(person.实发工资 + person.报销金额);
     person.数据构成 = person.工资单数 && person.报销单数 ? "工资 + 报销" : (person.工资单数 ? "仅工资" : "仅报销");
     return person;
@@ -347,7 +352,7 @@ function aggregatePersonnelCost(payrollRows, expenseRows, range) {
     expenseAmount: sumMoney(rows, "报销金额"),
     totalCost: sumMoney(rows, "人员成本"),
     payrollDocuments: payrollRows.length,
-    expenseDocuments: expenseRows.length,
+    expenseDocuments: new Set(includedExpenseRows.map((row, index) => String(row.报销单号 || "").trim() || `entry:${index}`)).size,
     bothCount: rows.filter((row) => row.工资单数 && row.报销单数).length,
     payrollOnlyCount: rows.filter((row) => row.工资单数 && !row.报销单数).length,
     expenseOnlyCount: rows.filter((row) => !row.工资单数 && row.报销单数).length,

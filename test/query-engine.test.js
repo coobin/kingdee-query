@@ -100,6 +100,7 @@ test("builds matching approved payroll and reimbursement filters", () => {
   assert.match(filters.expense, /FProposerID\.FNumber='24''001'/);
   assert.match(filters.expense, /FProposerID\.FName LIKE '%张''三%'/);
   assert.match(filters.expense, /FRequestDeptID\.FName LIKE '%研发%'/);
+  assert.match(filters.expense, /F_PARA_ExType<>'A'/);
 });
 
 test("aggregates personnel cost by employee number and keeps reimbursement-only people", () => {
@@ -109,8 +110,10 @@ test("aggregates personnel cost by employee number and keeps reimbursement-only 
     { 工资单号: "P2", 工资日期: "2026-07-15", 员工编号: "001", 姓名: "甲", 所属部门: "研发", 工资币别: "PRE001", 实发工资: 199.9 },
     { 工资单号: "P3", 工资日期: "2026-07-01", 员工编号: "002", 姓名: "乙", 所属部门: "交付", 工资币别: "PRE001", 实发工资: 800 },
   ], [
-    { 报销单号: "E1", 申请日期: "2026-07-10", 员工编号: "001", 姓名: "甲", 申请部门: "研发", 报销币别: "PRE001", 核定报销金额: 100 },
-    { 报销单号: "E2", 申请日期: "2026-07-11", 员工编号: "003", 姓名: "丙", 申请部门: "销售", 报销币别: "PRE001", 核定报销金额: 300 },
+    { 报销单号: "E1", 申请日期: "2026-07-10", 员工编号: "001", 姓名: "甲", 申请部门: "研发", 报销币别: "PRE001", 报销类型: "B", 核定报销金额: 60 },
+    { 报销单号: "E1", 申请日期: "2026-07-10", 员工编号: "001", 姓名: "甲", 申请部门: "研发", 报销币别: "PRE001", 报销类型: "C", 核定报销金额: 40 },
+    { 报销单号: "E2", 申请日期: "2026-07-11", 员工编号: "003", 姓名: "丙", 申请部门: "销售", 报销币别: "PRE001", 报销类型: "D", 核定报销金额: 300 },
+    { 报销单号: "E3", 申请日期: "2026-07-12", 员工编号: "001", 姓名: "甲", 申请部门: "研发", 报销币别: "USD", 报销类型: "A", 核定报销金额: 500 },
   ], range);
   assert.deepEqual(result.rows.map((row) => [row.员工编号, row.人员成本, row.数据构成]), [
     ["001", 1300, "工资 + 报销"],
@@ -138,7 +141,7 @@ test("rejects adding personnel costs across currencies", () => {
   const range = personnelCostDateRange({ dateFrom: "2026-07-01", dateTo: "2026-07-31" });
   assert.throws(() => aggregatePersonnelCost(
     [{ 员工编号: "001", 姓名: "甲", 工资币别: "CNY", 实发工资: 100 }],
-    [{ 员工编号: "001", 姓名: "甲", 报销币别: "USD", 核定报销金额: 10 }],
+    [{ 员工编号: "001", 姓名: "甲", 报销币别: "USD", 报销类型: "B", 核定报销金额: 10 }],
     range,
   ), /多个币别/);
 });
@@ -149,7 +152,7 @@ test("queries complete approved payroll and reimbursement sources for personnel 
     assert.equal(username, "240001");
     requests.push(request);
     if (request.FormId === "PARA_PM_PayrollBill") return [["P1", "2026-07-01", "001", "甲", "研发", "PRE001", 1000]];
-    if (request.FormId === "ER_ExpReimbursement") return [["E1", "2026-07-10", "001", "甲", "研发", "PRE001", 200]];
+    if (request.FormId === "ER_ExpReimbursement") return [["E1", "2026-07-10", "001", "甲", "研发", "PRE001", "B", 200]];
     throw new Error(`unexpected form ${request.FormId}`);
   } };
   const engine = new QueryEngine({
@@ -161,6 +164,8 @@ test("queries complete approved payroll and reimbursement sources for personnel 
   assert.equal(requests.length, 2);
   assert.ok(requests.every((request) => request.TopRowCount === 0 && request.StartRow === 0 && request.Limit === 5000));
   assert.ok(requests.every((request) => /FDocumentStatus='C'/.test(request.FilterString)));
+  assert.match(requests.find((request) => request.FormId === "ER_ExpReimbursement").FilterString, /F_PARA_ExType<>'A'/);
+  assert.match(requests.find((request) => request.FormId === "ER_ExpReimbursement").FieldKeys, /F_PARA_ExType,FExpSubmitAmount$/);
   assert.equal(result.rows[0].人员成本, 1200);
   assert.equal(result.statistics.totalCost, result.statistics.payrollAmount + result.statistics.expenseAmount);
   assert.equal(result.truncated, false);
