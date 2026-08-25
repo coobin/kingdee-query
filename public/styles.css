@@ -116,15 +116,15 @@ main { min-height: calc(100vh - 60px); }
 .aggregate-card strong { grid-row: span 2; color: var(--forest); font-family: var(--display); font-size: clamp(34px, 5vw, 54px); font-weight: 600; letter-spacing: -.03em; }
 .aggregate-card small { color: var(--muted); font-size: 11px; }
 .aging-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); border-bottom: 1px solid var(--line); background: var(--paper); }
-.aging-stat { min-height: 112px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 15px; border-right: 1px solid var(--line); }
+.aging-stat { min-width: 0; min-height: 112px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 15px; border-right: 1px solid var(--line); container-type: inline-size; }
 .aging-stat:last-child { border-right: 0; }
-.aging-stat span { color: var(--muted); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
-.aging-stat strong { color: var(--forest); font-family: var(--display); font-size: 24px; font-weight: 600; line-height: 1.05; white-space: nowrap; }
-.aging-stat small { color: var(--muted); font-size: 9px; }
+.aging-stat span { min-width: 0; color: var(--muted); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .08em; overflow-wrap: anywhere; }
+.aging-stat strong { max-width: 100%; color: var(--forest); font-family: var(--display); font-size: clamp(15px, 9cqw, 24px); font-weight: 600; line-height: 1.05; overflow-wrap: anywhere; }
+.aging-stat small { min-width: 0; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
 .aging-stat.primary { position: relative; grid-column: span 2; color: white; background: var(--forest); }
 .aging-stat.primary::before { content: attr(data-threshold); position: absolute; top: 13px; right: 13px; color: var(--amber); font-family: var(--utility); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
 .aging-stat.primary span, .aging-stat.primary small { color: var(--mint); }
-.aging-stat.primary strong { color: white; font-size: clamp(24px, 3vw, 35px); }
+.aging-stat.primary strong { color: white; font-size: clamp(24px, 8cqw, 35px); }
 .cycle-summary { display: grid; grid-template-columns: 1.25fr repeat(5, 1fr); border-bottom: 1px solid var(--line); background: var(--paper); }
 .cycle-stat { min-height: 112px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 15px; border-right: 1px solid var(--line); }
 .cycle-stat:last-child { border-right: 0; }
