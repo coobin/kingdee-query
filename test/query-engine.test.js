@@ -11,6 +11,9 @@ const {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  personnelCostDateRange,
+  buildPersonnelCostFilters,
+  aggregatePersonnelCost,
   mapExpenseDetailRows,
   workflowRows,
 } = require("../src/query-engine");
@@ -73,6 +76,95 @@ test("maps expense entry fields without exposing internal or bank fields", () =>
   }]);
   assert.equal("明细内码" in rows[0], false);
   assert.equal(source.fields.some(([field]) => /bank|account/i.test(field)), false);
+});
+
+test("requires a bounded personnel cost date range", () => {
+  assert.deepEqual(personnelCostDateRange({ dateFrom: "2026-07-01", dateTo: "2026-07-31" }), {
+    dateFrom: "2026-07-01",
+    dateTo: "2026-07-31",
+    dateToExclusive: "2026-08-01",
+    days: 31,
+  });
+  assert.throws(() => personnelCostDateRange({}), /必须填写/);
+  assert.throws(() => personnelCostDateRange({ dateFrom: "2026-08-01", dateTo: "2026-07-31" }), /不能晚于/);
+  assert.throws(() => personnelCostDateRange({ dateFrom: "2025-01-01", dateTo: "2026-01-02" }), /最多为 366 天/);
+});
+
+test("builds matching approved payroll and reimbursement filters", () => {
+  const range = personnelCostDateRange({ dateFrom: "2026-07-01", dateTo: "2026-07-31" });
+  const filters = buildPersonnelCostFilters({ employeeNumber: "24'001", employeeName: "张'三", departmentName: "研发" }, range);
+  assert.match(filters.payroll, /FDocumentStatus='C'/);
+  assert.match(filters.payroll, /FDate>='2026-07-01'/);
+  assert.match(filters.payroll, /FDate<'2026-08-01'/);
+  assert.match(filters.payroll, /FEmpInfoId\.FNumber='24''001'/);
+  assert.match(filters.expense, /FProposerID\.FNumber='24''001'/);
+  assert.match(filters.expense, /FProposerID\.FName LIKE '%张''三%'/);
+  assert.match(filters.expense, /FRequestDeptID\.FName LIKE '%研发%'/);
+});
+
+test("aggregates personnel cost by employee number and keeps reimbursement-only people", () => {
+  const range = personnelCostDateRange({ dateFrom: "2026-07-01", dateTo: "2026-07-31" });
+  const result = aggregatePersonnelCost([
+    { 工资单号: "P1", 工资日期: "2026-07-01", 员工编号: "001", 姓名: "甲", 所属部门: "研发", 工资币别: "PRE001", 实发工资: 1000.1 },
+    { 工资单号: "P2", 工资日期: "2026-07-15", 员工编号: "001", 姓名: "甲", 所属部门: "研发", 工资币别: "PRE001", 实发工资: 199.9 },
+    { 工资单号: "P3", 工资日期: "2026-07-01", 员工编号: "002", 姓名: "乙", 所属部门: "交付", 工资币别: "PRE001", 实发工资: 800 },
+  ], [
+    { 报销单号: "E1", 申请日期: "2026-07-10", 员工编号: "001", 姓名: "甲", 申请部门: "研发", 报销币别: "PRE001", 核定报销金额: 100 },
+    { 报销单号: "E2", 申请日期: "2026-07-11", 员工编号: "003", 姓名: "丙", 申请部门: "销售", 报销币别: "PRE001", 核定报销金额: 300 },
+  ], range);
+  assert.deepEqual(result.rows.map((row) => [row.员工编号, row.人员成本, row.数据构成]), [
+    ["001", 1300, "工资 + 报销"],
+    ["002", 800, "仅工资"],
+    ["003", 300, "仅报销"],
+  ]);
+  assert.deepEqual(result.statistics, {
+    type: "personnel_cost",
+    dateFrom: "2026-07-01",
+    dateTo: "2026-07-31",
+    personnelCount: 3,
+    payrollAmount: 2000,
+    expenseAmount: 400,
+    totalCost: 2400,
+    payrollDocuments: 3,
+    expenseDocuments: 2,
+    bothCount: 1,
+    payrollOnlyCount: 1,
+    expenseOnlyCount: 1,
+    currencyCode: "PRE001",
+  });
+});
+
+test("rejects adding personnel costs across currencies", () => {
+  const range = personnelCostDateRange({ dateFrom: "2026-07-01", dateTo: "2026-07-31" });
+  assert.throws(() => aggregatePersonnelCost(
+    [{ 员工编号: "001", 姓名: "甲", 工资币别: "CNY", 实发工资: 100 }],
+    [{ 员工编号: "001", 姓名: "甲", 报销币别: "USD", 核定报销金额: 10 }],
+    range,
+  ), /多个币别/);
+});
+
+test("queries complete approved payroll and reimbursement sources for personnel cost", async () => {
+  const requests = [];
+  const kingdee = { executeBillQuery: async (username, request) => {
+    assert.equal(username, "240001");
+    requests.push(request);
+    if (request.FormId === "PARA_PM_PayrollBill") return [["P1", "2026-07-01", "001", "甲", "研发", "PRE001", 1000]];
+    if (request.FormId === "ER_ExpReimbursement") return [["E1", "2026-07-10", "001", "甲", "研发", "PRE001", 200]];
+    throw new Error(`unexpected form ${request.FormId}`);
+  } };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 5000 } },
+  });
+  const result = await engine.execute(identity, { tool: "personnel_cost", arguments: { dateFrom: "2026-07-01", dateTo: "2026-07-31" } });
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((request) => request.TopRowCount === 0 && request.StartRow === 0 && request.Limit === 5000));
+  assert.ok(requests.every((request) => /FDocumentStatus='C'/.test(request.FilterString)));
+  assert.equal(result.rows[0].人员成本, 1200);
+  assert.equal(result.statistics.totalCost, result.statistics.payrollAmount + result.statistics.expenseAmount);
+  assert.equal(result.truncated, false);
+  assert.equal(result.partial, false);
 });
 
 test("queries an authorized expense header before returning its entry details", async () => {

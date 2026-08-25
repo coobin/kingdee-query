@@ -18,7 +18,8 @@ const {
 
 const catalog = loadCatalog(config.catalogPath);
 const moduleIds = [...Object.keys(catalog), "workflow_progress"];
-const accessControl = new AccessControl({ ...config.localAuth, moduleIds });
+const restrictedModuleIds = Object.entries(catalog).filter(([, item]) => item.restrictedByDefault).map(([id]) => id);
+const accessControl = new AccessControl({ ...config.localAuth, moduleIds, restrictedModuleIds });
 const kingdee = new KingdeeClient(config.kingdee);
 const engine = new QueryEngine({ catalog, kingdee, config });
 const audit = createAuditLogger(config.auditPath, config.audit);
@@ -166,7 +167,7 @@ admin.get("/settings", (req, res) => res.json({
     label: id === "workflow_progress" ? "审批进度" : catalog[id].label,
     description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description,
     selfScoped: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
-    defaultOpen: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
+    restrictedByDefault: Boolean(catalog[id]?.restrictedByDefault),
   })),
   moduleAccess: accessControl.getModuleAccess(),
 }));

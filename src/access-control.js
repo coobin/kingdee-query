@@ -58,11 +58,12 @@ function parseCookies(header) {
 }
 
 class AccessControl {
-  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [] }) {
+  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [], restrictedModuleIds = [] }) {
     this.dataPath = dataPath;
     this.sessionHours = sessionHours;
     this.cookieSecure = cookieSecure;
     this.moduleIds = [...new Set(moduleIds)];
+    this.restrictedModuleIds = new Set(restrictedModuleIds);
     this.sessions = new Map();
     this.passkeyChallenges = new Map();
     this.loginAttempts = new Map();
@@ -338,7 +339,7 @@ class AccessControl {
   canAccess(identity, moduleId) {
     if (identity?.isSuperAdmin) return true;
     const allowed = this.state.moduleAccess[moduleId] || [];
-    if (!allowed.length) return true;
+    if (!allowed.length) return !this.restrictedModuleIds.has(moduleId);
     const identifiers = identityIdentifiers(identity);
     return allowed.some((value) => identifiers.has(normalizeIdentifier(value)));
   }

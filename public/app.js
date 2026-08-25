@@ -6,6 +6,7 @@ const TOOL_META = {
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   overdue_risk_combined: { action: "统计合并风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
+  personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
@@ -153,6 +154,8 @@ function validateArguments(tool, args) {
   if (["overdue_receivables", "receivable_aging"].includes(tool) && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
   if (tool === "overdue_risk_combined" && (!["invoiceDays", "receivableDays"].every((key) => Number.isInteger(Number(args[key])) && Number(args[key]) >= 1 && Number(args[key]) <= 3650))) return "发票和应收超期天数都应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
+  if (tool === "personnel_cost" && (!args.dateFrom || !args.dateTo)) return "请选择人员成本的开始日期和结束日期。";
+  if (tool === "personnel_cost" && dateSpanDays(args.dateFrom, args.dateTo) > 366) return "人员成本查询范围最多为 366 天。";
   return "";
 }
 
@@ -162,9 +165,14 @@ function setDefaultDates() {
   const today = new Date();
   const end = localDate(today);
   const start = `${today.getFullYear()}-01-01`;
-  const panel = document.querySelector('[data-panel="expense_claims"]');
-  panel.querySelector('[name="dateFrom"]').value = start;
-  panel.querySelector('[name="dateTo"]').value = end;
+  const expensePanel = document.querySelector('[data-panel="expense_claims"]');
+  expensePanel.querySelector('[name="dateFrom"]').value = start;
+  expensePanel.querySelector('[name="dateTo"]').value = end;
+  const previousMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  const previousMonthStart = new Date(previousMonthEnd.getFullYear(), previousMonthEnd.getMonth(), 1);
+  const costPanel = document.querySelector('[data-panel="personnel_cost"]');
+  costPanel.querySelector('[name="dateFrom"]').value = localDate(previousMonthStart);
+  costPanel.querySelector('[name="dateTo"]').value = localDate(previousMonthEnd);
 }
 
 function renderSelectedResult() {
@@ -406,6 +414,10 @@ function compareCell(left, right, column) {
 }
 
 function renderStatistics(statistics, tool = "") {
+  if (tool === "personnel_cost" || statistics.type === "personnel_cost") {
+    renderPersonnelCostStatistics(statistics);
+    return;
+  }
   if (tool === "inventory_cycle" || statistics.type === "inventory_cycle") {
     renderInventoryCycleStatistics(statistics);
     return;
@@ -436,6 +448,29 @@ function renderStatistics(statistics, tool = "") {
     const item = document.createElement("div");
     item.className = `aging-stat${variant ? ` ${variant}` : ""}`;
     if (variant === "primary") item.dataset.threshold = `${statistics.minimumDays + 1}+`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    item.append(labelNode, valueNode, noteNode); strip.append(item);
+  });
+  els.table.append(strip);
+}
+
+function renderPersonnelCostStatistics(statistics) {
+  const strip = document.createElement("section");
+  strip.className = "cost-summary";
+  strip.setAttribute("aria-label", "人员成本汇总");
+  const items = [
+    ["人员成本", formatMoney(statistics.totalCost), `${statistics.personnelCount} 人`, "primary"],
+    ["实发工资", formatMoney(statistics.payrollAmount), `${statistics.payrollDocuments} 张工资单`],
+    ["核定报销", formatMoney(statistics.expenseAmount), `${statistics.expenseDocuments} 张报销单`],
+    ["工资 + 报销", `${statistics.bothCount} 人`, "两类成本均发生"],
+    ["仅工资", `${statistics.payrollOnlyCount} 人`, "期间内没有报销"],
+    ["仅报销", `${statistics.expenseOnlyCount} 人`, "期间内没有工资单", statistics.expenseOnlyCount ? "caution" : ""],
+  ];
+  items.forEach(([label, value, note, variant]) => {
+    const item = document.createElement("div");
+    item.className = `cost-stat${variant ? ` ${variant}` : ""}`;
     const labelNode = document.createElement("span"); labelNode.textContent = label;
     const valueNode = document.createElement("strong"); valueNode.textContent = value;
     const noteNode = document.createElement("small"); noteNode.textContent = note;
@@ -521,6 +556,7 @@ function formatCell(value, column) { if (value == null || value === "") return "
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
+function dateSpanDays(from, to) { const start = Date.parse(`${from}T00:00:00Z`); const end = Date.parse(`${to}T00:00:00Z`); return Number.isFinite(start) && Number.isFinite(end) ? Math.floor((end - start) / 86400000) + 1 : 0; }
 async function api(url, options = {}) { const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(payload.message || `请求失败 (${response.status})`), payload); return payload; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
 function exportCsv() { const view = state.resultViews.get(state.selectedTool); const result = view?.payload?.result; const rows = Array.isArray(view?.tableRows) ? view.tableRows : result?.rows; if (!result?.columns?.length || !rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }

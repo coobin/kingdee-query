@@ -14,6 +14,13 @@ test("plans current month expense query", () => {
   assert.match(plan.arguments.dateFrom, /^\d{4}-\d{2}-01$/);
 });
 
+test("plans personnel cost before the generic reimbursement tool", () => {
+  const plan = localPlan("计算工资和报销构成的人员成本");
+  assert.equal(plan.tool, "personnel_cost");
+  assert.match(plan.arguments.dateFrom, /^\d{4}-\d{2}-01$/);
+  assert.match(plan.arguments.dateTo, /^\d{4}-\d{2}-\d{2}$/);
+});
+
 test("plans expense workflow progress", () => {
   const plan = localPlan("报销单 BX202608120001 审批到哪里");
   assert.equal(plan.tool, "workflow_progress");

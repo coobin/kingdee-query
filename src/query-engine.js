@@ -240,6 +240,126 @@ function mapExpenseDetailRows(rows, source) {
   }));
 }
 
+function personnelCostDateRange(args, maximumDays = 366) {
+  if (!args.dateFrom || !args.dateTo) {
+    throw Object.assign(new Error("人员成本查询必须填写开始日期和结束日期。"), { statusCode: 400 });
+  }
+  const dateFrom = isoDate(args.dateFrom);
+  const dateTo = isoDate(args.dateTo);
+  if (dateFrom > dateTo) {
+    throw Object.assign(new Error("开始日期不能晚于结束日期。"), { statusCode: 400 });
+  }
+  const days = elapsedDays(dateFrom, dateTo) + 1;
+  if (days > maximumDays) {
+    throw Object.assign(new Error(`人员成本查询范围最多为 ${maximumDays} 天。`), { statusCode: 400 });
+  }
+  return { dateFrom, dateTo, dateToExclusive: nextDay(dateTo), days };
+}
+
+function buildPersonnelCostFilters(args, range) {
+  const common = [
+    "FDocumentStatus='C'",
+    `FDate>='${range.dateFrom}'`,
+    `FDate<'${range.dateToExclusive}'`,
+  ];
+  const payroll = [...common];
+  const expense = [...common];
+  if (args.employeeNumber) {
+    const value = escapeValue(args.employeeNumber);
+    payroll.push(`FEmpInfoId.FNumber='${value}'`);
+    expense.push(`FProposerID.FNumber='${value}'`);
+  }
+  if (args.employeeName) {
+    const value = escapeValue(args.employeeName);
+    payroll.push(`FEmpInfoId.FName LIKE '%${value}%'`);
+    expense.push(`FProposerID.FName LIKE '%${value}%'`);
+  }
+  if (args.departmentName) {
+    const value = escapeValue(args.departmentName);
+    payroll.push(`FStaffDeptId.FName LIKE '%${value}%'`);
+    expense.push(`FRequestDeptID.FName LIKE '%${value}%'`);
+  }
+  return { payroll: payroll.join(" AND "), expense: expense.join(" AND ") };
+}
+
+function personnelKey(number, name) {
+  const cleanNumber = String(number || "").normalize("NFKC").trim().toUpperCase();
+  if (cleanNumber) return `number:${cleanNumber}`;
+  return `name:${String(name || "").normalize("NFKC").trim()}`;
+}
+
+function aggregatePersonnelCost(payrollRows, expenseRows, range) {
+  const currencies = new Set([
+    ...payrollRows.map((row) => String(row.工资币别 || "").trim()),
+    ...expenseRows.map((row) => String(row.报销币别 || "").trim()),
+  ].filter(Boolean));
+  if (currencies.size > 1) {
+    throw Object.assign(new Error("所选期间包含多个币别，不能直接相加计算人员成本。请缩小查询范围或先统一币别。"), { statusCode: 422 });
+  }
+  const people = new Map();
+  const ensurePerson = (number, name) => {
+    const key = personnelKey(number, name);
+    if (!people.has(key)) {
+      people.set(key, {
+        员工编号: String(number || "").trim(),
+        姓名: String(name || "").trim(),
+        所属部门: "",
+        实发工资: 0,
+        报销金额: 0,
+        人员成本: 0,
+        工资单数: 0,
+        报销单数: 0,
+        数据构成: "",
+      });
+    }
+    const person = people.get(key);
+    if (!person.员工编号 && number) person.员工编号 = String(number).trim();
+    if (!person.姓名 && name) person.姓名 = String(name).trim();
+    return person;
+  };
+
+  for (const row of payrollRows) {
+    const person = ensurePerson(row.员工编号, row.姓名);
+    if (row.所属部门) person.所属部门 = String(row.所属部门).trim();
+    person.实发工资 = roundMoney(person.实发工资 + (Number(row.实发工资) || 0));
+    person.工资单数 += 1;
+  }
+  for (const row of expenseRows) {
+    const person = ensurePerson(row.员工编号, row.姓名);
+    if (!person.所属部门 && row.申请部门) person.所属部门 = String(row.申请部门).trim();
+    person.报销金额 = roundMoney(person.报销金额 + (Number(row.核定报销金额) || 0));
+    person.报销单数 += 1;
+  }
+
+  const rows = [...people.values()].map((person) => {
+    person.人员成本 = roundMoney(person.实发工资 + person.报销金额);
+    person.数据构成 = person.工资单数 && person.报销单数 ? "工资 + 报销" : (person.工资单数 ? "仅工资" : "仅报销");
+    return person;
+  }).sort((left, right) => right.人员成本 - left.人员成本
+    || String(left.员工编号).localeCompare(String(right.员工编号), "zh-CN", { numeric: true }));
+
+  const statistics = {
+    type: "personnel_cost",
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo,
+    personnelCount: rows.length,
+    payrollAmount: sumMoney(rows, "实发工资"),
+    expenseAmount: sumMoney(rows, "报销金额"),
+    totalCost: sumMoney(rows, "人员成本"),
+    payrollDocuments: payrollRows.length,
+    expenseDocuments: expenseRows.length,
+    bothCount: rows.filter((row) => row.工资单数 && row.报销单数).length,
+    payrollOnlyCount: rows.filter((row) => row.工资单数 && !row.报销单数).length,
+    expenseOnlyCount: rows.filter((row) => !row.工资单数 && row.报销单数).length,
+    currencyCode: [...currencies][0] || "",
+  };
+  const amount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(statistics.totalCost);
+  const summary = rows.length
+    ? `${range.dateFrom} 至 ${range.dateTo} 共 ${rows.length} 人，人员成本合计 ¥${amount}。`
+    : `${range.dateFrom} 至 ${range.dateTo} 没有找到已审核的工资单或费用报销单。`;
+  return { rows, statistics, summary };
+}
+
 class QueryEngine {
   constructor({ catalog, kingdee, config, now = () => new Date() }) {
     this.catalog = catalog;
@@ -257,6 +377,7 @@ class QueryEngine {
     if (item.queryType === "receivable_aging") return this.receivableAging(identity, item, args);
     if (item.queryType === "overdue_risk_combined") return this.overdueRiskCombined(identity, item, args);
     if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
+    if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -344,6 +465,53 @@ class QueryEngine {
         matches: Math.abs(difference) < 0.01,
       },
       summary: truncated ? `已显示前 ${maximum} 条报销明细` : `共 ${rows.length} 条报销明细`,
+    };
+  }
+
+  async personnelCost(identity, item, args) {
+    const range = personnelCostDateRange(args, item.maxPeriodDays || 366);
+    const filters = buildPersonnelCostFilters(args, range);
+    const pageSize = this.config.kingdee.queryPageSize || 5000;
+    const expenseSource = item.expenseSource;
+    if (!expenseSource) throw new Error("人员成本查询缺少费用报销来源配置。");
+    const [rawPayrollRows, rawExpenseRows] = await Promise.all([
+      this.queryAllPages(identity, {
+        FormId: item.formId,
+        FieldKeys: item.fields.map(([key]) => key).join(","),
+        FilterString: filters.payroll,
+        OrderString: item.defaultOrder || "FDate ASC,FBillNo ASC",
+        TopRowCount: 0,
+      }, pageSize),
+      this.queryAllPages(identity, {
+        FormId: expenseSource.formId,
+        FieldKeys: expenseSource.fields.map(([key]) => key).join(","),
+        FilterString: filters.expense,
+        OrderString: expenseSource.defaultOrder || "FDate ASC,FBillNo ASC",
+        TopRowCount: 0,
+      }, pageSize),
+    ]);
+    const payrollRows = rowsToObjects(rawPayrollRows, item.fields);
+    const expenseRows = rowsToObjects(rawExpenseRows, expenseSource.fields);
+    const aggregated = aggregatePersonnelCost(payrollRows, expenseRows, range);
+    const query = {
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      ...(args.employeeNumber ? { employeeNumber: args.employeeNumber } : {}),
+      ...(args.employeeName ? { employeeName: args.employeeName } : {}),
+      ...(args.departmentName ? { departmentName: args.departmentName } : {}),
+      status: "已审核",
+    };
+    return {
+      tool: "personnel_cost",
+      label: item.label,
+      query,
+      columns: item.publicColumns,
+      rows: aggregated.rows,
+      count: aggregated.rows.length,
+      truncated: false,
+      partial: false,
+      statistics: aggregated.statistics,
+      summary: aggregated.summary,
     };
   }
 
@@ -1399,6 +1567,9 @@ module.exports = {
   aggregateReceivableAging,
   aggregateOverdueRiskCombined,
   aggregateOverdueReceivables,
+  personnelCostDateRange,
+  buildPersonnelCostFilters,
+  aggregatePersonnelCost,
   mapExpenseDetailRows,
   workflowRows,
 };

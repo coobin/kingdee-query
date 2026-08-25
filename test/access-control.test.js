@@ -66,6 +66,21 @@ test("blank access list is open while a super administrator always bypasses modu
   assert.equal(access.canAccess({ userId: "admin", isSuperAdmin: true }, "inventory"), true);
 });
 
+test("sensitive modules are closed by default until an explicit Kingdee user is listed", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kqh-access-sensitive-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const access = new AccessControl({
+    dataPath: path.join(directory, "access-control.json"),
+    moduleIds: ["personnel_cost"],
+    restrictedModuleIds: ["personnel_cost"],
+  });
+  const employee = { kingdeeUsername: "240001" };
+  assert.equal(access.canAccess(employee, "personnel_cost"), false);
+  assert.equal(access.canAccess({ kingdeeUsername: "admin", isSuperAdmin: true }, "personnel_cost"), true);
+  access.setModuleAccess({ personnel_cost: ["240001"] });
+  assert.equal(access.canAccess(employee, "personnel_cost"), true);
+});
+
 test("prevents deleting the last administrator and keeps the current session after a password change", (t) => {
   const { directory, access } = fixture();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

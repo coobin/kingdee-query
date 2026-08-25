@@ -176,13 +176,15 @@ function renderModules() {
     textarea.placeholder = "例如：张三";
     const hint = document.createElement("small");
     hint.className = "field-hint";
-    hint.textContent = module.selfScoped
+    hint.textContent = module.restrictedByDefault
+      ? "敏感模块：名单留空时仅超级管理员可见；填写后仅名单人员和超级管理员可见。"
+      : module.selfScoped
       ? "该模块只返回本人数据，名单留空时默认向所有已登录用户开放。"
       : "直接填写金蝶用户名；多个用户请每行填写一个，也可以用逗号分隔。";
     textarea.value = (state.settings.moduleAccess[module.id] || []).join("\n");
-    textarea.addEventListener("input", () => card.classList.toggle("restricted", Boolean(parsePeople(textarea.value).length)));
+    textarea.addEventListener("input", () => card.classList.toggle("restricted", module.restrictedByDefault || Boolean(parsePeople(textarea.value).length)));
     label.append(labelText, textarea, hint); card.append(head, label);
-    card.classList.toggle("restricted", Boolean(parsePeople(textarea.value).length));
+    card.classList.toggle("restricted", module.restrictedByDefault || Boolean(parsePeople(textarea.value).length));
     return card;
   }));
 }

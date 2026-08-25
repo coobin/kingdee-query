@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260825-1">
+  <link rel="stylesheet" href="/styles.css?v=20260825-2">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -60,6 +60,9 @@
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-purchase_orders" id="tab-purchase_orders" data-tool="purchase_orders">
             <span>采购</span><strong>采购订单</strong>
+          </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-personnel_cost" id="tab-personnel_cost" data-tool="personnel_cost">
+            <span>管理</span><strong>人员成本</strong>
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-expense_claims" id="tab-expense_claims" data-tool="expense_claims">
             <span>个人</span><strong>费用报销</strong>
@@ -150,6 +153,25 @@
             </div>
           </section>
 
+          <section class="query-panel" id="panel-personnel_cost" role="tabpanel" aria-labelledby="tab-personnel_cost" data-panel="personnel_cost" hidden>
+            <div class="panel-copy"><h3>计算人员成本</h3><p>按人员汇总同一期间内已审核工资单的实发金额和已审核费用报销单的核定报销金额。</p></div>
+            <div class="cost-formula" aria-label="人员成本计算公式">
+              <div><span>PAYROLL</span><strong>实发工资</strong><small>工资单 · 实发金额</small></div>
+              <b aria-hidden="true">+</b>
+              <div><span>EXPENSE</span><strong>核定报销</strong><small>费用报销单 · 核定金额</small></div>
+              <b aria-hidden="true">=</b>
+              <div class="cost-formula-total"><span>PEOPLE COST</span><strong>人员成本</strong><small>按员工编号归集</small></div>
+            </div>
+            <div class="field-grid">
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>员工编号</span><input name="employeeNumber" type="text" maxlength="40" placeholder="完整员工编号" autocomplete="off"></label>
+              <label class="field"><span>员工姓名</span><input name="employeeName" type="text" maxlength="40" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>所属部门</span><input name="departmentName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+            </div>
+            <div class="scope-lock cost-note"><span aria-hidden="true">¥</span><div><strong>仅统计已审核单据 · 最长 366 天</strong><small>工资按工资日期、报销按申请日期纳入；结果完整分页读取并按员工编号汇总。</small></div></div>
+          </section>
+
           <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>
             <div class="panel-copy"><h3>费用报销</h3><p>按申请日期查询报销单。</p></div>
             <div class="field-grid">
@@ -185,6 +207,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260819-4" defer></script>
+  <script src="/app.js?v=20260825-1" defer></script>
 </body>
 </html>

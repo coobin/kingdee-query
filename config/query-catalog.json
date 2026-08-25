@@ -432,6 +432,56 @@
     },
     "requiresFilter": true
   },
+  "personnel_cost": {
+    "label": "人员成本",
+    "description": "按人员汇总已审核工资单实发金额和已审核费用报销核定金额",
+    "formId": "PARA_PM_PayrollBill",
+    "queryType": "personnel_cost",
+    "restrictedByDefault": true,
+    "fields": [
+      ["FBillNo", "工资单号"],
+      ["FDate", "工资日期"],
+      ["FEmpInfoId.FNumber", "员工编号"],
+      ["FEmpInfoId.FName", "姓名"],
+      ["FStaffDeptId.FName", "所属部门"],
+      ["FCurrencyId.FNumber", "工资币别"],
+      ["FFinalPayAmt", "实发工资"]
+    ],
+    "expenseSource": {
+      "formId": "ER_ExpReimbursement",
+      "fields": [
+        ["FBillNo", "报销单号"],
+        ["FDate", "申请日期"],
+        ["FProposerID.FNumber", "员工编号"],
+        ["FProposerID.FName", "姓名"],
+        ["FRequestDeptID.FName", "申请部门"],
+        ["FCurrencyID.FNumber", "报销币别"],
+        ["FExpAmountSum", "核定报销金额"]
+      ],
+      "defaultOrder": "FDate ASC,FBillNo ASC"
+    },
+    "publicColumns": [
+      "员工编号",
+      "姓名",
+      "所属部门",
+      "实发工资",
+      "报销金额",
+      "人员成本",
+      "工资单数",
+      "报销单数",
+      "数据构成"
+    ],
+    "filterFields": {
+      "employeeNumber": "FEmpInfoId.FNumber",
+      "employeeName": "FEmpInfoId.FName",
+      "departmentName": "FStaffDeptId.FName",
+      "dateFrom": "FDate",
+      "dateTo": "FDate"
+    },
+    "defaultOrder": "FDate ASC,FBillNo ASC",
+    "maxPeriodDays": 366,
+    "requiresFilter": true
+  },
   "expense_claims": {
     "label": "费用报销单",
     "description": "查询本人或授权范围内的费用报销单",

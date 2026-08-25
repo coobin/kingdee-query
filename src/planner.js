@@ -8,6 +8,7 @@ function localPlan(question) {
   const arguments_ = { limit: 50 };
   let tool;
   if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
+  else if (/人员成本|人力成本|工资.*报销|报销.*工资|工资单/.test(text)) tool = "personnel_cost";
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
   else if (/采购|供应商/.test(text)) tool = "purchase_orders";
   else if (/库存周期|库存库龄|库存账龄|呆在仓库|呆滞物料|待签收/.test(text)) tool = "inventory_cycle";
@@ -48,7 +49,7 @@ function localPlan(question) {
   const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
     || text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
   if (subproject) arguments_.subprojectNumber = subproject[1];
-  if (applicant) arguments_.applicantName = applicant[1];
+  if (applicant) arguments_[tool === "personnel_cost" ? "employeeName" : "applicantName"] = applicant[1];
   if (/总金额|合计金额|金额合计|总计|一共.*(?:多少|金额)|累计.*金额/.test(text)) arguments_.aggregation = "sum_amount";
   if (tool === "overdue_receivables" || tool === "receivable_aging") {
     const minimumDays = text.match(/(?:超过|超|大于)?\s*(\d{1,4})\s*天/);
@@ -84,6 +85,11 @@ function localPlan(question) {
     delete arguments_.dateTo;
   }
   if (tool === "inventory" && !arguments_.materialNumber && quoted[0]) arguments_.materialName = quoted[0];
+  if (tool === "personnel_cost" && (!arguments_.dateFrom || !arguments_.dateTo)) {
+    const previousMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    arguments_.dateFrom = `${previousMonthEnd.getFullYear()}-${String(previousMonthEnd.getMonth() + 1).padStart(2, "0")}-01`;
+    arguments_.dateTo = `${previousMonthEnd.getFullYear()}-${String(previousMonthEnd.getMonth() + 1).padStart(2, "0")}-${String(previousMonthEnd.getDate()).padStart(2, "0")}`;
+  }
   if (tool === "workflow_progress") {
     arguments_.scope = "mine";
     if (!arguments_.billNumber) {
