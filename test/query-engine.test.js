@@ -293,7 +293,7 @@ test("rejects invalid overdue day thresholds", () => {
 test("builds an AR-date aging filter without requiring an invoice", () => {
   const result = buildReceivableAgingCandidateFilter({ minimumDays: 180, customerName: "客户'甲", subprojectNumber: "AR-SP" }, "2026-08-13");
   assert.match(result.filter, /FDate<'2026-02-14'/);
-  assert.match(result.filter, /FNORECEIVEAMOUNT>0/);
+  assert.match(result.filter, /FNORECEIVEAMOUNT<>0/);
   assert.match(result.filter, /FALLAMOUNTFOR<>0/);
   assert.doesNotMatch(result.filter, /FIVALLAMOUNTFOR/);
   assert.match(result.filter, /客户''甲/);
@@ -331,6 +331,22 @@ test("aggregates overdue AR entries, including entries with no invoice", () => {
   });
   assert.equal(result.statistics.outstandingAmount, 90);
   assert.equal(result.statistics.unbilledAmount, 90);
+});
+
+test("nets negative receivables with positive receivables", () => {
+  const result = aggregateReceivableAging([
+    { 应收单号: "AR-BLUE", 应收分录内码: 201, 应收日期: "2025-01-10T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-NET", 销售子项目名称: "净额项目", 应收单总额: 100, 已收金额: 0, 未收金额: 100 },
+    { 应收单号: "AR-RED", 应收分录内码: 202, 应收日期: "2025-02-10T00:00:00", 客户: "客户甲", 销售子项目编码: "SP-NET", 销售子项目名称: "净额项目", 应收单总额: -30, 已收金额: 0, 未收金额: -30 },
+  ], {
+    asOfDate: "2026-08-13",
+    minimumDays: 180,
+  });
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0]["应收金额"], 70);
+  assert.equal(result.rows[0]["应收已收款金额"], 0);
+  assert.equal(result.rows[0]["应收未收款金额"], 70);
+  assert.equal(result.rows[0]["应收未开票金额"], 70);
 });
 
 test("paginates every page when querying a source", async () => {
@@ -630,7 +646,7 @@ test("executes the independent AR aging tool and keeps unbilled AR in scope", as
   assert.equal(requests.length, 3);
   assert.equal(requests[0].FormId, "AR_RECEIVABLE");
   assert.match(requests[0].FilterString, /FDate<'2026-02-14'/);
-  assert.match(requests[0].FilterString, /FNORECEIVEAMOUNT>0/);
+  assert.match(requests[0].FilterString, /FNORECEIVEAMOUNT<>0/);
   assert.equal(requests[1].FormId, "AR_BILLINGMATCHRECORD");
   assert.equal(requests[2].FormId, "PARA_SaleSubProject");
   assert.equal(result.tool, "receivable_aging");

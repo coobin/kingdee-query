@@ -140,7 +140,9 @@ function buildReceivableAgingCandidateFilter(args, asOfDate) {
     "FDocumentStatus='C'",
     "FCancelStatus='A'",
     "FALLAMOUNTFOR<>0",
-    "FNORECEIVEAMOUNT>0",
+    // Keep both blue and red open receivable entries so the aggregation can
+    // net signed balances instead of silently dropping red receivables.
+    "FNORECEIVEAMOUNT<>0",
     `FDate<'${isoDate(cutoffDate)}'`,
   ];
   const accepted = { asOfDate, minimumDays, cutoffDate };
@@ -1076,17 +1078,19 @@ function aggregateReceivableAging(sourceRows, { invoiceWriteoffRows = [], paymen
     const receivedValue = Number(row["已收金额"]);
     const outstandingValue = Number(row["未收金额"]);
     const fallbackTotal = Number(row["应收单总额"]);
+    // Keep the sign of both the receivable total and its outstanding balance.
+    // Red receivables must be netted with blue receivables at subproject level.
     const total = Number.isFinite(receivedValue) && Number.isFinite(outstandingValue)
-      ? Math.max(0, receivedValue + outstandingValue)
-      : Math.max(0, fallbackTotal || 0);
-    const outstanding = Math.min(total, Math.max(0, Number.isFinite(outstandingValue) ? outstandingValue : 0));
-    if (total <= 0.004 || outstanding <= 0.004) continue;
+      ? receivedValue + outstandingValue
+      : (Number.isFinite(fallbackTotal) ? fallbackTotal : 0);
+    const outstanding = Number.isFinite(outstandingValue) ? outstandingValue : 0;
+    if (Math.abs(total) <= 0.004 || Math.abs(outstanding) <= 0.004) continue;
     const detailId = String(row["应收分录内码"] || "").trim();
     const key = `${billNo}|${detailId}`;
     const existing = details.get(key);
     if (existing) {
-      existing.total = Math.max(existing.total, total);
-      existing.outstanding = Math.max(existing.outstanding, outstanding);
+      if (Math.abs(total) > Math.abs(existing.total)) existing.total = total;
+      if (Math.abs(outstanding) > Math.abs(existing.outstanding)) existing.outstanding = outstanding;
       if (date < existing.date) existing.date = date;
       continue;
     }
@@ -1115,8 +1119,8 @@ function aggregateReceivableAging(sourceRows, { invoiceWriteoffRows = [], paymen
     const linkedRows = linksByDetail.get(`${detail.billNo}|${detail.detailId}`)
       || (detail.detailId ? [] : (linksByBill.get(detail.billNo) || []));
     const linkedAmount = linkedRows.reduce((total, amount) => total + amount, 0);
-    const receivedAmount = Math.max(0, detail.total - detail.outstanding);
-    const unbilledAmount = Math.min(detail.total, Math.max(0, detail.total - linkedAmount));
+    const receivedAmount = detail.total - detail.outstanding;
+    const unbilledAmount = detail.total - linkedAmount;
     subproject.receivableAmount += detail.total;
     subproject.receivedAmount += receivedAmount;
     subproject.outstandingAmount += detail.outstanding;
@@ -1144,7 +1148,7 @@ function aggregateReceivableAging(sourceRows, { invoiceWriteoffRows = [], paymen
       应收金额: roundMoney(subproject.receivableAmount),
       应收已收款金额: receivedAmount,
       应收未收款金额: outstandingAmount,
-      应收未开票金额: roundMoney(subproject.unbilledAmount),
+      应收未开票金额: roundMoney(Math.max(0, subproject.unbilledAmount)),
       回款状态: receivedAmount > 0.004 ? "部分回款未结清" : "完全未回款",
       收款条件: joinValues(subproject.paymentConditions),
     };
