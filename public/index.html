@@ -56,7 +56,7 @@
             <span>财务</span><strong>应收账龄</strong>
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-overdue_risk_combined" id="tab-overdue_risk_combined" data-tool="overdue_risk_combined">
-            <span>财务</span><strong>超期风险合并</strong>
+            <span>财务</span><strong>超期风险</strong>
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-purchase_orders" id="tab-purchase_orders" data-tool="purchase_orders">
             <span>采购</span><strong>采购订单</strong>
@@ -133,8 +133,7 @@
           </section>
 
           <section class="query-panel" id="panel-overdue_risk_combined" role="tabpanel" aria-labelledby="tab-overdue_risk_combined" data-panel="overdue_risk_combined" hidden>
-            <div class="panel-copy"><h3>统计超期风险合并</h3><p>分别计算发票和应收单口径的未回款风险金额，比较后取较高口径；两个账龄天数可以独立调整。</p></div>
-            <div class="scope-lock aging-lock"><span aria-hidden="true">MAX</span><div><strong>按项目取较高风险口径</strong></div></div>
+            <div class="scope-lock aging-lock"><span aria-hidden="true">MAX</span><div><strong>按照发票超期和应收超期的设定天数，取二者的最大值</strong></div></div>
             <div class="field-grid">
               <label class="field"><span>发票超过天数 <b>必填</b></span><input name="invoiceDays" type="number" min="1" max="3650" step="1" value="180" required></label>
               <label class="field"><span>应收超过天数 <b>必填</b></span><input name="receivableDays" type="number" min="1" max="3650" step="1" value="270" required></label>
@@ -207,6 +206,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260825-1" defer></script>
+  <script src="/app.js?v=20260828-1" defer></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ const TOOL_META = {
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   overdue_receivables: { action: "统计发票账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
-  overdue_risk_combined: { action: "统计合并风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
+  overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
@@ -508,7 +508,7 @@ function renderReceivableAgingStatistics(statistics) {
 function renderCombinedRiskStatistics(statistics) {
   const strip = document.createElement("section");
   strip.className = "aging-summary";
-  strip.setAttribute("aria-label", "超期风险合并汇总");
+  strip.setAttribute("aria-label", "超期风险汇总");
   const items = [
     ["最终超期风险金额", formatMoney(statistics.finalRiskAmount), `${statistics.subprojectCount} 个销售子项目`, "primary"],
     ["发票口径风险", formatMoney(statistics.invoiceRiskAmount), `超过 ${statistics.invoiceDays} 天`],

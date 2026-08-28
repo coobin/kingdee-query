@@ -364,8 +364,8 @@
     "defaultOrder": "FDate ASC,FBillNo ASC"
   },
   "overdue_risk_combined": {
-    "label": "超期风险合并",
-    "description": "分别按开票和应收单账龄计算未回款金额，比较后取较高口径作为项目风险金额",
+    "label": "超期风险",
+    "description": "按照发票超期和应收超期的设定天数，取二者的最大值",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_risk_combined",
     "fields": [],

@@ -11,7 +11,7 @@
 | [销售订单](sales-orders.md) | `sales_orders` | 销售订单单据头 | 按单据、客户或日期查询销售订单 |
 | [发票账龄](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
 | [应收账龄](receivable-aging.md) | `receivable_aging` | 销售子项目应收风险汇总行 | 按应收单日期核对已形成应收的长期未收款余额 |
-| [超期风险合并](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 分别按发票和应收账龄计算，取项目较高风险金额 |
+| [超期风险](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 按发票和应收超期的设定天数取二者的最大值 |
 | [采购订单](purchase-orders.md) | `purchase_orders` | 采购订单单据头 | 按单据、供应商或日期查询采购订单 |
 | [人员成本](personnel-cost.md) | `personnel_cost` | 人员期间汇总行 | 实发工资加非专项核定报销金额计算人员成本 |
 | [费用报销](expense-claims.md) | `expense_claims` | 费用报销单单据头 | 查询本人或授权范围内的报销单 |
@@ -22,7 +22,7 @@
 - “外部参数”是页面、Dify 或结构化 API 可以提交的参数名；“金蝶字段”是服务端目录中的 `FieldKeys` 或筛选字段。
 - 普通模块的 `rows` 按对应文档的数据粒度返回，`columns` 是页面和导出的公开列。审批进度返回本人发起流程的当前节点和处理人列。
 - 普通模块的编码、单据号和组织编码采用精确匹配；名称字段采用包含匹配；`dateFrom` 包含当天，`dateTo` 通过“结束日期的下一天”实现闭区间效果。
-- 页面当前按请求发送 `limit=100`；普通模块服务端默认值为 50，并受 `KINGDEE_MAX_ROWS` 限制（默认 200，代码上限 1000）。发票账龄会按数据来源分页读取；超期风险合并会完整读取两个口径并返回全部合并结果，不能把普通模块的返回上限套用到合并模块。
+- 页面当前按请求发送 `limit=100`；普通模块服务端默认值为 50，并受 `KINGDEE_MAX_ROWS` 限制（默认 200，代码上限 1000）。发票账龄会按数据来源分页读取；超期风险会完整读取两个口径并返回全部结果，不能把普通模块的返回上限套用到该模块。
 - 费用金额求和使用 `aggregation=sum_amount`，按当前查询实际读取的单据头金额汇总；达到 `KINGDEE_AGGREGATION_MAX_ROWS` 时会标记为可能不完整。
 
 ## 统一权限和安全边界

@@ -30,7 +30,7 @@ const TOOL_LABELS = {
   sales_orders: "销售订单",
   overdue_receivables: "发票账龄",
   receivable_aging: "应收账龄",
-  overdue_risk_combined: "超期风险合并",
+  overdue_risk_combined: "超期风险",
   purchase_orders: "采购订单",
   expense_claims: "本人费用报销",
   workflow_progress: "审批进度",
