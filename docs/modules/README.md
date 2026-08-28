@@ -13,7 +13,7 @@
 | [应收账龄](receivable-aging.md) | `receivable_aging` | 销售子项目应收风险汇总行 | 按应收单日期核对已形成应收的长期未收款余额 |
 | [超期风险](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 按发票和应收超期的设定天数取二者查询结果的最大值 |
 | [采购订单](purchase-orders.md) | `purchase_orders` | 采购订单单据头 | 按单据、供应商或日期查询采购订单 |
-| [供应商采购分析](supplier-purchase-analysis.md) | `supplier_purchase_analysis` | 供应商汇总行、采购订单明细 | 汇总订单、到货、入库、退料、应付、发票、付款和可用质量指标 |
+| [供应商采购分析](supplier-purchase-analysis.md) | `supplier_purchase_analysis` | 供应商汇总行、主数据画像、采购订单明细 | 汇总订单、到货、入库、退料、应付、发票、付款、供应商画像和可用质量指标 |
 | [人员成本](personnel-cost.md) | `personnel_cost` | 人员期间汇总行 | 实发工资加非专项核定报销金额计算人员成本 |
 | [费用报销](expense-claims.md) | `expense_claims` | 费用报销单单据头 | 查询本人或授权范围内的报销单 |
 | [审批进度](workflow-progress.md) | `workflow_progress` | 单据流程对象 | 查询本人发起流程的当前审批节点和处理人 |
