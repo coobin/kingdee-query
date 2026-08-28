@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260825-2">
+  <link rel="stylesheet" href="/styles.css?v=20260828-2">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -48,6 +48,9 @@
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-sales_orders" id="tab-sales_orders" data-tool="sales_orders">
             <span>销售</span><strong>销售订单</strong>
+          </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-sales_business_analysis" id="tab-sales_business_analysis" data-tool="sales_business_analysis">
+            <span>销售</span><strong>子项目经营</strong>
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-overdue_receivables" id="tab-overdue_receivables" data-tool="overdue_receivables">
             <span>财务</span><strong>发票账龄</strong>
@@ -113,6 +116,30 @@
               <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
               <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
             </div>
+          </section>
+
+          <section class="query-panel" id="panel-sales_business_analysis" role="tabpanel" aria-labelledby="tab-sales_business_analysis" data-panel="sales_business_analysis" hidden>
+            <div class="panel-copy"><h3>销售子项目经营分析</h3><p>以销售子项目为主线，串联预计毛利率、合同、订单、出库交付、开票、应收和回款；点击结果中的子项目编码可继续查看明细。</p></div>
+            <div class="sales-flow" aria-label="销售子项目经营链路">
+              <div><span>01</span><strong>预计毛利</strong><small>合同不含税金额 / 毛利率</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>02</span><strong>订单与交付</strong><small>订单 / 出库 / 退货 / 签收</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>03</span><strong>开票与应收</strong><small>红蓝发票 / 应收余额</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>04</span><strong>回款闭环</strong><small>收款 / 退款 / 覆盖率</small></div>
+            </div>
+            <div class="field-grid">
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>销售项目编码</span><input name="projectNumber" type="text" maxlength="60" placeholder="可选，精确项目范围" autocomplete="off"></label>
+              <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>销售订单编号</span><input name="billNumber" type="text" maxlength="40" placeholder="可选，精确订单" autocomplete="off"></label>
+              <label class="field"><span>销售员</span><input name="salespersonName" type="text" maxlength="40" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>销售组织</span><input name="organizationName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+            </div>
+            <div class="scope-lock sales-note"><span aria-hidden="true">%</span><div><strong>默认统计本年度 · 最长 366 天 · 金额按业务单据原币字段归集</strong><small>预计毛利率取销售子项目单据的“预计毛利率(不含税)(%)”字段；汇总卡片只按合同不含税金额加权，不把百分比直接相加。来源不可用或关系缺失会在数据状态中明确标记。</small></div></div>
           </section>
 
           <section class="query-panel" id="panel-overdue_receivables" role="tabpanel" aria-labelledby="tab-overdue_receivables" data-panel="overdue_receivables" hidden>
@@ -230,6 +257,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260828-1" defer></script>
+  <script src="/app.js?v=20260828-2" defer></script>
 </body>
 </html>

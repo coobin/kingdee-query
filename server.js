@@ -154,6 +154,10 @@ web.get("/expense-claims/:billNumber/details", asyncRoute(async (req, res) => {
   const result = await executeExpenseDetailsAndAudit(req, req.params.billNumber);
   res.json({ result, requestId: req.requestId });
 }));
+web.post("/sales-business/:subprojectNumber/details", asyncRoute(async (req, res) => {
+  const result = await executeSalesBusinessDetailsAndAudit(req, req.params.subprojectNumber);
+  res.json({ result, requestId: req.requestId });
+}));
 
 const admin = express.Router();
 admin.use(browserAuth(config, accessControl), requireSuperAdmin);
@@ -305,6 +309,31 @@ async function executeExpenseDetailsAndAudit(req, billNumber) {
     return result;
   } catch (error) {
     audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "expense_claims", arguments: args, error: error.message, durationMs: Date.now() - started });
+    throw error;
+  }
+}
+
+async function executeSalesBusinessDetailsAndAudit(req, subprojectNumber) {
+  const started = Date.now();
+  const code = String(subprojectNumber || "").trim().slice(0, 80);
+  if (!code) throw Object.assign(new Error("销售子项目编码不正确。"), { statusCode: 400 });
+  const body = req.body || {};
+  const args = {
+    subprojectNumber: code,
+    dateFrom: String(body.dateFrom || "").slice(0, 10),
+    dateTo: String(body.dateTo || "").slice(0, 10),
+    ...(body.customerName ? { customerName: String(body.customerName).slice(0, 80) } : {}),
+    ...(body.projectNumber ? { projectNumber: String(body.projectNumber).slice(0, 60) } : {}),
+    limit: 1,
+  };
+  try {
+    enforceModuleAccess(req.identity, "sales_business_analysis");
+    const result = await engine.salesBusinessAnalysis(req.identity, catalog.sales_business_analysis, args, { includeDetails: true });
+    if (!result.rows.length) throw Object.assign(new Error("没有找到这条销售子项目，或当前账号无权查看。"), { statusCode: 404 });
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "sales_business_analysis", arguments: sanitizeArguments(args), count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
+    return result;
+  } catch (error) {
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "sales_business_analysis", arguments: sanitizeArguments(args), error: error.message, durationMs: Date.now() - started });
     throw error;
   }
 }

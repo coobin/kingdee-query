@@ -1,6 +1,16 @@
 const { KingdeeError } = require("./kingdee");
 const { buildInventoryCycleResult, warehouseStage } = require("./inventory-cycle");
 const { aggregateSupplierPurchase } = require("./supplier-purchase");
+const {
+  salesBusinessDateRange,
+  buildSalesBusinessSourceFilter,
+  aggregateSalesBusiness,
+} = require("./sales-business");
+
+const salesStatusMappings = {
+  "数据状态": { Z: "暂存", A: "已创建", B: "审核中", C: "已审核", D: "重新审核" },
+  "审核状态": { Z: "暂存", A: "已创建", B: "审核中", C: "已审核", D: "重新审核" },
+};
 
 function escapeValue(value) {
   return String(value).replaceAll("'", "''").replace(/[\u0000-\u001f]/g, "");
@@ -410,6 +420,7 @@ class QueryEngine {
     if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
     if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
     if (item.queryType === "supplier_purchase_analysis") return this.supplierPurchaseAnalysis(identity, item, args);
+    if (item.queryType === "sales_business_analysis") return this.salesBusinessAnalysis(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -565,7 +576,7 @@ class QueryEngine {
       };
       try {
         const rawRows = await this.queryAllPages(identity, request, pageSize);
-        sourceRows[id] = rowsToObjects(rawRows, source.fields);
+        sourceRows[id] = rowsToObjects(rawRows, source.fields, source.valueMappings || salesStatusMappings);
         sourceStatus.push({ id, label: source.label, available: true, rows: rawRows.length });
       } catch (error) {
         if (!source.optional) throw error;
@@ -618,6 +629,113 @@ class QueryEngine {
       sourceStatus,
       details: aggregate.details,
       summary: `${aggregate.summary}${partial ? " 部分来源不可用，详见数据状态。" : ""}`,
+    };
+  }
+
+  async salesBusinessAnalysis(identity, item, args, { includeDetails = false } = {}) {
+    const range = salesBusinessDateRange(args, this.now(), item.maxPeriodDays || 366);
+    const sources = item.sources || {};
+    const primary = sources.subprojects;
+    if (!primary) throw new Error("销售经营分析缺少销售子项目来源配置。");
+    const pageSize = this.config.kingdee.queryPageSize || 5000;
+    const sourceStatus = [];
+    const sourceRows = {};
+    const querySource = async (id, source, candidateCodes = null) => {
+      if (!source) return;
+      if (candidateCodes && !candidateCodes.length) {
+        sourceRows[id] = [];
+        sourceStatus.push({ id, label: source.label, available: true, rows: 0, skipped: true });
+        return;
+      }
+      const baseFilter = buildSalesBusinessSourceFilter(source, args, range, { includeSubproject: false });
+      try {
+        let rawRows;
+        if (candidateCodes) {
+          const result = await this.queryBySubprojects(identity, source, candidateCodes, baseFilter ? [baseFilter] : [], pageSize, source.subprojectField);
+          rawRows = result.rows;
+        } else {
+          rawRows = await this.queryAllPages(identity, {
+            FormId: source.formId,
+            FieldKeys: source.fields.map(([key]) => key).join(","),
+            FilterString: baseFilter,
+            OrderString: source.defaultOrder || `${source.dateField || "FBillNo"} ASC,FBillNo ASC`,
+            TopRowCount: 0,
+          }, pageSize);
+        }
+        sourceRows[id] = rowsToObjects(rawRows, source.fields);
+        sourceStatus.push({ id, label: source.label, available: true, rows: rawRows.length });
+      } catch (error) {
+        if (source.required) throw error;
+        sourceRows[id] = [];
+        sourceStatus.push({ id, label: source.label, available: false, rows: 0, reason: error.message });
+      }
+    };
+
+    // The sub-project master is the anchor of this report.  If it cannot be
+    // read, returning a dashboard populated only by downstream documents
+    // would make the expected margin rate and project scope ambiguous.
+    await querySource("subprojects", primary);
+    const subprojectRows = sourceRows.subprojects || [];
+    const candidateCodes = [...new Set(subprojectRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
+    const downstreamIds = ["contracts", "orders", "outbound", "invoices", "receivables", "receipts", "refunds"];
+    await Promise.all(downstreamIds.map((id) => querySource(id, sources[id], candidateCodes)));
+    const sourceOrder = ["subprojects", ...downstreamIds];
+    sourceStatus.sort((left, right) => sourceOrder.indexOf(left.id) - sourceOrder.indexOf(right.id));
+
+    // An organization or salesperson filter is only present on order/outbound
+    // documents in this Kingdee model.  Narrow the anchored sub-project set
+    // to codes that actually matched those documents so a project with no
+    // matching seller is not shown as an accidental zero row.
+    let selectedSubprojectRows = subprojectRows;
+    if (args.organizationName || args.salespersonName || args.billNumber) {
+      const matchedCodes = new Set([
+        ...(sourceRows.orders || []).map((row) => row["销售子项目编码"]),
+        ...(sourceRows.outbound || []).map((row) => row["销售子项目编码"]),
+      ].map((value) => String(value || "").trim().toUpperCase()).filter(Boolean));
+      selectedSubprojectRows = subprojectRows.filter((row) => matchedCodes.has(String(row["销售子项目编码"] || "").trim().toUpperCase()));
+    }
+
+    const aggregate = aggregateSalesBusiness({
+      subprojectRows: selectedSubprojectRows,
+      orderRows: sourceRows.orders,
+      outboundRows: sourceRows.outbound,
+      invoiceRows: sourceRows.invoices,
+      receivableRows: sourceRows.receivables,
+      receiptRows: sourceRows.receipts,
+      refundRows: sourceRows.refunds,
+      contractRows: sourceRows.contracts,
+      sourceStatus,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      partial: sourceStatus.some((source) => !source.available),
+      includeDetails,
+      maxDetailRows: item.maxDetailRows || 300,
+    });
+    const query = {
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      ...(args.customerName ? { customerName: String(args.customerName).trim() } : {}),
+      ...(args.projectNumber ? { projectNumber: String(args.projectNumber).trim() } : {}),
+      ...(args.subprojectNumber ? { subprojectNumber: String(args.subprojectNumber).trim() } : {}),
+      ...(args.billNumber ? { billNumber: String(args.billNumber).trim() } : {}),
+      ...(args.organizationName ? { organizationName: String(args.organizationName).trim() } : {}),
+      ...(args.salespersonName ? { salespersonName: String(args.salespersonName).trim() } : {}),
+    };
+    const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
+    const visibleRows = aggregate.rows.slice(0, limit);
+    return {
+      tool: "sales_business_analysis",
+      label: item.label,
+      query,
+      columns: item.publicColumns,
+      rows: visibleRows,
+      count: aggregate.rows.length,
+      truncated: aggregate.rows.length > limit,
+      partial: aggregate.statistics.partial,
+      statistics: aggregate.statistics,
+      sourceStatus: aggregate.sourceStatus,
+      details: includeDetails ? aggregate.details : [],
+      summary: aggregate.summary,
     };
   }
 
@@ -906,14 +1024,15 @@ class QueryEngine {
     return rows;
   }
 
-  async queryBySubprojects(identity, source, subprojects, extraFilter, pageSize) {
+  async queryBySubprojects(identity, source, subprojects, extraFilter, pageSize, subprojectFilterField = null) {
     if (!subprojects.length) return { rows: [] };
     const rows = [];
+    const filterField = subprojectFilterField || source.subprojectFilterField || source.subprojectField || "F_PARA_SaleSubProId.FNumber";
     for (const batch of chunkValues(subprojects, 150)) {
       rows.push(...await this.queryAllPages(identity, {
         FormId: source.formId,
         FieldKeys: source.fields.map(([key]) => key).join(","),
-        FilterString: buildSubprojectBatchFilter(batch, extraFilter, source.subprojectFilterField),
+        FilterString: buildSubprojectBatchFilter(batch, extraFilter, filterField),
         OrderString: source.defaultOrder || "FDATE ASC,FBillNo ASC",
         TopRowCount: 0,
       }, pageSize));
@@ -1682,4 +1801,7 @@ module.exports = {
   workflowRows,
   supplierPurchaseDateRange,
   buildSupplierSourceFilter,
+  salesBusinessDateRange,
+  buildSalesBusinessSourceFilter,
+  aggregateSalesBusiness,
 };

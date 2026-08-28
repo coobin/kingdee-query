@@ -28,6 +28,7 @@ const TOOL_LABELS = {
   inventory: "即时库存",
   inventory_cycle: "库存周期",
   sales_orders: "销售订单",
+  sales_business_analysis: "销售子项目经营分析",
   overdue_receivables: "发票账龄",
   receivable_aging: "应收账龄",
   overdue_risk_combined: "超期风险",

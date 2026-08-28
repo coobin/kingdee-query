@@ -124,3 +124,19 @@ test("plans an inventory cycle query using only the age threshold", () => {
   assert.equal(plan.arguments.minimumDays, 180);
   assert.equal(plan.arguments.materialNumber, undefined);
 });
+
+test("plans sales business analysis before the generic sales order tool", () => {
+  const plan = localPlan("统计今年销售子项目的预计毛利率、订单交付和回款");
+  assert.equal(plan.tool, "sales_business_analysis");
+  assert.equal(plan.arguments.dateFrom, `${new Date().getFullYear()}-01-01`);
+  assert.ok(plan.arguments.dateTo);
+});
+
+test("plans sales business filters without confusing a project code with a subproject code", () => {
+  const plan = localPlan("查询销售项目编码：P-001 的销售经营分析，销售员：张三，销售组织：华东");
+  assert.equal(plan.tool, "sales_business_analysis");
+  assert.equal(plan.arguments.projectNumber, "P-001");
+  assert.equal(plan.arguments.subprojectNumber, undefined);
+  assert.equal(plan.arguments.salespersonName, "张三");
+  assert.equal(plan.arguments.organizationName, "华东");
+});

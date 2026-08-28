@@ -16,6 +16,7 @@ function localPlan(question) {
   else if (/合并.*(?:超期|账龄)|(?:开票|发票).*(?:和|与|及).*(?:应收)|应收.*(?:和|与|及).*(?:开票|发票)|两个口径|双口径/.test(text)) tool = "overdue_risk_combined";
   else if (/按应收|应收单(?:超期|账龄|维度)|应收单和收款|应收和收款/.test(text)) tool = "receivable_aging";
   else if (/(?:发票|开票)账龄|未回款|没回款|未收款|超期应收|应收账龄|账龄|开票.*(?:未收|未回|没回)|应收.*未结清/.test(text)) tool = "overdue_receivables";
+  else if (/(?:预计毛利|毛利率|销售子项目.*(?:分析|经营|履约|回款|交付|开票)|销售.*(?:经营分析|履约分析|回款分析|交付分析|开票分析|毛利分析)|项目.*(?:经营分析|履约分析|回款分析|交付分析))/.test(text)) tool = "sales_business_analysis";
   else if (/销售|客户|订单/.test(text)) tool = "sales_orders";
   else if (/库存|仓库|物料|存量/.test(text)) tool = "inventory";
   else throw Object.assign(new Error("暂时无法判断你要查询库存、订单、发票账龄、报销还是审批进度，请说得具体一点。"), { statusCode: 400 });
@@ -27,6 +28,9 @@ function localPlan(question) {
   const applicant = text.match(/(?:申请人|报销人|员工)\s*[：:=是为]?\s*([^，。,.\s]{1,20})/);
   const supplierNumber = text.match(/供应商(?:编码|编号)\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
   const supplierName = text.match(/供应商(?:名称)?\s*[：:=是为]\s*([^，。,.;；\s]{1,80})/);
+  const projectNumber = text.match(/(?:销售)?项目(?:编码|编号)\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+  const salespersonName = text.match(/(?:销售员|业务员|销售负责人)\s*[：:=是为]?\s*([^，。,.;；\s]{1,40})/);
+  const organizationName = text.match(/(?:销售组织|组织)\s*[：:=是为]?\s*([^，。,.;；\s]{1,80})/);
   const explicitDates = [...text.matchAll(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?/g)]
     .map((match) => `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`);
   const today = new Date();
@@ -57,9 +61,15 @@ function localPlan(question) {
   if (supplierNumber) arguments_.supplierNumber = supplierNumber[1];
   else if (tool === "supplier_purchase_analysis" && supplierName) arguments_.supplierName = supplierName[1];
   else if (tool === "supplier_purchase_analysis" && quoted[0]) arguments_.supplierName = quoted[0];
-  const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
-    || text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+  const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+  const genericProject = text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
   if (subproject) arguments_.subprojectNumber = subproject[1];
+  else if (genericProject && tool !== "sales_business_analysis") arguments_.subprojectNumber = genericProject[1];
+  if (tool === "sales_business_analysis") {
+    if (projectNumber || genericProject) arguments_.projectNumber = (projectNumber || genericProject)[1];
+    if (salespersonName) arguments_.salespersonName = salespersonName[1];
+    if (organizationName) arguments_.organizationName = organizationName[1];
+  }
   if (applicant) arguments_[tool === "personnel_cost" ? "employeeName" : "applicantName"] = applicant[1];
   if (/总金额|合计金额|金额合计|总计|一共.*(?:多少|金额)|累计.*金额/.test(text)) arguments_.aggregation = "sum_amount";
   if (tool === "overdue_receivables" || tool === "receivable_aging") {
