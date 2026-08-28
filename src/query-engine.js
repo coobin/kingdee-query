@@ -61,6 +61,26 @@ function normalizeLimit(value, maxRows) {
   return Math.min(parsed, maxRows);
 }
 
+function reportArgumentText(value, label) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text || text.length > 120 || /[\u0000-\u001f]/.test(text)) {
+    throw Object.assign(new Error(`${label}不正确。`), { statusCode: 400 });
+  }
+  return text;
+}
+
+function reportBaseObject(row, source, fieldIndexes) {
+  const id = row[fieldIndexes[source.idField]];
+  const number = row[fieldIndexes[source.numberField]];
+  const name = row[fieldIndexes[source.nameField]];
+  if (id == null || id === "" || number == null || number === "") return null;
+  return {
+    Id: id,
+    FNumber: String(number),
+    FName: String(name || number),
+  };
+}
+
 const workflowColumns = ["单据编号", "流程名称", "当前节点", "当前处理人", "节点到达时间", "发起时间", "状态"];
 const workflowFieldKeys = [
   "FNumber",
@@ -421,6 +441,7 @@ class QueryEngine {
     if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
     if (item.queryType === "supplier_purchase_analysis") return this.supplierPurchaseAnalysis(identity, item, args);
     if (item.queryType === "sales_business_analysis") return this.salesBusinessAnalysis(identity, item, args);
+    if (item.queryType === "system_report") return this.systemReport(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -450,6 +471,115 @@ class QueryEngine {
       aggregate,
       summary: aggregate ? summarizeAggregate(item.label, aggregate) : summarize(item.label, objects, rows.length >= limit),
     };
+  }
+
+  async systemReport(identity, item, args) {
+    const model = {};
+    const accepted = {};
+    const sources = item.modelFilters || {};
+    const organizationSource = sources.organizationNumber;
+    const organizationNumber = reportArgumentText(
+      args.organizationNumber || item.defaultOrganizationNumber || "",
+      "业务组织编码",
+    );
+
+    if (organizationNumber && organizationSource) {
+      model[organizationSource.modelKey] = await this.resolveReportBaseData(
+        identity,
+        organizationSource,
+        organizationNumber,
+        "",
+        "业务组织编码",
+      );
+      accepted.organizationNumber = organizationNumber;
+    }
+
+    for (const [argumentName, source] of Object.entries(sources)) {
+      if (argumentName === "organizationNumber") continue;
+      const raw = args[argumentName];
+      if (raw == null || raw === "") continue;
+      const number = reportArgumentText(raw, source.label || argumentName);
+      model[source.modelKey] = await this.resolveReportBaseData(
+        identity,
+        source,
+        number,
+        organizationNumber,
+        source.label || argumentName,
+      );
+      accepted[argumentName] = number;
+    }
+
+    const dateFrom = args.dateFrom ? isoDate(args.dateFrom) : "";
+    const dateTo = args.dateTo ? isoDate(args.dateTo) : "";
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      throw Object.assign(new Error("开始日期不能晚于结束日期。"), { statusCode: 400 });
+    }
+    if (dateFrom) {
+      model.FContractStartDate = dateFrom;
+      accepted.dateFrom = dateFrom;
+    }
+    if (dateTo) {
+      model.FContractEndDate = dateTo;
+      accepted.dateTo = dateTo;
+    }
+
+    const maxRows = Math.min(item.maxRows || this.config.kingdee.maxRows, this.config.kingdee.maxRows);
+    const requestedLimit = args.limit == null || args.limit === "" ? item.defaultLimit : args.limit;
+    const limit = normalizeLimit(requestedLimit, maxRows);
+    const report = await this.kingdee.getSysReportData(identity.kingdeeUsername, item.formId, {
+      FieldKeys: item.fields.map(([key]) => key).join(","),
+      SchemeId: "",
+      StartRow: 0,
+      Limit: limit,
+      IsVerifyBaseDataField: "true",
+      FilterString: "",
+      Model: model,
+    });
+    const rawRows = Array.isArray(report.Rows) ? report.Rows : [];
+    const parsedCount = Number(report.RowCount);
+    const count = Number.isFinite(parsedCount) ? parsedCount : rawRows.length;
+    const rows = rowsToObjects(rawRows, item.fields);
+    const truncated = count > rows.length;
+    const returnedText = truncated ? `当前返回 ${rows.length} 条` : `已返回全部 ${rows.length} 条`;
+    return {
+      tool: "project_pur_sale_consistency",
+      label: item.label,
+      query: accepted,
+      columns: item.fields.map(([, label]) => label),
+      rows,
+      count,
+      truncated,
+      partial: false,
+      reportFormId: item.formId,
+      summary: `${item.label}共 ${count} 条，${returnedText}${truncated ? "；可缩小筛选范围后继续查看" : "。"}`,
+    };
+  }
+
+  async resolveReportBaseData(identity, source, number, organizationNumber, label) {
+    const fields = [source.idField, source.numberField, source.nameField, source.scopeField].filter(Boolean);
+    const fieldKeys = [...new Set(fields)].join(",");
+    const filters = [`${source.numberField}='${escapeValue(number)}'`];
+    if (source.scopeField && organizationNumber) {
+      filters.push(`${source.scopeField}='${escapeValue(organizationNumber)}'`);
+    }
+    const rawRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+      FormId: source.formId,
+      FieldKeys: fieldKeys,
+      FilterString: filters.join(" AND "),
+      OrderString: `${source.idField} ASC`,
+      StartRow: 0,
+      Limit: 50,
+      TopRowCount: 0,
+    });
+    const fieldIndexes = Object.fromEntries(fields.map((field, index) => [field, index]));
+    const objects = rawRows.map((row) => reportBaseObject(row, source, fieldIndexes)).filter(Boolean);
+    if (!objects.length) {
+      throw Object.assign(new Error(`没有找到${label}“${number}”，或当前账号无权查看。`), { statusCode: 400 });
+    }
+    if (objects.length > 1) {
+      throw Object.assign(new Error(`${label}“${number}”对应多个基础资料，请同时填写业务组织编码。`), { statusCode: 400 });
+    }
+    return objects[0];
   }
 
   async expenseDetails(identity, billNumber) {

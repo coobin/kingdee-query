@@ -46,6 +46,66 @@ test("maps positional WebAPI rows to labelled objects", () => {
   assert.deepEqual(rowsToObjects([["A100", 12]], [["FNumber", "物料编码"], ["FQty", "数量"]]), [{ 物料编码: "A100", 数量: 12 }]);
 });
 
+test("queries the original project purchase-sales report with resolved base data", async () => {
+  const requests = [];
+  const reportRequests = [];
+  const kingdee = {
+    executeBillQuery: async (username, request) => {
+      assert.equal(username, "240001");
+      requests.push(request);
+      const rows = {
+        ORG_Organizations: [[1, "ORG001", "示例组织"]],
+        PARA_ProjectView: [[101, "P-001", "示例项目"]],
+        PARA_SaleSubProject: [[102, "SP-001", "示例子项目"]],
+        BD_Department: [[103, "D-001", "示例部门", "ORG001"]],
+        BD_Customer: [[104, "C-001", "示例客户", "ORG001"]],
+      };
+      return rows[request.FormId] || [];
+    },
+    getSysReportData: async (username, formId, data) => {
+      assert.equal(username, "240001");
+      assert.equal(formId, "PARA_PM_ProjectPurSaleRpt");
+      reportRequests.push(data);
+      return { IsSuccess: true, RowCount: 8, Rows: [["ORG001", "P-001", "SP-001"]] };
+    },
+  };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 200 } },
+  });
+  const result = await engine.execute(identity, {
+    tool: "project_pur_sale_consistency",
+    arguments: {
+      organizationNumber: "ORG001",
+      projectNumber: "P-001",
+      subprojectNumber: "SP-001",
+      departmentNumber: "D-001",
+      customerNumber: "C-001",
+      dateFrom: "2021-11-23",
+      dateTo: "2022-12-31",
+      limit: 1,
+    },
+  });
+  assert.equal(requests.length, 5);
+  assert.equal(reportRequests.length, 1);
+  assert.equal(reportRequests[0].FilterString, "");
+  assert.equal(reportRequests[0].Limit, 1);
+  assert.deepEqual(reportRequests[0].Model, {
+    FOrgId: { Id: 1, FNumber: "ORG001", FName: "示例组织" },
+    FSaleProjectId: { Id: 101, FNumber: "P-001", FName: "示例项目" },
+    FSaleSuProjectId: { Id: 102, FNumber: "SP-001", FName: "示例子项目" },
+    FSaleDeptId: { Id: 103, FNumber: "D-001", FName: "示例部门" },
+    FCustId: { Id: 104, FNumber: "C-001", FName: "示例客户" },
+    FContractStartDate: "2021-11-23",
+    FContractEndDate: "2022-12-31",
+  });
+  assert.equal(result.count, 8);
+  assert.equal(result.truncated, true);
+  assert.deepEqual(result.columns, catalog.project_pur_sale_consistency.fields.map(([, label]) => label));
+  assert.equal(result.rows[0]["组织"], "ORG001");
+});
+
 test("maps document status codes to readable Chinese labels", () => {
   const fields = [["FBillNo", "单据编号"], ["FDocumentStatus", "审核状态"]];
   const mappings = { 审核状态: { A: "已创建", B: "审核中", C: "已审核" } };

@@ -28,7 +28,10 @@ class KingdeeClient {
 
   async request(method, parameters, cookie = "") {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    const timeoutMs = method.endsWith(".GetSysReportData")
+      ? (this.config.reportTimeoutMs || this.config.timeoutMs)
+      : this.config.timeoutMs;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const envelope = {
       format: 1,
       useragent: "Kingdee-Query-Hub",
@@ -112,6 +115,30 @@ class KingdeeClient {
       throw new KingdeeError(`金蝶查询失败：${message}`, { payload: result });
     }
     return result;
+  }
+
+  async getSysReportData(username, formId, data) {
+    if (!formId) throw new KingdeeError("缺少金蝶系统报表编号");
+    const method = "Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.GetSysReportData";
+    const result = await this.call(username, method, [formId, JSON.stringify(data || {})]);
+    const responseStatus = result?.Result?.ResponseStatus || result?.ResponseStatus;
+    if (responseStatus?.IsSuccess === false) {
+      const errors = Array.isArray(responseStatus.Errors)
+        ? responseStatus.Errors
+        : (responseStatus.Errors ? [responseStatus.Errors] : []);
+      const message = errors.map((error) => error.Message).filter(Boolean).join("；") || "系统报表查询失败";
+      throw new KingdeeError(`金蝶系统报表查询失败：${message}`, { payload: result });
+    }
+    const report = result?.Result || result;
+    if (report?.IsSuccess === false) {
+      const errors = Array.isArray(report.Errors) ? report.Errors : (report.Errors ? [report.Errors] : []);
+      const message = errors.map((error) => error.Message || error).filter(Boolean).join("；") || "系统报表查询失败";
+      throw new KingdeeError(`金蝶系统报表查询失败：${message}`, { payload: result });
+    }
+    if (!report || !Array.isArray(report.Rows)) {
+      throw new KingdeeError("金蝶系统报表未返回行数据", { payload: result });
+    }
+    return report;
   }
 
 }

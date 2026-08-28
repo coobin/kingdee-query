@@ -76,6 +76,7 @@ module.exports = {
     lcid: number("KINGDEE_LCID", 2052),
     loginMode: process.env.KINGDEE_LOGIN_MODE || "app_secret",
     timeoutMs: number("KINGDEE_TIMEOUT_MS", 15000),
+    reportTimeoutMs: number("KINGDEE_REPORT_TIMEOUT_MS", 120000),
     sessionTtlMs: number("KINGDEE_SESSION_TTL_SECONDS", 900) * 1000,
     maxRows: Math.min(number("KINGDEE_MAX_ROWS", 200), 1000),
     queryPageSize: Math.min(number("KINGDEE_QUERY_PAGE_SIZE", 5000), 5000),

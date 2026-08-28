@@ -10,6 +10,7 @@
 | [库存周期](inventory-cycle.md) | `inventory_cycle` | 当前公司仓/项目仓/客户仓库存明细行 | 串联收料入库、直接调拨和客户签收计算库存周期 |
 | [销售订单](sales-orders.md) | `sales_orders` | 销售订单单据头 | 按单据、客户或日期查询销售订单 |
 | [销售子项目经营分析](sales-business-analysis.md) | `sales_business_analysis` | 销售子项目汇总行、跨单据明细 | 以预计毛利率为起点串联合同、订单、交付、开票、应收和回款 |
+| [项目购销一致性](project-pur-sale-consistency.md) | `project_pur_sale_consistency` | 销售项目/子项目锚点下的合同与往来单据展开行 | 同源读取金蝶项目购销一致性系统报表，保留原始字段和行结构 |
 | [发票账龄](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
 | [应收账龄](receivable-aging.md) | `receivable_aging` | 销售子项目应收风险汇总行 | 按应收单日期核对已形成应收的长期未收款余额 |
 | [超期风险](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 按发票和应收超期的设定天数取二者查询结果的最大值 |

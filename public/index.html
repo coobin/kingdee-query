@@ -52,6 +52,9 @@
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-sales_business_analysis" id="tab-sales_business_analysis" data-tool="sales_business_analysis">
             <span>销售</span><strong>子项目经营</strong>
           </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-project_pur_sale_consistency" id="tab-project_pur_sale_consistency" data-tool="project_pur_sale_consistency">
+            <span>销售</span><strong>购销一致性</strong>
+          </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-overdue_receivables" id="tab-overdue_receivables" data-tool="overdue_receivables">
             <span>财务</span><strong>发票账龄</strong>
           </button>
@@ -140,6 +143,21 @@
               <label class="field"><span>销售组织</span><input name="organizationName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
             </div>
             <div class="scope-lock sales-note"><span aria-hidden="true">%</span><div><strong>默认统计本年度 · 最长 366 天 · 金额按业务单据原币字段归集</strong><small>预计毛利率取销售子项目单据的“预计毛利率(不含税)(%)”字段；汇总卡片只按合同不含税金额加权，不把百分比直接相加。来源不可用或关系缺失会在数据状态中明确标记。</small></div></div>
+          </section>
+
+          <section class="query-panel" id="panel-project_pur_sale_consistency" role="tabpanel" aria-labelledby="tab-project_pur_sale_consistency" data-panel="project_pur_sale_consistency" hidden>
+            <div class="panel-copy"><h3>项目购销一致性报表</h3><p>读取金蝶原报表的同一套服务端计算结果，保留项目、合同、收付款、票据和发票的原始行结构。</p></div>
+            <div class="field-grid">
+              <label class="field"><span>业务组织编码</span><input name="organizationNumber" type="text" maxlength="20" value="100" placeholder="例如：100" autocomplete="off"></label>
+              <label class="field"><span>销售项目编码</span><input name="projectNumber" type="text" maxlength="60" placeholder="可选，精确项目范围" autocomplete="off"></label>
+              <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，精确子项目范围" autocomplete="off"></label>
+              <label class="field"><span>销售部门编码</span><input name="departmentNumber" type="text" maxlength="40" placeholder="可选，例如：D-001" autocomplete="off"></label>
+              <label class="field"><span>客户编码</span><input name="customerNumber" type="text" maxlength="60" placeholder="可选，例如：C-001" autocomplete="off"></label>
+              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="date"></label>
+              <label class="field"><span>签订结束日期</span><input name="dateTo" type="date"></label>
+              <label class="field"><span>返回行数</span><input name="limit" type="number" min="1" max="1000" step="1" value="200" inputmode="numeric"></label>
+            </div>
+            <div class="scope-lock sales-note"><span aria-hidden="true">↗</span><div><strong>默认业务组织：100 · 服务端原报表 · 结果可导出 CSV</strong><small>筛选条件会先解析为金蝶基础资料对象，再传入原系统报表；结果行的金额、单据展开和关联关系由金蝶报表服务计算，当前页面不重新拼接 SQL。</small></div></div>
           </section>
 
           <section class="query-panel" id="panel-overdue_receivables" role="tabpanel" aria-labelledby="tab-overdue_receivables" data-panel="overdue_receivables" hidden>
@@ -257,6 +275,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260828-3" defer></script>
+  <script src="/app.js?v=20260828-4" defer></script>
 </body>
 </html>

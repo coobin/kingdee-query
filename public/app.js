@@ -3,6 +3,7 @@ const TOOL_META = {
   inventory_cycle: { action: "查询库存周期", conditionLabels: { materialNumber: "物料编码", materialName: "物料名称", subprojectNumber: "销售子项目编码", warehouseName: "仓库名称", warehouseScope: "查看范围", minimumDays: "最少库存周期" } },
   sales_orders: { action: "查询销售订单", conditionLabels: { billNumber: "单据编号", customerName: "客户名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   sales_business_analysis: { action: "分析销售子项目", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", customerName: "客户名称", projectNumber: "销售项目编码", subprojectNumber: "销售子项目编码", billNumber: "销售订单编号", salespersonName: "销售员", organizationName: "销售组织" } },
+  project_pur_sale_consistency: { action: "查询购销一致性", conditionLabels: { organizationNumber: "业务组织编码", projectNumber: "销售项目编码", departmentNumber: "销售部门编码", customerNumber: "客户编码", subprojectNumber: "销售子项目编码", dateFrom: "签订开始日期", dateTo: "签订结束日期" } },
   overdue_receivables: { action: "统计发票账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },

@@ -140,3 +140,11 @@ test("plans sales business filters without confusing a project code with a subpr
   assert.equal(plan.arguments.salespersonName, "张三");
   assert.equal(plan.arguments.organizationName, "华东");
 });
+
+test("plans project purchase-sales consistency queries with base-data codes", () => {
+  const plan = localPlan("查询购销一致性报表，销售项目编码：P-001，销售子项目编码：SP-001，业务组织编码：100");
+  assert.equal(plan.tool, "project_pur_sale_consistency");
+  assert.equal(plan.arguments.projectNumber, "P-001");
+  assert.equal(plan.arguments.subprojectNumber, "SP-001");
+  assert.equal(plan.arguments.organizationNumber, "100");
+});
