@@ -274,7 +274,8 @@ function supplierPurchaseDateRange(args, now, maximumDays = 366) {
 }
 
 function buildSupplierSourceFilter(source, args, range) {
-  const clauses = [source.filter, `${source.dateField}>='${isoDate(range.dateFrom)}'`, `${source.dateField}<'${isoDate(range.dateToExclusive)}'`].filter(Boolean);
+  const clauses = [source.filter].filter(Boolean);
+  if (source.dateField) clauses.push(`${source.dateField}>='${isoDate(range.dateFrom)}'`, `${source.dateField}<'${isoDate(range.dateToExclusive)}'`);
   if (args.supplierNumber && source.supplierCodeField) clauses.push(`${source.supplierCodeField}='${escapeValue(args.supplierNumber)}'`);
   if (args.supplierName && source.supplierNameField) clauses.push(`${source.supplierNameField} LIKE '%${escapeValue(args.supplierName)}%'`);
   if (args.organizationName && source.organizationField) clauses.push(`${source.organizationField} LIKE '%${escapeValue(args.organizationName)}%'`);
@@ -589,6 +590,7 @@ class QueryEngine {
       payableRows: sourceRows.payables,
       paymentRows: sourceRows.payments,
       invoiceRows: sourceRows.invoices,
+      masterRows: sourceRows.supplier_master,
       qualityRows: sourceRows.quality,
       dateFrom: range.dateFrom,
       dateTo: range.dateTo,

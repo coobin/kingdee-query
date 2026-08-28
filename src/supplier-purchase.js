@@ -114,6 +114,7 @@ function createSupplier(parts) {
     pricePoints: [],
     deliveryDates: [],
     details: [],
+    profile: null,
   };
 }
 
@@ -309,6 +310,25 @@ function addQualityRows(map, rows) {
   }
 }
 
+function enrichSupplierMasterRows(map, rows) {
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const parts = supplierParts(row);
+    if (!parts.key) continue;
+    const supplier = map.get(parts.key);
+    if (!supplier) continue;
+    supplier.profile = {
+      "供应商分类": text(row["供应商分类"]),
+      "供应商等级": text(row["供应商等级"]),
+      "业务状态": text(row["业务状态"]),
+      "结算币别": text(row["结算币别"]),
+      "付款条件": text(row["付款条件"]),
+      "发票类型": text(row["发票类型"]),
+      "生效日期": dateOnly(row["生效日期"]),
+      "失效日期": dateOnly(row["失效日期"]),
+    };
+  }
+}
+
 function priceChange(material) {
   const points = material.prices.filter((point) => point.value).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   if (points.length < 2) return 0;
@@ -349,6 +369,9 @@ function publicSupplierRow(supplier, totalOrderAmount, dateTo) {
   return {
     "供应商编码": supplier["供应商编码"],
     "供应商": supplier["供应商"],
+    "供应商分类": supplier.profile?.["供应商分类"] || "",
+    "供应商等级": supplier.profile?.["供应商等级"] || "",
+    "业务状态": supplier.profile?.["业务状态"] || "",
     "采购订单数": supplier.orderBills.size,
     "订单金额": orderAmount,
     "采购金额占比": totalOrderAmount > 0 ? round(orderAmount / totalOrderAmount * 100) : 0,
@@ -391,6 +414,7 @@ function detailForSupplier(supplier, dateTo) {
   return {
     "供应商编码": supplier["供应商编码"],
     "供应商": supplier["供应商"],
+    profile: supplier.profile,
     kpis: {
       订单金额: round(supplier.orderAmount),
       净采购金额: round(supplier.orderAmount - supplier.returnAmount),
@@ -414,7 +438,7 @@ function detailForSupplier(supplier, dateTo) {
   };
 }
 
-function aggregateSupplierPurchase({ purchaseRows = [], receiveRows = [], inboundRows = [], returnRows = [], payableRows = [], paymentRows = [], invoiceRows = [], qualityRows = [], dateFrom, dateTo, sourceStatus = [], selectedSupplierNumber = "" }) {
+function aggregateSupplierPurchase({ purchaseRows = [], receiveRows = [], inboundRows = [], returnRows = [], payableRows = [], paymentRows = [], invoiceRows = [], masterRows = [], qualityRows = [], dateFrom, dateTo, sourceStatus = [], selectedSupplierNumber = "" }) {
   const map = new Map();
   addPurchaseRows(map, purchaseRows);
   addReceiveRows(map, receiveRows);
@@ -423,6 +447,7 @@ function aggregateSupplierPurchase({ purchaseRows = [], receiveRows = [], inboun
   addPayableRows(map, payableRows);
   addPaymentRows(map, paymentRows);
   addInvoiceRows(map, invoiceRows);
+  enrichSupplierMasterRows(map, masterRows);
   addQualityRows(map, qualityRows);
   const inboundAvailable = sourceStatus.find((source) => source.id === "inbound")?.available === true;
   const returnAvailable = sourceStatus.find((source) => source.id === "returns")?.available === true;
@@ -438,6 +463,7 @@ function aggregateSupplierPurchase({ purchaseRows = [], receiveRows = [], inboun
   const rows = [...map.values()].map((supplier) => publicSupplierRow(supplier, totalOrderAmount, dateTo)).sort((a, b) => b["订单金额"] - a["订单金额"] || String(a["供应商编码"]).localeCompare(String(b["供应商编码"]), "zh-CN", { numeric: true }));
   const top5Amount = rows.slice(0, 5).reduce((sum, row) => sum + row["订单金额"], 0);
   const qualityAvailable = sourceStatus.find((source) => source.id === "quality")?.available === true;
+  const masterAvailable = sourceStatus.find((source) => source.id === "supplier_master")?.available === true;
   const statistics = {
     type: "supplier_purchase_analysis",
     dateFrom,
@@ -460,6 +486,8 @@ function aggregateSupplierPurchase({ purchaseRows = [], receiveRows = [], inboun
     highRiskSupplierCount: rows.filter((row) => row["风险等级"] === "高").length,
     qualityAvailable,
     qualityCoverage: qualityAvailable ? "已读取质检单" : "质量管理模块未购买或不可访问",
+    masterAvailable,
+    masterMatchedCount: [...map.values()].filter((supplier) => supplier.profile).length,
     sourceStatus,
   };
   const selected = text(selectedSupplierNumber);

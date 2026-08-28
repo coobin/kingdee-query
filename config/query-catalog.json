@@ -434,7 +434,7 @@
   },
   "supplier_purchase_analysis": {
     "label": "供应商采购分析",
-    "description": "按供应商汇总采购订单、到货、入库、退料、交付、应付、发票、付款和可用的质量指标",
+    "description": "按供应商汇总采购订单、到货、入库、退料、交付、应付、发票、付款、主数据画像和可用的质量指标",
     "formId": "PUR_PurchaseOrder",
     "queryType": "supplier_purchase_analysis",
     "restrictedByDefault": true,
@@ -442,6 +442,9 @@
     "publicColumns": [
       "供应商编码",
       "供应商",
+      "供应商分类",
+      "供应商等级",
+      "业务状态",
       "采购订单数",
       "订单金额",
       "采购金额占比",
@@ -654,6 +657,29 @@
           ["FAMOUNTFOR", "不含税金额"]
         ],
         "defaultOrder": "FDATE ASC,FBillNo ASC"
+      },
+      "supplier_master": {
+        "label": "供应商主数据",
+        "formId": "BD_Supplier",
+        "supplierCodeField": "FNumber",
+        "supplierNameField": "FName",
+        "filter": "FForbidStatus='A'",
+        "optional": true,
+        "fields": [
+          ["FNumber", "供应商编码"],
+          ["FName", "供应商"],
+          ["FForbidStatus", "禁用状态"],
+          ["FDocumentStatus", "数据状态"],
+          ["FSupplierClassify", "供应商分类"],
+          ["FSupplierGrade", "供应商等级"],
+          ["FBusinessStatus", "业务状态"],
+          ["FPayCurrencyId.FName", "结算币别"],
+          ["FPayCondition", "付款条件"],
+          ["FInvoiceType", "发票类型"],
+          ["FStartDate", "生效日期"],
+          ["FEndDate", "失效日期"]
+        ],
+        "defaultOrder": "FNumber ASC"
       },
       "quality": {
         "label": "质量检验",

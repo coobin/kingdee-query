@@ -4,7 +4,7 @@
 
 - 工具 ID：`supplier_purchase_analysis`
 - 主统计粒度：供应商（供应商编码优先；编码缺失时使用供应商名称）
-- 明细粒度：采购订单明细行；供应商详情同时提供月度、物料和采购订单三个视图
+- 明细粒度：采购订单明细行；供应商详情同时提供主数据画像、月度、物料和采购订单四个视图
 - 默认期间：当年 1 月 1 日至当前业务日期
 - 期间上限：366 天，`dateTo` 包含当天
 - 金额币别：优先使用各业务对象的本位币金额字段；页面显示人民币样式仅用于格式化，不代表发生了币别换算
@@ -33,6 +33,7 @@
 | 应付单 | `AP_PAYABLE` | `FBillNo`、`FDATE`、`FSUPPLIERID`、`FALLAMOUNTFOR`、`FALLAMOUNT`、`FNORECEIVEAMOUNT`、`FNOINVOICEAMOUNT` | 仅已审核且未作废 |
 | 付款单 | `AP_PAYBILL` | `FBillNo`、`FDATE`、`FCONTACTUNITTYPE`、`FCONTACTUNIT`、`FPAYTOTALAMOUNTFOR_H`、`FREALPAYAMOUNTFOR_H`、`FPAYTOTALAMOUNT_H`、`FREALPAYAMOUNT_H` | 仅已审核、未作废且往来单位类型为供应商 |
 | 采购发票 | `IV_PURCHASEIC` | `FBillNo`、`FDATE`、`FSUPPLIERID`、`FALLAMOUNTFOR`、`FALLAMOUNT`、`FREDBLUE` | 仅已审核且未作废；红字按负数净额化 |
+| 供应商主数据（可选） | `BD_Supplier` | `FNumber`、`FName`、`FSupplierClassify`、`FSupplierGrade`、`FBusinessStatus`、`FPayCurrencyId`、`FPayCondition`、`FInvoiceType`、`FStartDate`、`FEndDate` | 仅启用供应商；用于补充排行和明细画像，不会把无交易供应商加入期间排行 |
 | 质量检验（可选） | `QM_INSPECTBILL` | `FBillNo`、`FDate`、`FSupplierId`、`FBaseInspectQty`、`FBaseQualifiedQty`、`FBaseUnqualifiedQty` | 仅已审核且未作废；需账套购买质量管理模块 |
 
 ## 指标口径
@@ -54,13 +55,14 @@
 
 ## 完整性和降级行为
 
-每个来源均使用 `TopRowCount=0` 和分页读取，页面不会把 `100` 行展示上限当成汇总扫描上限。采购订单是主来源；主来源失败时查询直接失败并记录审计。收料、入库、退料、应付、付款、发票和质量来源单独记录状态：
+每个来源均使用 `TopRowCount=0` 和分页读取，页面不会把 `100` 行展示上限当成汇总扫描上限。采购订单是主来源；主来源失败时查询直接失败并记录审计。收料、入库、退料、应付、付款、发票、供应商主数据和质量来源单独记录状态：
 
 - 来源可查询但期间无记录：标记为“已读取、0 行”，不视为错误。
 - 来源无权限、字段不适配或模块未购买：标记为“不可用”，结果返回 `partial=true`，但其他来源继续汇总。
 - 质量管理模块未购买时，质量合格率为空，不把空值当作 0% 不合格率。
+- 供应商主数据不可用时，交易金额和数量仍可汇总，排行中的画像列留空；主数据只为期间内已发生交易的供应商补充信息。
 - 详情查询会重新按供应商编码和同一期间读取来源，保证点击排行后的明细与汇总口径一致。
 
 ## 页面和接口输出
 
-`rows` 返回供应商排行和采购金额、数量、入库、退料、应付、发票、付款、价格、交付、质量和风险列；`statistics` 返回期间总额、供应商数、订单数、集中度和可用来源；当请求携带 `supplierNumber` 时，`details` 追加月度趋势、物料构成、采购订单和异常提示。服务端不返回原始金蝶内码、银行字段、密钥或任意用户提交的字段表达式。
+`rows` 返回供应商排行和采购金额、数量、入库、退料、应付、发票、付款、价格、交付、质量、风险及主数据画像列；`statistics` 返回期间总额、供应商数、订单数、集中度、主数据匹配数和可用来源；当请求携带 `supplierNumber` 时，`details` 追加主数据画像、月度趋势、物料构成、采购订单和异常提示。服务端不返回原始金蝶内码、银行字段、密钥或任意用户提交的字段表达式。

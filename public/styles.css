@@ -201,6 +201,13 @@ table.supplier-table { min-width: 1900px; margin: 0; font-size: 11px; }
 .supplier-detail-kpis > div:last-child { border-right: 0; }
 .supplier-detail-kpis span { color: var(--muted); font-family: var(--utility); font-size: 9px; }
 .supplier-detail-kpis strong { color: var(--forest); font-family: var(--display); font-size: 19px; font-weight: 600; overflow-wrap: anywhere; }
+.supplier-profile { margin-top: 13px; padding: 11px 12px 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, .78); }
+.supplier-profile-title { margin-bottom: 8px; color: var(--forest); font-family: var(--utility); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.supplier-profile-grid { display: grid; grid-template-columns: repeat(8, minmax(90px, 1fr)); }
+.supplier-profile-grid > div { min-height: 44px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 6px 9px; border-right: 1px solid var(--line); }
+.supplier-profile-grid > div:last-child { border-right: 0; }
+.supplier-profile-grid span { color: var(--muted); font-family: var(--utility); font-size: 9px; }
+.supplier-profile-grid strong { color: var(--forest); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .supplier-exceptions { margin-top: 12px; padding: 9px 12px; border-left: 3px solid var(--amber); color: #8b5d00; background: #f5f0df; font-size: 11px; }
 .supplier-exceptions p { margin: 2px 0; }
 .supplier-mini-section { margin-top: 15px; }
@@ -295,6 +302,9 @@ tbody tr:hover { background: #f1f7f3; }
   .supplier-stat:nth-child(2n) { border-right: 0; }
   .supplier-detail-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .supplier-detail-kpis > div { border-bottom: 1px solid var(--line); }
+  .supplier-profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .supplier-profile-grid > div:nth-child(2n) { border-right: 0; }
+  .supplier-profile-grid > div { border-bottom: 1px solid var(--line); }
   .supplier-detail-head { align-items: flex-start; flex-direction: column; }
   .supplier-detail-head .quiet-button { align-self: flex-end; }
   .expense-detail-shell { width: calc(100vw - 96px); max-width: calc(100vw - 96px); margin-left: 14px; margin-right: 0; padding: 12px; }

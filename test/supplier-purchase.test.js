@@ -13,6 +13,7 @@ function baseSourceStatus() {
     { id: "payables", label: "应付单", available: true, rows: 1 },
     { id: "payments", label: "付款单", available: true, rows: 1 },
     { id: "invoices", label: "采购发票", available: true, rows: 1 },
+    { id: "supplier_master", label: "供应商主数据", available: true, rows: 1 },
     { id: "quality", label: "质量检验", available: false, rows: 0, reason: "模块未购买" },
   ];
 }
@@ -33,6 +34,7 @@ test("aggregates supplier procurement by bill and keeps signed invoice amounts",
     payableRows: [{ "应付单号": "AP-1", "应付日期": "2026-01-08", "供应商编码": "S1", "供应商": "甲供应商", "应付价税合计(本位币)": 80, "未开票核销金额": 20 }],
     paymentRows: [{ "付款单号": "PAY-1", "付款日期": "2026-01-09", "供应商编码": "S1", "供应商": "甲供应商", "实付金额(本位币)": 50 }],
     invoiceRows: [{ "采购发票号": "INV-1", "发票日期": "2026-01-10", "供应商编码": "S1", "供应商": "甲供应商", "采购发票金额(本位币)": 70, "红蓝字": "1" }],
+    masterRows: [{ "供应商编码": "S1", "供应商": "甲供应商", "供应商分类": "原材料", "供应商等级": "A", "业务状态": "正常", "结算币别": "人民币", "付款条件": "月结30天", "发票类型": "专票", "生效日期": "2025-01-01" }],
     qualityRows: [],
   });
   assert.equal(result.rows.length, 2);
@@ -44,6 +46,9 @@ test("aggregates supplier procurement by bill and keeps signed invoice amounts",
   assert.equal(supplier["退料金额"], 10);
   assert.equal(supplier["已付款金额"], 50);
   assert.equal(supplier["采购发票金额"], -70);
+  assert.equal(supplier["供应商分类"], "原材料");
+  assert.equal(supplier["供应商等级"], "A");
+  assert.equal(result.statistics.masterMatchedCount, 1);
   assert.equal(result.partial, true);
   assert.equal(result.details, null);
 });
@@ -63,6 +68,7 @@ test("executes all supplier sources with bounded date and supplier filters", asy
       if (!match) return [];
       if (match.id === "quality") throw new Error("质量管理模块未购买");
       const { source } = match;
+      if (match.id === "supplier_master") return [rowFor(source, { "供应商编码": "S1", "供应商": "甲供应商", "供应商分类": "原材料", "供应商等级": "A", "业务状态": "正常", "结算币别": "人民币", "付款条件": "月结30天", "发票类型": "专票", "生效日期": "2025-01-01" })];
       if (match.id === "orders") return [rowFor(source, { "采购订单号": "PO-1", "采购日期": "2026-08-01", "供应商编码": "S1", "供应商": "甲供应商", "审核状态": "C", "作废状态": "A", "订单价税合计(本位币)": 120, "物料编码": "M1", "采购基本数量": 2, "明细价税合计(本位币)": 120 })];
       if (match.id === "inbound") return [rowFor(source, { "入库单号": "IN-1", "入库日期": "2026-08-03", "供应商编码": "S1", "供应商": "甲供应商", "入库基本数量": 2, "入库价税合计(本位币)": 120 })];
       if (match.id === "receipts") return [rowFor(source, { "收料单号": "RC-1", "收料日期": "2026-08-02", "供应商编码": "S1", "供应商": "甲供应商", "收料基本数量": 2 })];
@@ -83,7 +89,13 @@ test("executes all supplier sources with bounded date and supplier filters", asy
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0]["订单金额"], 120);
   assert.equal(result.details["供应商编码"], "S1");
+  assert.equal(result.details.profile["供应商等级"], "A");
+  assert.equal(result.statistics.masterMatchedCount, 1);
   assert.equal(result.partial, true);
-  assert.equal(requests.length, 8);
-  assert.ok(requests.every(({ user, request }) => user === "1" && request.TopRowCount === 0 && request.FilterString.includes("2026-01-01") && request.FilterString.includes("2026-08-29") && request.FilterString.includes("S1")));
+  assert.equal(requests.length, 9);
+  const transactionRequests = requests.filter(({ request }) => request.FormId !== "BD_Supplier");
+  assert.ok(transactionRequests.every(({ user, request }) => user === "1" && request.TopRowCount === 0 && request.FilterString.includes("2026-01-01") && request.FilterString.includes("2026-08-29") && request.FilterString.includes("S1")));
+  const masterRequest = requests.find(({ request }) => request.FormId === "BD_Supplier");
+  assert.equal(masterRequest.user, "1");
+  assert.equal(masterRequest.request.FilterString, "FForbidStatus='A' AND FNumber='S1'");
 });

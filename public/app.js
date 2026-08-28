@@ -283,7 +283,7 @@ function renderSupplierPurchaseResult(result, view) {
   const heading = document.createElement("div");
   heading.className = "supplier-section-heading";
   const title = document.createElement("h3"); title.textContent = "供应商排行";
-  const hint = document.createElement("small"); hint.textContent = "点击供应商名称读取期间明细、物料构成和异常提示";
+  const hint = document.createElement("small"); hint.textContent = `点击供应商名称读取期间明细、物料构成和异常提示 · 主数据已匹配 ${statistics.masterMatchedCount || 0} 家`;
   heading.append(title, hint); els.table.append(heading);
   renderSupplierTable(result, view);
   if (view.supplierDetail) renderSupplierDetail(view.supplierDetail, view);
@@ -338,7 +338,7 @@ async function loadSupplierDetail(result, view, row) {
       method: "POST",
       body: JSON.stringify({
         tool: "supplier_purchase_analysis",
-        arguments: { dateFrom: query.dateFrom, dateTo: query.dateTo, supplierNumber, limit: 100 },
+        arguments: { dateFrom: query.dateFrom, dateTo: query.dateTo, supplierNumber, ...(query.organizationName ? { organizationName: query.organizationName } : {}), limit: 100 },
         question: "供应商采购分析明细（结构化表单）",
       }),
     });
@@ -361,6 +361,16 @@ function renderSupplierDetail(detailView, view) {
   if (detailView.status === "error") { const p = document.createElement("p"); p.className = "error-box"; p.textContent = `${detailView.message}${detailView.requestId ? `（请求编号：${detailView.requestId}）` : ""}`; shell.append(p); els.table.append(shell); return; }
   const detail = detailView.result?.details;
   if (!detail) { const p = document.createElement("p"); p.textContent = "没有可显示的供应商明细。"; shell.append(p); els.table.append(shell); return; }
+  if (detail.profile) {
+    const profile = document.createElement("div"); profile.className = "supplier-profile";
+    profile.setAttribute("aria-label", "供应商主数据");
+    const profileTitle = document.createElement("div"); profileTitle.className = "supplier-profile-title"; profileTitle.textContent = "供应商主数据"; profile.append(profileTitle);
+    const profileGrid = document.createElement("div"); profileGrid.className = "supplier-profile-grid";
+    [["供应商分类", detail.profile["供应商分类"]], ["供应商等级", detail.profile["供应商等级"]], ["业务状态", detail.profile["业务状态"]], ["结算币别", detail.profile["结算币别"]], ["付款条件", detail.profile["付款条件"]], ["发票类型", detail.profile["发票类型"]], ["生效日期", detail.profile["生效日期"]], ["失效日期", detail.profile["失效日期"]]].forEach(([label, value]) => {
+      const item = document.createElement("div"); const labelNode = document.createElement("span"); labelNode.textContent = label; const valueNode = document.createElement("strong"); valueNode.textContent = value || "—"; item.append(labelNode, valueNode); profileGrid.append(item);
+    });
+    profile.append(profileGrid); shell.append(profile);
+  }
   const kpi = document.createElement("div"); kpi.className = "supplier-detail-kpis";
   [["订单金额", formatMoney(detail.kpis.订单金额)], ["净采购金额", formatMoney(detail.kpis.净采购金额)], ["采购数量", formatQuantity(detail.kpis.采购数量)], ["入库数量", formatQuantity(detail.kpis.入库数量)], ["应付金额", formatMoney(detail.kpis.应付金额)], ["已付款金额", formatMoney(detail.kpis.已付款金额)], ["风险等级", detail.kpis.风险等级]].forEach(([label, value]) => { const item = document.createElement("div"); const l = document.createElement("span"); l.textContent = label; const v = document.createElement("strong"); v.textContent = value; item.append(l, v); kpi.append(item); });
   shell.append(kpi);
