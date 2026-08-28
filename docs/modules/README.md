@@ -11,7 +11,7 @@
 | [销售订单](sales-orders.md) | `sales_orders` | 销售订单单据头 | 按单据、客户或日期查询销售订单 |
 | [发票账龄](overdue-receivables.md) | `overdue_receivables` | 销售子项目风险汇总行 | 按销售子项目和开票日期核对长期未结清应收 |
 | [应收账龄](receivable-aging.md) | `receivable_aging` | 销售子项目应收风险汇总行 | 按应收单日期核对已形成应收的长期未收款余额 |
-| [超期风险](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 按发票和应收超期的设定天数取二者的最大值 |
+| [超期风险](overdue-risk-combined.md) | `overdue_risk_combined` | 销售子项目双口径风险汇总行 | 按发票和应收超期的设定天数取二者查询结果的最大值 |
 | [采购订单](purchase-orders.md) | `purchase_orders` | 采购订单单据头 | 按单据、供应商或日期查询采购订单 |
 | [人员成本](personnel-cost.md) | `personnel_cost` | 人员期间汇总行 | 实发工资加非专项核定报销金额计算人员成本 |
 | [费用报销](expense-claims.md) | `expense_claims` | 费用报销单单据头 | 查询本人或授权范围内的报销单 |

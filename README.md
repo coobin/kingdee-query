@@ -151,7 +151,7 @@ Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.ExecuteBillQuery
 - `sales_orders`：销售订单
 - `overdue_receivables`：发票账龄，按销售子项目汇总已开票且超过指定天数仍未结清的应收，默认超过 180 天；输出销售子项目编码、名称和开票日期
 - `receivable_aging`：按应收单日期汇总已形成应收且超过指定天数仍有未收款余额的销售子项目；应收未开票金额作为独立辅助维度展示
-- `overdue_risk_combined`：按照发票超期和应收超期的设定天数，取二者的最大值
+- `overdue_risk_combined`：按照发票超期和应收超期的设定天数，取二者查询结果的最大值
 - `purchase_orders`：采购订单
 - `expense_claims`：本人费用报销单
 - `workflow_progress`：我发起且正在审批的流程、当前节点和当前处理人；使用金蝶标准只读对象 `WF_ProcInstBill`

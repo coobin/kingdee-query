@@ -365,7 +365,7 @@
   },
   "overdue_risk_combined": {
     "label": "超期风险",
-    "description": "按照发票超期和应收超期的设定天数，取二者的最大值",
+    "description": "按照发票超期和应收超期的设定天数，取二者查询结果的最大值",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_risk_combined",
     "fields": [],
