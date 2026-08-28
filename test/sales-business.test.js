@@ -128,6 +128,8 @@ test("queries the sales subproject anchor and every downstream source with stabl
   const orderRequest = requests.find((request) => request.FormId === "SAL_SaleOrder");
   assert.match(orderRequest.FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP001'\)/);
   assert.match(orderRequest.FilterString, /FDate>='2026-01-01'/);
+  const subprojectRequest = requests.find((request) => request.FormId === "PARA_SaleSubProject");
+  assert.match(subprojectRequest.FilterString, /FBillNo LIKE '%SP001%'/);
   assert.equal(result.rows[0]["预计毛利率"], 22.22);
   assert.equal(result.rows[0]["销售订单数"], 1);
   assert.equal(result.rows[0]["应收未收款金额"], 50);

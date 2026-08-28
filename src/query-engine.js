@@ -647,7 +647,10 @@ class QueryEngine {
         sourceStatus.push({ id, label: source.label, available: true, rows: 0, skipped: true });
         return;
       }
-      const baseFilter = buildSalesBusinessSourceFilter(source, args, range, { includeSubproject: false });
+      // Apply direct sub-project/project filters to the anchor master query.
+      // Downstream documents are narrowed by the candidate-code IN filter
+      // below, so they must not repeat the user's LIKE filter here.
+      const baseFilter = buildSalesBusinessSourceFilter(source, args, range, { includeSubproject: !candidateCodes });
       try {
         let rawRows;
         if (candidateCodes) {
