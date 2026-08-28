@@ -94,11 +94,32 @@ test("marks unavailable downstream sources as partial without losing the project
   assert.match(result.summary, /部分来源不可用/);
 });
 
+test("uses sales-list tax-exclusive amounts when the header amount is empty", () => {
+  const result = aggregateSalesBusiness({
+    subprojectRows: [{
+      "销售子项目编码": "SP003", "销售子项目名称": "三期", "合同金额": 1130,
+      "合同不含税金额": 0, "预计毛利(不含税)": 100, "预计毛利率(不含税)(%)": 10,
+    }],
+    subprojectLineRows: [
+      { "销售子项目编码": "SP003", "销售清单不含税金额": 1000 },
+      { "销售子项目编码": "SP003", "销售清单不含税金额": 0 },
+    ],
+    dateFrom: "2026-01-01",
+    dateTo: "2026-01-31",
+  });
+  assert.equal(result.rows[0]["合同不含税金额"], 1000);
+  assert.match(result.rows[0]["合同不含税金额来源"], /销售清单 FAmount 汇总/);
+  assert.equal(result.statistics.expectedGrossMarginRate, 10);
+  assert.equal(result.statistics.noTaxContractAmountFallbackRows, 1);
+  assert.equal(result.statistics.noTaxContractAmountMissingRows, 0);
+});
+
 test("queries the sales subproject anchor and every downstream source with stable pagination", async () => {
   const item = catalog.sales_business_analysis;
   const requests = [];
   const objects = {
-    subprojects: [{ "销售子项目编码": "SP001", "销售子项目名称": "一期", "销售项目编码": "P001", "销售项目名称": "项目一", "客户编码": "CU001", "客户": "客户甲", "业务日期": "2026-01-02", "数据状态": "C", "项目状态": "A", "合同金额": 100, "合同不含税金额": 90, "预计毛利(不含税)": 20, "预计毛利率(不含税)(%)": 22.22 }],
+    subprojects: [{ "销售子项目编码": "SP001", "销售子项目名称": "一期", "销售项目编码": "P001", "销售项目名称": "项目一", "客户编码": "CU001", "客户": "客户甲", "业务日期": "2026-01-02", "数据状态": "C", "项目状态": "A", "合同金额": 100, "合同不含税金额": 0, "预计毛利(不含税)": 20, "预计毛利率(不含税)(%)": 22.22 }],
+    subprojectLines: [{ "销售子项目编码": "SP001", "销售清单不含税金额": 90 }],
     contracts: [{ "合同单号": "C001", "合同号": "C001", "销售项目编码": "P001", "销售子项目编码": "SP001", "客户编码": "CU001", "客户": "客户甲", "合同日期": "2026-01-03", "数据状态": "C", "作废状态": "A", "合同金额": 100, "预计毛利(不含税)": 20, "预计毛利率(不含税)(%)": 22.22 }],
     orders: [{ "销售订单号": "SO001", "订单日期": "2026-01-04", "销售组织": "销售组织", "客户": "客户甲", "销售员": "销售员", "审核状态": "C", "关闭状态": "A", "作废状态": "A", "订单价税合计": 100, "订单价税合计(本位币)": 100, "物料编码": "M1", "物料名称": "物料", "订单数量": 1, "订单基本数量": 1, "订单明细金额": 90, "订单明细金额(本位币)": 90, "订单明细价税合计": 100, "订单明细价税合计(本位币)": 100, "累计出库数量": 1, "累计出库基本数量": 1, "累计退货数量": 0, "累计退货基本数量": 0, "剩余出库数量": 0, "剩余出库基本数量": 0, "计划交货日期": "2026-01-05", "发货状态": "C", "销售项目编码": "P001", "销售子项目编码": "SP001", "源单类型": "", "源单单号": "" }],
     outbound: [{ "销售出库单号": "OUT001", "出库日期": "2026-01-06", "审核状态": "C", "作废状态": "A", "客户": "客户甲", "销售员": "销售员", "物料编码": "M1", "物料名称": "物料", "出库基本数量": 1, "实发数量": 1, "出库金额(本位币)": 100, "出库价税合计(本位币)": 100, "源单单号": "SO001", "销售项目编码": "P001", "销售子项目编码": "SP001", "签收数量": 1, "累计签收数量": 1, "剩余销售数量": 0, "剩余签收数量": 0, "销售订单数量": 1 }],
@@ -107,11 +128,12 @@ test("queries the sales subproject anchor and every downstream source with stabl
     receipts: [{ "收款单号": "REC001", "收款日期": "2026-01-09", "审核状态": "C", "作废状态": "A", "销售子项目编码": "SP001", "销售子项目名称": "一期", "收款金额": 50 }],
     refunds: [{ "退款单号": "REF001", "退款日期": "2026-01-10", "审核状态": "C", "作废状态": "A", "销售子项目编码": "SP001", "销售子项目名称": "一期", "退款金额": 0 }],
   };
-  const sourceByForm = Object.fromEntries(Object.entries(item.sources).map(([id, source]) => [source.formId, { id, source }]));
   const kingdee = { executeBillQuery: async (username, request) => {
     assert.equal(username, "240001");
     requests.push(request);
-    const found = sourceByForm[request.FormId];
+    const found = Object.entries(item.sources)
+      .map(([id, source]) => ({ id, source }))
+      .find(({ source }) => source.formId === request.FormId && source.fields.map(([key]) => key).join(",") === request.FieldKeys);
     if (!found) throw new Error(`unexpected form ${request.FormId}`);
     const rows = (objects[found.id] || []).map((row) => found.source.fields.map(([, label]) => row[label]));
     return rows;
@@ -123,14 +145,18 @@ test("queries the sales subproject anchor and every downstream source with stabl
     now: () => new Date("2026-08-28T00:00:00Z"),
   });
   const result = await engine.execute({ kingdeeUsername: "240001" }, { tool: "sales_business_analysis", arguments: { dateFrom: "2026-01-01", dateTo: "2026-01-31", subprojectNumber: "SP001", limit: 1 } });
-  assert.equal(requests.length, 8);
+  assert.equal(requests.length, 9);
   assert.ok(requests.every((request) => request.TopRowCount === 0 && request.StartRow === 0 && request.Limit === 5000));
   const orderRequest = requests.find((request) => request.FormId === "SAL_SaleOrder");
   assert.match(orderRequest.FilterString, /F_PARA_SaleSubProId\.FNumber IN \('SP001'\)/);
   assert.match(orderRequest.FilterString, /FDate>='2026-01-01'/);
   const subprojectRequest = requests.find((request) => request.FormId === "PARA_SaleSubProject");
   assert.match(subprojectRequest.FilterString, /FBillNo LIKE '%SP001%'/);
+  const subprojectLineRequest = requests.find((request) => request.FieldKeys === "FBillNo,FAmount");
+  assert.match(subprojectLineRequest.FilterString, /FBillNo IN \('SP001'\)/);
   assert.equal(result.rows[0]["预计毛利率"], 22.22);
+  assert.equal(result.rows[0]["合同不含税金额"], 90);
+  assert.match(result.rows[0]["合同不含税金额来源"], /销售清单 FAmount 汇总/);
   assert.equal(result.rows[0]["销售订单数"], 1);
   assert.equal(result.rows[0]["应收未收款金额"], 50);
 });

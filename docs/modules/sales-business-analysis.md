@@ -9,8 +9,9 @@
 ## 预计毛利率口径
 
 - 明细行的 `预计毛利率` 直接来自销售子项目单据字段 `FGrossProfitRate`，金蝶显示名称为“预计毛利率(不含税)(%)”。
-- `预计毛利` 来自 `FGrossProfitAmt`；合同金额和合同不含税金额分别来自 `FContractAmt`、`FContractNoTaxAmt`。
-- 汇总卡片的“加权预计毛利率”按 `预计毛利 ÷ 合同不含税金额 × 100` 计算。不同子项目的百分比不会相加；合同不含税金额为零时显示为空。
+- `预计毛利` 来自 `FGrossProfitAmt`；合同金额和合同不含税金额优先来自 `FContractAmt`、`FContractNoTaxAmt`。
+- 部分销售子项目的 `FContractNoTaxAmt` 可能为 0，但销售清单明细 `FEquipmentBom.FAmount` 已有完整不含税金额。此时服务端按子项目汇总销售清单 `FAmount` 作为兜底，并把来源显示为“销售清单 FAmount 汇总（FContractNoTaxAmt为空）”；如果两者都无有效值，才保留为 0 并标记缺失。
+- 汇总卡片的“加权预计毛利率”按 `预计毛利 ÷ 有效合同不含税金额 × 100` 计算。不同子项目的百分比不会相加；有效不含税金额来自主表字段或销售清单兜底。
 - 若预计毛利率字段为空但预计毛利和合同不含税金额可用，服务端会给出推导值，并在行级数据状态中保留来源提示；不会把推导值伪装成金蝶原始字段。
 
 ## 数据链路和粒度
@@ -18,6 +19,7 @@
 | 阶段 | 金蝶对象 | 关联键 / 日期 | 主要指标 |
 | --- | --- | --- | --- |
 | 主数据 | `PARA_SaleSubProject` | `FBillNo` / `FBizDate` | 客户、销售项目、项目状态、合同金额、预计毛利率、收款条件 |
+| 销售清单 | `PARA_SaleSubProject` 的 `FEquipmentBom` | `FBillNo` / `FAmount` | 主表合同不含税金额为空时，按明细汇总不含税金额 |
 | 合同 | `PARA_SaleContract` | `FSaleSuProjectId.FNumber` / `FBizDate` | 合同数、合同金额、预计毛利 |
 | 订单 | `SAL_SaleOrder` | `F_PARA_SaleSubProId.FNumber` / `FDate` | 订单金额、订单数量、累计出库、退货、剩余出库、计划交货 |
 | 交付 | `SAL_OUTSTOCK` | `F_PARA_SaleSubProId.FNumber` / `FDate` | 出库数量、实发数量、签收数量、出库金额 |

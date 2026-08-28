@@ -307,8 +307,8 @@ function renderSalesBusinessResult(result, view) {
   summary.setAttribute("aria-label", "销售子项目经营汇总");
   const cards = [
     ["销售子项目", `${statistics.subprojectCount || 0} 个`, `${statistics.projectCount || 0} 个销售项目`, "primary"],
-    ["预计毛利", formatMoney(statistics.expectedGrossProfit), `合同不含税 ${formatMoney(statistics.noTaxContractAmount)}`],
-    ["加权预计毛利率", statistics.expectedGrossMarginRate == null ? "—" : `${Number(statistics.expectedGrossMarginRate).toFixed(2)}%`, "按合同不含税金额加权"],
+    ["预计毛利", formatMoney(statistics.expectedGrossProfit), `合同不含税 ${formatMoney(statistics.noTaxContractAmount)}${statistics.noTaxContractAmountFallbackRows ? ` · 清单兜底 ${statistics.noTaxContractAmountFallbackRows} 个` : ""}`],
+    ["加权预计毛利率", statistics.expectedGrossMarginRate == null ? "—" : `${Number(statistics.expectedGrossMarginRate).toFixed(2)}%`, "按有效合同不含税金额加权"],
     ["订单金额", formatMoney(statistics.orderAmount), `${statistics.orderCount || 0} 张订单`],
     ["交付完成率", statistics.deliveryCompletionRate == null ? "—" : `${Number(statistics.deliveryCompletionRate).toFixed(2)}%`, `净交付 ${formatQuantity(statistics.netDeliveredQty)}`],
     ["开票金额", formatMoney(statistics.invoiceAmount), `${statistics.invoiceCount || 0} 张销售发票`],

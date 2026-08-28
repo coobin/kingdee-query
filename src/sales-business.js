@@ -139,6 +139,7 @@ function ensureSubproject(map, code, base = {}) {
       projectStatus: "",
       contractAmount: 0,
       noTaxContractAmount: 0,
+      noTaxContractAmountSource: "未取得有效不含税金额",
       expectedGrossProfit: 0,
       expectedGrossMarginRate: null,
       expectedMarginSource: "field",
@@ -202,7 +203,10 @@ function ensureSubproject(map, code, base = {}) {
     const gross = numberOrNull(base["预计毛利(不含税)"]);
     const rate = numberOrNull(base["预计毛利率(不含税)(%)"]);
     if (amount != null) item.contractAmount = amount;
-    if (noTax != null) item.noTaxContractAmount = noTax;
+    if (noTax != null) {
+      item.noTaxContractAmount = noTax;
+      if (Math.abs(noTax) > 0.004) item.noTaxContractAmountSource = "金蝶字段 FContractNoTaxAmt";
+    }
     if (gross != null) item.expectedGrossProfit = gross;
     if (rate != null) item.expectedGrossMarginRate = rate;
     else if (item.expectedGrossMarginRate == null && item.noTaxContractAmount) {
@@ -227,6 +231,7 @@ function sourceGap(item, sourceId) {
 
 function aggregateSalesBusiness({
   subprojectRows = [],
+  subprojectLineRows = [],
   orderRows = [],
   outboundRows = [],
   invoiceRows = [],
@@ -247,6 +252,21 @@ function aggregateSalesBusiness({
     const code = text(row["销售子项目编码"]);
     if (!code) { rowsWithoutSubproject += 1; continue; }
     ensureSubproject(subprojects, code, row);
+  }
+  const lineNoTaxByCode = new Map();
+  for (const row of subprojectLineRows) {
+    const code = text(row["销售子项目编码"]);
+    if (!code) { rowsWithoutSubproject += 1; continue; }
+    const amount = numberOrNull(row["销售清单不含税金额"]);
+    if (amount == null) continue;
+    const normalized = key(code);
+    lineNoTaxByCode.set(normalized, (lineNoTaxByCode.get(normalized) || 0) + amount);
+  }
+  for (const [normalized, amount] of lineNoTaxByCode) {
+    const item = subprojects.get(normalized);
+    if (!item || !(amount > 0.004) || item.noTaxContractAmount > 0.004) continue;
+    item.noTaxContractAmount = amount;
+    item.noTaxContractAmountSource = "销售清单 FAmount 汇总（FContractNoTaxAmt为空）";
   }
   const orderCodesByBill = new Map();
   for (const row of orderRows) {
@@ -464,6 +484,7 @@ function aggregateSalesBusiness({
       预计毛利: round(item.expectedGrossProfit),
       合同金额: round(item.contractAmount),
       合同不含税金额: round(item.noTaxContractAmount),
+      合同不含税金额来源: item.noTaxContractAmountSource,
       初始已开票金额: round(item.beginInvoiceAmount),
       初始已收款金额: round(item.beginReceiveAmount),
       合同数: item.contractNumbers.size || item.contractCodes.size,
@@ -504,6 +525,7 @@ function aggregateSalesBusiness({
           预计毛利率: expectedRate == null ? null : round(expectedRate),
           预计毛利: round(item.expectedGrossProfit),
           合同不含税金额: round(item.noTaxContractAmount),
+          合同不含税金额来源: item.noTaxContractAmountSource,
           收款条件: join(item.paymentConditions),
         },
         orders: item.orderRows,
@@ -524,6 +546,8 @@ function aggregateSalesBusiness({
   const sum = (field) => round(rows.reduce((total, row) => total + (Number(row[field]) || 0), 0));
   const noTaxContractAmount = sum("合同不含税金额");
   const expectedGrossProfit = sum("预计毛利");
+  const noTaxContractAmountFallbackRows = rows.filter((row) => String(row["合同不含税金额来源"] || "").startsWith("销售清单")).length;
+  const noTaxContractAmountMissingRows = rows.filter((row) => !(Number(row["合同不含税金额"]) > 0.004)).length;
   const statistics = {
     type: "sales_business_analysis",
     dateFrom,
@@ -535,6 +559,8 @@ function aggregateSalesBusiness({
     contractAmount: sum("合同金额"),
     noTaxContractAmount,
     expectedGrossProfit,
+    noTaxContractAmountFallbackRows,
+    noTaxContractAmountMissingRows,
     expectedGrossMarginRate: amountRate(expectedGrossProfit, noTaxContractAmount),
     orderCount: rows.reduce((total, row) => total + (Number(row["销售订单数"]) || 0), 0),
     orderAmount: sum("订单金额"),

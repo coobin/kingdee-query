@@ -421,6 +421,7 @@
       "预计毛利",
       "合同金额",
       "合同不含税金额",
+      "合同不含税金额来源",
       "初始已开票金额",
       "初始已收款金额",
       "合同数",
@@ -497,6 +498,19 @@
           ["FProjectType", "项目性质"]
         ],
         "defaultOrder": "FBizDate ASC,FBillNo ASC"
+      },
+      "subprojectLines": {
+        "label": "销售清单不含税金额",
+        "formId": "PARA_SaleSubProject",
+        "dateField": "FBizDate",
+        "subprojectField": "FBillNo",
+        "filter": "FDocumentStatus='C'",
+        "optional": true,
+        "fields": [
+          ["FBillNo", "销售子项目编码"],
+          ["FAmount", "销售清单不含税金额"]
+        ],
+        "defaultOrder": "FBillNo ASC,FEquipmentBom_FEntryID ASC"
       },
       "contracts": {
         "label": "销售合同",

@@ -680,9 +680,14 @@ class QueryEngine {
     await querySource("subprojects", primary);
     const subprojectRows = sourceRows.subprojects || [];
     const candidateCodes = [...new Set(subprojectRows.map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
+    const fallbackCodes = [...new Set(subprojectRows
+      .filter((row) => !(Number(row["合同不含税金额"]) > 0.004))
+      .map((row) => String(row["销售子项目编码"] || "").trim())
+      .filter(Boolean))];
+    await querySource("subprojectLines", sources.subprojectLines, fallbackCodes);
     const downstreamIds = ["contracts", "orders", "outbound", "invoices", "receivables", "receipts", "refunds"];
     await Promise.all(downstreamIds.map((id) => querySource(id, sources[id], candidateCodes)));
-    const sourceOrder = ["subprojects", ...downstreamIds];
+    const sourceOrder = ["subprojects", "subprojectLines", ...downstreamIds];
     sourceStatus.sort((left, right) => sourceOrder.indexOf(left.id) - sourceOrder.indexOf(right.id));
 
     // An organization or salesperson filter is only present on order/outbound
@@ -700,6 +705,7 @@ class QueryEngine {
 
     const aggregate = aggregateSalesBusiness({
       subprojectRows: selectedSubprojectRows,
+      subprojectLineRows: sourceRows.subprojectLines,
       orderRows: sourceRows.orders,
       outboundRows: sourceRows.outbound,
       invoiceRows: sourceRows.invoices,
