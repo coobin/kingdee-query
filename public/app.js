@@ -6,6 +6,7 @@ const TOOL_META = {
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
+  supplier_purchase_analysis: { action: "分析供应商采购", conditionLabels: { supplierNumber: "供应商编码", supplierName: "供应商名称", organizationName: "组织名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
@@ -154,6 +155,8 @@ function validateArguments(tool, args) {
   if (["overdue_receivables", "receivable_aging"].includes(tool) && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
   if (tool === "overdue_risk_combined" && (!["invoiceDays", "receivableDays"].every((key) => Number.isInteger(Number(args[key])) && Number(args[key]) >= 1 && Number(args[key]) <= 3650))) return "发票和应收超期天数都应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
+  if (tool === "supplier_purchase_analysis" && (!args.dateFrom || !args.dateTo)) return "请选择供应商采购分析的开始日期和结束日期。";
+  if (tool === "supplier_purchase_analysis" && dateSpanDays(args.dateFrom, args.dateTo) > 366) return "供应商采购分析查询范围最多为 366 天。";
   if (tool === "personnel_cost" && (!args.dateFrom || !args.dateTo)) return "请选择人员成本的开始日期和结束日期。";
   if (tool === "personnel_cost" && dateSpanDays(args.dateFrom, args.dateTo) > 366) return "人员成本查询范围最多为 366 天。";
   return "";
@@ -173,6 +176,9 @@ function setDefaultDates() {
   const costPanel = document.querySelector('[data-panel="personnel_cost"]');
   costPanel.querySelector('[name="dateFrom"]').value = localDate(previousMonthStart);
   costPanel.querySelector('[name="dateTo"]').value = localDate(previousMonthEnd);
+  const supplierPanel = document.querySelector('[data-panel="supplier_purchase_analysis"]');
+  supplierPanel.querySelector('[name="dateFrom"]').value = start;
+  supplierPanel.querySelector('[name="dateTo"]').value = end;
 }
 
 function renderSelectedResult() {
@@ -210,6 +216,11 @@ function renderResult(view) {
   els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && value !== "" && value != null).map(([key, value]) => {
     const tag = document.createElement("span"); tag.textContent = `${labels[key] || key}：${value === "sum_amount" ? "是" : value}`; return tag;
   }));
+  if (result.tool === "supplier_purchase_analysis") {
+    renderSupplierPurchaseResult(result, view);
+    els.export.hidden = !result.rows?.length;
+    return;
+  }
   if (result.workflow) { const pre = document.createElement("pre"); pre.textContent = JSON.stringify(result.workflow, null, 2); els.table.replaceChildren(pre); els.export.hidden = true; return; }
   if (result.aggregate) {
     const card = document.createElement("div"); card.className = "aggregate-card";
@@ -225,6 +236,148 @@ function renderResult(view) {
   }
   renderResultTable(result, view);
   els.export.hidden = false;
+}
+
+function renderSupplierPurchaseResult(result, view) {
+  const statistics = result.statistics || {};
+  const summary = document.createElement("div");
+  summary.className = "supplier-summary";
+  summary.setAttribute("aria-label", "供应商采购汇总");
+  const cards = [
+    ["采购订单金额", formatMoney(statistics.totalOrderAmount), `${statistics.orderCount || 0} 张订单`, "primary"],
+    ["净采购金额", formatMoney(statistics.totalNetPurchaseAmount), "订单金额 − 退料金额"],
+    ["供应商数量", `${statistics.supplierCount || 0} 家`, `前五家占 ${Number(statistics.top5Concentration || 0).toFixed(2)}%`],
+    ["入库数量", formatQuantity(statistics.totalInboundQty), `订单数量 ${formatQuantity(statistics.totalOrderedQty)}`],
+    ["应付金额", formatMoney(statistics.totalPayableAmount), `未开票 ${formatMoney(statistics.totalUninvoiceAmount)}`],
+    ["已付款金额", formatMoney(statistics.totalPaidAmount), `付款覆盖 ${statistics.totalPayableAmount ? (statistics.totalPaidAmount / statistics.totalPayableAmount * 100).toFixed(2) : "0.00"}%`],
+    ["退料金额", formatMoney(statistics.totalReturnAmount), `退料数量 ${formatQuantity(statistics.totalReturnQty)}`, statistics.totalReturnAmount ? "caution" : ""],
+    ["交付风险", `${statistics.overdueSupplierCount || 0} 家`, `高风险 ${statistics.highRiskSupplierCount || 0} 家`, statistics.overdueSupplierCount ? "caution" : ""],
+  ];
+  cards.forEach(([label, value, note, variant]) => {
+    const card = document.createElement("div");
+    card.className = `supplier-stat${variant ? ` ${variant}` : ""}`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    card.append(labelNode, valueNode, noteNode); summary.append(card);
+  });
+  els.table.append(summary);
+
+  const status = document.createElement("div");
+  status.className = `source-status${result.partial ? " partial" : ""}`;
+  const statusTitle = document.createElement("strong");
+  statusTitle.textContent = result.partial ? "数据来源状态 · 有可用性差异" : "数据来源状态 · 已完成读取";
+  status.append(statusTitle);
+  (result.sourceStatus || []).forEach((source) => {
+    const item = document.createElement("span");
+    item.className = source.available ? "available" : "unavailable";
+    item.textContent = `${source.label} ${source.available ? `${source.rows} 行` : `不可用：${source.reason || "权限或模块未启用"}`}`;
+    status.append(item);
+  });
+  els.table.append(status);
+
+  if (!result.rows?.length) {
+    els.table.append(document.querySelector("#empty-template").content.cloneNode(true));
+    return;
+  }
+  const heading = document.createElement("div");
+  heading.className = "supplier-section-heading";
+  const title = document.createElement("h3"); title.textContent = "供应商排行";
+  const hint = document.createElement("small"); hint.textContent = "点击供应商名称读取期间明细、物料构成和异常提示";
+  heading.append(title, hint); els.table.append(heading);
+  renderSupplierTable(result, view);
+  if (view.supplierDetail) renderSupplierDetail(view.supplierDetail, view);
+}
+
+function renderSupplierTable(result, view) {
+  els.table.querySelector(".supplier-table-shell")?.remove();
+  const shell = document.createElement("div"); shell.className = "supplier-table-shell";
+  const table = document.createElement("table"); table.className = "supplier-table";
+  const thead = document.createElement("thead"); const headRow = document.createElement("tr");
+  result.columns.forEach((column) => {
+    const th = document.createElement("th"); th.scope = "col";
+    const button = document.createElement("button"); button.type = "button"; button.className = "table-sort";
+    const active = view.tableSort.column === column;
+    button.setAttribute("aria-label", `按${column}${active && view.tableSort.direction === -1 ? "降序" : "升序"}排序`);
+    const label = document.createElement("span"); label.textContent = column;
+    const indicator = document.createElement("span"); indicator.className = "table-sort-indicator"; indicator.textContent = active ? (view.tableSort.direction === 1 ? "↑" : "↓") : "↕";
+    button.append(label, indicator);
+    button.addEventListener("click", () => { view.tableSort = { column, direction: active ? view.tableSort.direction * -1 : 1 }; renderSelectedResult(); });
+    th.append(button); headRow.append(th);
+  });
+  thead.append(headRow); table.append(thead);
+  const tbody = document.createElement("tbody");
+  view.tableRows = sortRows(result.rows, view.tableSort);
+  view.tableRows.forEach((row) => {
+    const tr = document.createElement("tr");
+    result.columns.forEach((column) => {
+      const td = document.createElement("td");
+      if (column === "供应商") {
+        const button = document.createElement("button"); button.type = "button"; button.className = "supplier-link";
+        button.textContent = row[column] || row["供应商编码"] || "未命名供应商";
+        button.addEventListener("click", () => loadSupplierDetail(result, view, row));
+        td.append(button);
+      } else {
+        td.textContent = formatCell(row[column], column);
+      }
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+  table.append(tbody); shell.append(table); els.table.append(shell);
+}
+
+async function loadSupplierDetail(result, view, row) {
+  const supplierNumber = String(row["供应商编码"] || row["供应商"] || "").trim();
+  if (!supplierNumber) return;
+  view.supplierDetail = { status: "loading", supplier: row["供应商"] || supplierNumber };
+  renderSelectedResult();
+  try {
+    const query = result.query || {};
+    const payload = await api("/api/query", {
+      method: "POST",
+      body: JSON.stringify({
+        tool: "supplier_purchase_analysis",
+        arguments: { dateFrom: query.dateFrom, dateTo: query.dateTo, supplierNumber, limit: 100 },
+        question: "供应商采购分析明细（结构化表单）",
+      }),
+    });
+    view.supplierDetail = { status: "success", supplier: row["供应商"] || supplierNumber, result: payload.result };
+  } catch (error) {
+    view.supplierDetail = { status: "error", supplier: row["供应商"] || supplierNumber, message: error.message, requestId: error.requestId || "" };
+  }
+  if (state.selectedTool === "supplier_purchase_analysis" && state.resultViews.get("supplier_purchase_analysis") === view) renderSelectedResult();
+}
+
+function renderSupplierDetail(detailView, view) {
+  els.table.querySelector(".supplier-detail")?.remove();
+  const shell = document.createElement("section"); shell.className = "supplier-detail"; shell.setAttribute("aria-label", "供应商采购明细");
+  const head = document.createElement("div"); head.className = "supplier-detail-head";
+  const title = document.createElement("h3"); title.textContent = `${detailView.supplier} · 采购明细`;
+  const close = document.createElement("button"); close.type = "button"; close.className = "quiet-button"; close.textContent = "收起明细";
+  close.addEventListener("click", () => { delete view.supplierDetail; renderSelectedResult(); });
+  head.append(title, close); shell.append(head);
+  if (detailView.status === "loading") { const p = document.createElement("p"); p.className = "supplier-detail-loading"; p.textContent = "正在读取该供应商的全链路数据…"; shell.append(p); els.table.append(shell); return; }
+  if (detailView.status === "error") { const p = document.createElement("p"); p.className = "error-box"; p.textContent = `${detailView.message}${detailView.requestId ? `（请求编号：${detailView.requestId}）` : ""}`; shell.append(p); els.table.append(shell); return; }
+  const detail = detailView.result?.details;
+  if (!detail) { const p = document.createElement("p"); p.textContent = "没有可显示的供应商明细。"; shell.append(p); els.table.append(shell); return; }
+  const kpi = document.createElement("div"); kpi.className = "supplier-detail-kpis";
+  [["订单金额", formatMoney(detail.kpis.订单金额)], ["净采购金额", formatMoney(detail.kpis.净采购金额)], ["采购数量", formatQuantity(detail.kpis.采购数量)], ["入库数量", formatQuantity(detail.kpis.入库数量)], ["应付金额", formatMoney(detail.kpis.应付金额)], ["已付款金额", formatMoney(detail.kpis.已付款金额)], ["风险等级", detail.kpis.风险等级]].forEach(([label, value]) => { const item = document.createElement("div"); const l = document.createElement("span"); l.textContent = label; const v = document.createElement("strong"); v.textContent = value; item.append(l, v); kpi.append(item); });
+  shell.append(kpi);
+  if (detail.exceptions?.length) { const warning = document.createElement("div"); warning.className = "supplier-exceptions"; detail.exceptions.forEach((item) => { const p = document.createElement("p"); p.textContent = `${item.类型}：${item.描述}`; warning.append(p); }); shell.append(warning); }
+  if (detail.monthly?.length) appendSupplierMiniTable(shell, "月度趋势", detail.monthly, ["月份", "订单金额", "入库金额", "付款金额", "采购订单数", "入库数量"]);
+  if (detail.materials?.length) appendSupplierMiniTable(shell, "物料构成与价格", detail.materials, ["物料编码", "物料名称", "采购数量", "订单金额", "入库数量", "退料数量", "平均含税单价", "价格变化"]);
+  if (detail.orders?.length) appendSupplierMiniTable(shell, "采购订单", detail.orders, ["采购订单号", "采购日期", "采购组织", "订单金额", "采购数量", "入库数量", "退料数量", "最晚交货日期", "审核状态", "关闭状态"]);
+  els.table.append(shell);
+}
+
+function appendSupplierMiniTable(shell, titleText, rows, columns) {
+  const section = document.createElement("section"); section.className = "supplier-mini-section";
+  const heading = document.createElement("h4"); heading.textContent = titleText; section.append(heading);
+  const scroll = document.createElement("div"); scroll.className = "supplier-mini-scroll";
+  const table = document.createElement("table"); const thead = document.createElement("thead"); const tr = document.createElement("tr");
+  columns.forEach((column) => { const th = document.createElement("th"); th.scope = "col"; th.textContent = column; tr.append(th); }); thead.append(tr); table.append(thead);
+  const tbody = document.createElement("tbody"); rows.forEach((row) => { const rowNode = document.createElement("tr"); columns.forEach((column) => { const td = document.createElement("td"); td.textContent = formatCell(row[column], column); rowNode.append(td); }); tbody.append(rowNode); }); table.append(tbody); scroll.append(table); section.append(scroll); shell.append(section);
 }
 
 function renderResultTable(result, view) {
@@ -552,7 +705,7 @@ function renderInventoryCycleStatistics(statistics) {
 }
 
 function syncLoadingState() { const loading = state.loadingTools.has(state.selectedTool); els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
-function formatCell(value, column) { if (value == null || value === "") return "—"; if (/(?:金额|税额)/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
+function formatCell(value, column) { if (value == null || value === "") return "—"; if (/(?:金额|税额)/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(率|变化)/.test(column) && Number.isFinite(Number(value))) return `${Number(value).toFixed(2)}%`; if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }

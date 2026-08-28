@@ -61,6 +61,9 @@
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-purchase_orders" id="tab-purchase_orders" data-tool="purchase_orders">
             <span>采购</span><strong>采购订单</strong>
           </button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="panel-supplier_purchase_analysis" id="tab-supplier_purchase_analysis" data-tool="supplier_purchase_analysis">
+            <span>采购</span><strong>供应商分析</strong>
+          </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-personnel_cost" id="tab-personnel_cost" data-tool="personnel_cost">
             <span>管理</span><strong>人员成本</strong>
           </button>
@@ -150,6 +153,27 @@
               <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
               <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
             </div>
+          </section>
+
+          <section class="query-panel" id="panel-supplier_purchase_analysis" role="tabpanel" aria-labelledby="tab-supplier_purchase_analysis" data-panel="supplier_purchase_analysis" hidden>
+            <div class="panel-copy"><h3>供应商采购分析</h3><p>把采购订单、到货、入库、退料、交付、应付、发票和付款放到同一张供应商视图；点击供应商名称继续看物料与订单明细。</p></div>
+            <div class="supplier-flow" aria-label="供应商采购业务链路">
+              <div><span>01</span><strong>下采购订单</strong><small>订单金额 / 数量</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>02</span><strong>到货与入库</strong><small>入库率 / 逾期</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>03</span><strong>应付与发票</strong><small>未开票金额</small></div>
+              <i aria-hidden="true">→</i>
+              <div><span>04</span><strong>付款与质量</strong><small>付款覆盖 / 可用质检</small></div>
+            </div>
+            <div class="field-grid">
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>供应商编码</span><input name="supplierNumber" type="text" maxlength="60" placeholder="不填则汇总全部供应商" autocomplete="off"></label>
+              <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
+              <label class="field"><span>组织名称</span><input name="organizationName" type="text" maxlength="80" placeholder="按各来源组织包含匹配" autocomplete="off"></label>
+            </div>
+            <div class="scope-lock supplier-note"><span aria-hidden="true">↗</span><div><strong>默认统计本年度 · 最长 366 天 · 金额按本位币</strong><small>订单金额按采购订单明细归集；退料、应付、发票和付款分别来自对应单据。质量管理模块未购买时会显示为不可用，不影响其余指标。</small></div></div>
           </section>
 
           <section class="query-panel" id="panel-personnel_cost" role="tabpanel" aria-labelledby="tab-personnel_cost" data-panel="personnel_cost" hidden>

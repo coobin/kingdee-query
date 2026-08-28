@@ -48,6 +48,27 @@ test("plans current-year expense amount aggregation", () => {
   assert.match(plan.arguments.dateTo, /^\d{4}-\d{2}-\d{2}$/);
 });
 
+test("plans supplier procurement analysis before the generic purchase order tool", () => {
+  const plan = localPlan("查询今年每家供应商的采购金额、入库和付款情况");
+  assert.equal(plan.tool, "supplier_purchase_analysis");
+  assert.match(plan.arguments.dateFrom, /^\d{4}-01-01$/);
+  assert.match(plan.arguments.dateTo, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("extracts supplier number and previous-year range", () => {
+  const plan = localPlan("查询供应商编码 VEN00155 去年的采购订单和退料");
+  assert.equal(plan.tool, "supplier_purchase_analysis");
+  assert.equal(plan.arguments.supplierNumber, "VEN00155");
+  assert.equal(plan.arguments.dateFrom, `${new Date().getFullYear() - 1}-01-01`);
+  assert.equal(plan.arguments.dateTo, `${new Date().getFullYear() - 1}-12-31`);
+});
+
+test("extracts a quoted supplier name for procurement analysis", () => {
+  const plan = localPlan("查询供应商“示例供应商”的采购金额");
+  assert.equal(plan.tool, "supplier_purchase_analysis");
+  assert.equal(plan.arguments.supplierName, "示例供应商");
+});
+
 test("plans an overdue invoiced receivable query", () => {
   const plan = localPlan("统计超过 180 天还没回款的开票应收");
   assert.equal(plan.tool, "overdue_receivables");

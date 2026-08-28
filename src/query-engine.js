@@ -1,5 +1,6 @@
 const { KingdeeError } = require("./kingdee");
 const { buildInventoryCycleResult, warehouseStage } = require("./inventory-cycle");
+const { aggregateSupplierPurchase } = require("./supplier-purchase");
 
 function escapeValue(value) {
   return String(value).replaceAll("'", "''").replace(/[\u0000-\u001f]/g, "");
@@ -258,6 +259,28 @@ function personnelCostDateRange(args, maximumDays = 366) {
   return { dateFrom, dateTo, dateToExclusive: nextDay(dateTo), days };
 }
 
+function supplierPurchaseDateRange(args, now, maximumDays = 366) {
+  const today = businessDate(now);
+  const dateFrom = isoDate(args.dateFrom || `${today.slice(0, 4)}-01-01`);
+  const dateTo = isoDate(args.dateTo || today);
+  if (dateFrom > dateTo) {
+    throw Object.assign(new Error("开始日期不能晚于结束日期。"), { statusCode: 400 });
+  }
+  const days = elapsedDays(dateFrom, dateTo) + 1;
+  if (days > maximumDays) {
+    throw Object.assign(new Error(`供应商采购分析查询范围最多为 ${maximumDays} 天。`), { statusCode: 400 });
+  }
+  return { dateFrom, dateTo, dateToExclusive: nextDay(dateTo), days };
+}
+
+function buildSupplierSourceFilter(source, args, range) {
+  const clauses = [source.filter, `${source.dateField}>='${isoDate(range.dateFrom)}'`, `${source.dateField}<'${isoDate(range.dateToExclusive)}'`].filter(Boolean);
+  if (args.supplierNumber && source.supplierCodeField) clauses.push(`${source.supplierCodeField}='${escapeValue(args.supplierNumber)}'`);
+  if (args.supplierName && source.supplierNameField) clauses.push(`${source.supplierNameField} LIKE '%${escapeValue(args.supplierName)}%'`);
+  if (args.organizationName && source.organizationField) clauses.push(`${source.organizationField} LIKE '%${escapeValue(args.organizationName)}%'`);
+  return clauses.join(" AND ");
+}
+
 function buildPersonnelCostFilters(args, range) {
   const common = [
     "FDocumentStatus='C'",
@@ -385,6 +408,7 @@ class QueryEngine {
     if (item.queryType === "overdue_risk_combined") return this.overdueRiskCombined(identity, item, args);
     if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
     if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
+    if (item.queryType === "supplier_purchase_analysis") return this.supplierPurchaseAnalysis(identity, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -519,6 +543,79 @@ class QueryEngine {
       partial: false,
       statistics: aggregated.statistics,
       summary: aggregated.summary,
+    };
+  }
+
+  async supplierPurchaseAnalysis(identity, item, args) {
+    const range = supplierPurchaseDateRange(args, this.now(), item.maxPeriodDays || 366);
+    const sources = item.sources || {};
+    if (!sources.orders) throw new Error("供应商采购分析缺少采购订单来源配置。");
+    const pageSize = this.config.kingdee.queryPageSize || 5000;
+    const sourceStatus = [];
+    const sourceRows = {};
+    const sourceEntries = Object.entries(sources);
+    const querySource = async ([id, source]) => {
+      const request = {
+        FormId: source.formId,
+        FieldKeys: source.fields.map(([key]) => key).join(","),
+        FilterString: buildSupplierSourceFilter(source, args, range),
+        OrderString: source.defaultOrder || `${source.dateField} ASC,FBillNo ASC`,
+        TopRowCount: 0,
+      };
+      try {
+        const rawRows = await this.queryAllPages(identity, request, pageSize);
+        sourceRows[id] = rowsToObjects(rawRows, source.fields);
+        sourceStatus.push({ id, label: source.label, available: true, rows: rawRows.length });
+      } catch (error) {
+        if (!source.optional) throw error;
+        sourceRows[id] = [];
+        sourceStatus.push({ id, label: source.label, available: false, rows: 0, reason: error.message });
+      }
+    };
+    // Read the primary purchase orders first. If that source is not available,
+    // returning an empty dashboard would be misleading; the error is allowed to
+    // reach the normal query error/audit path. Optional downstream sources are
+    // isolated so an unlicensed module (for example QM) does not hide usable
+    // procurement data.
+    await querySource(["orders", sources.orders]);
+    await Promise.all(sourceEntries.filter(([id]) => id !== "orders").map(querySource));
+    const sourceOrder = sourceEntries.map(([id]) => id);
+    sourceStatus.sort((left, right) => sourceOrder.indexOf(left.id) - sourceOrder.indexOf(right.id));
+    const aggregate = aggregateSupplierPurchase({
+      purchaseRows: sourceRows.orders,
+      receiveRows: sourceRows.receipts,
+      inboundRows: sourceRows.inbound,
+      returnRows: sourceRows.returns,
+      payableRows: sourceRows.payables,
+      paymentRows: sourceRows.payments,
+      invoiceRows: sourceRows.invoices,
+      qualityRows: sourceRows.quality,
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      sourceStatus,
+      selectedSupplierNumber: args.supplierNumber,
+    });
+    const partial = sourceStatus.some((source) => !source.available);
+    const query = {
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      ...(args.supplierNumber ? { supplierNumber: String(args.supplierNumber).trim() } : {}),
+      ...(args.supplierName ? { supplierName: String(args.supplierName).trim() } : {}),
+      ...(args.organizationName ? { organizationName: String(args.organizationName).trim() } : {}),
+    };
+    return {
+      tool: "supplier_purchase_analysis",
+      label: item.label,
+      query,
+      columns: item.publicColumns,
+      rows: aggregate.rows,
+      count: aggregate.rows.length,
+      truncated: false,
+      partial,
+      statistics: aggregate.statistics,
+      sourceStatus,
+      details: aggregate.details,
+      summary: `${aggregate.summary}${partial ? " 部分来源不可用，详见数据状态。" : ""}`,
     };
   }
 
@@ -1581,4 +1678,6 @@ module.exports = {
   aggregatePersonnelCost,
   mapExpenseDetailRows,
   workflowRows,
+  supplierPurchaseDateRange,
+  buildSupplierSourceFilter,
 };
