@@ -82,17 +82,17 @@ app.get("/api/local-auth/passkey/status", (req, res) => {
 
 app.post("/api/local-auth/passkey/login/options", requireSameOrigin, asyncRoute(async (req, res) => {
   requirePasskeyAvailable();
-  const username = String(req.body?.username || "").slice(0, 64);
-  const admin = accessControl.findAdmin(username);
-  if (!admin || !(admin.passkeys || []).length) {
+  const username = String(req.body?.username || "").trim().slice(0, 64);
+  const admin = username ? accessControl.findAdmin(username) : null;
+  if (username && (!admin || !(admin.passkeys || []).length)) {
     throw Object.assign(new Error("该管理员尚未注册 Passkey，或用户名不正确。"), { statusCode: 401 });
   }
   const options = await generateAuthenticationOptions({
     rpID: config.passkey.rpId,
-    allowCredentials: admin.passkeys.map((passkey) => ({ id: passkey.id, transports: passkey.transports })),
+    ...(admin ? { allowCredentials: admin.passkeys.map((passkey) => ({ id: passkey.id, transports: passkey.transports })) } : {}),
     userVerification: "required",
   });
-  const token = accessControl.createPasskeyChallenge({ type: "login", adminUsername: admin.username, challenge: options.challenge });
+  const token = accessControl.createPasskeyChallenge({ type: "login", ...(admin ? { adminUsername: admin.username } : {}), challenge: options.challenge });
   res.setHeader("Set-Cookie", accessControl.passkeyChallengeCookie(token));
   res.json({ options });
 }));
@@ -101,8 +101,9 @@ app.post("/api/local-auth/passkey/login/verify", requireSameOrigin, asyncRoute(a
   requirePasskeyAvailable();
   const challenge = accessControl.consumePasskeyChallenge(req.headers.cookie, "login");
   if (!challenge) throw Object.assign(new Error("Passkey 登录已过期，请重新开始。"), { statusCode: 400 });
-  const admin = accessControl.findAdmin(challenge.adminUsername);
   const credential = req.body?.credential;
+  const matched = accessControl.findAdminByPasskey(credential?.id);
+  const admin = challenge.adminUsername ? accessControl.findAdmin(challenge.adminUsername) : matched?.admin;
   const stored = admin?.passkeys?.find((passkey) => passkey.id === credential?.id);
   if (!admin || !stored || !credential) throw Object.assign(new Error("Passkey 不属于该管理员。"), { statusCode: 401 });
   const verification = await verifyAuthenticationResponse({
@@ -193,7 +194,7 @@ admin.post("/passkeys/register/options", requireSameOrigin, asyncRoute(async (re
     userName: admin.username,
     userDisplayName: admin.displayName || admin.username,
     excludeCredentials: (admin.passkeys || []).map((passkey) => ({ id: passkey.id, transports: passkey.transports })),
-    authenticatorSelection: { residentKey: "preferred", userVerification: "required" },
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
     attestationType: "none",
   });
   const token = accessControl.createPasskeyChallenge({ type: "registration", adminUsername: admin.username, challenge: options.challenge });

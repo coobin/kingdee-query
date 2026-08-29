@@ -109,6 +109,20 @@ test("stores Passkeys, updates counters, and can switch an administrator to Pass
   assert.equal(access.authenticate("kay", "a-secure-password").isSuperAdmin, true);
 });
 
+test("locates the administrator from a Passkey credential ID", (t) => {
+  const { directory, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  access.createAdmin({ username: "kay", password: "a-secure-password" });
+  access.createAdmin({ username: "admin", password: "another-secure-password" });
+  access.addPasskey("admin", { id: "credential-2", publicKey: "public-key", counter: 0 }, "安全钥匙");
+
+  const match = access.findAdminByPasskey("credential-2");
+  assert.equal(match.admin.username, "admin");
+  assert.equal(match.passkey.id, "credential-2");
+  assert.equal(access.findAdminByPasskey("missing"), null);
+  assert.equal(access.findAdminByPasskey(""), null);
+});
+
 test("requires a Passkey before enabling Passkey-only login", (t) => {
   const { directory, access } = fixture();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

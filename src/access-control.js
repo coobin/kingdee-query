@@ -166,6 +166,16 @@ class AccessControl {
     return this.state.admins.find((admin) => normalizeIdentifier(admin.username) === key) || null;
   }
 
+  findAdminByPasskey(credentialId) {
+    const id = String(credentialId || "");
+    if (!id) return null;
+    for (const admin of this.state.admins) {
+      const passkey = (admin.passkeys || []).find((item) => item.id === id);
+      if (passkey) return { admin, passkey };
+    }
+    return null;
+  }
+
   addPasskey(username, credential, name = "未命名 Passkey") {
     const admin = this.findAdmin(username);
     if (!admin) throw Object.assign(new Error("没有找到该超级管理员。"), { statusCode: 404 });

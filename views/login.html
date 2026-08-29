@@ -27,13 +27,13 @@
         <label id="password-field"><span>密码</span><input name="password" type="password" minlength="10" maxlength="200" autocomplete="current-password" required></label>
         <div class="auth-error" id="login-error" role="alert" hidden></div>
         <button type="submit"><span>进入管理设置</span><span aria-hidden="true">→</span></button>
-        <button class="passkey-action" id="passkey-login-button" type="button" hidden>使用 Passkey 登录</button>
-        <small class="passkey-hint" id="passkey-hint" hidden>使用设备锁屏、指纹或面容验证。</small>
+        <button class="passkey-action" id="passkey-login-button" type="button" hidden>使用 Passkey 登录（无需用户名）</button>
+        <small class="passkey-hint" id="passkey-hint" hidden>无需填写用户名，使用设备锁屏、指纹或面容验证；旧 Passkey 也可填写用户名后继续使用。</small>
       </form>
       <a class="back-link" href="/">返回数据查询台</a>
     </section>
   </main>
   <script src="/passkey.js?v=20260813-1" defer></script>
-  <script src="/login.js?v=20260813-2" defer></script>
+  <script src="/login.js?v=20260829-1" defer></script>
 </body>
 </html>

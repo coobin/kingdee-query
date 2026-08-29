@@ -45,15 +45,10 @@ form.addEventListener("submit", async (event) => {
 
 passkeyButton.addEventListener("click", async () => {
   const username = String(form.elements.username.value || "").trim();
-  if (!username) {
-    showError("请先填写用户名，再使用 Passkey 登录。");
-    form.elements.username.focus();
-    return;
-  }
   passkeyButton.disabled = true;
   passkeyButton.textContent = "等待设备验证";
   try {
-    const optionPayload = await api("/api/local-auth/passkey/login/options", { username });
+    const optionPayload = await api("/api/local-auth/passkey/login/options", username ? { username } : {});
     const credential = await navigator.credentials.get({ publicKey: window.kqhPasskey.authenticationOptions(optionPayload.options) });
     if (!credential) throw new Error("没有取得 Passkey 凭据。");
     const payload = await api("/api/local-auth/passkey/login/verify", { credential: window.kqhPasskey.credentialToJSON(credential) });
@@ -63,7 +58,7 @@ passkeyButton.addEventListener("click", async () => {
     showError(error.message || "Passkey 登录没有完成。");
   } finally {
     passkeyButton.disabled = false;
-    passkeyButton.textContent = "使用 Passkey 登录";
+    passkeyButton.textContent = "使用 Passkey 登录（无需用户名）";
   }
 });
 
