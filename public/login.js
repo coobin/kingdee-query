@@ -1,7 +1,6 @@
 const form = document.querySelector("#login-form");
 const errorBox = document.querySelector("#login-error");
 const passkeyButton = document.querySelector("#passkey-login-button");
-const passkeyHint = document.querySelector("#passkey-hint");
 let passkeyInProgress = false;
 
 initializePasskeyLogin();
@@ -13,7 +12,6 @@ async function initializePasskeyLogin() {
     const status = await response.json();
     if (status.available) {
       passkeyButton.hidden = false;
-      passkeyHint.hidden = false;
       if (new URLSearchParams(location.search).get("next") === "/admin") {
         void startPasskeyLogin({ automatic: true });
       }

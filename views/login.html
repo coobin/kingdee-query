@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员登录 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=20260813-4">
+  <link rel="stylesheet" href="/auth.css?v=20260829-1">
 </head>
 <body class="auth-page">
   <main class="login-shell">
@@ -14,8 +14,6 @@
       <a class="auth-brand" href="/"><span class="auth-mark" aria-hidden="true"><i></i><i></i><i></i></span><span><strong>KINGDEE QUERY HUB</strong><small>金蝶数据查询台</small></span></a>
       <p class="auth-eyebrow">ADMINISTRATIVE ACCESS · 独立管理入口</p>
       <h1 id="login-title">用一把单独的钥匙，<br><em>管理查询边界。</em></h1>
-      <p class="auth-lede">此入口仅供超级管理员使用。员工日常查询仍使用原有 SSO，二者互不替代。</p>
-      <div class="security-note"><strong>密码不会以明文保存</strong><span>登录会话使用 HttpOnly Cookie，并限制连续失败次数。</span></div>
     </section>
 
     <section class="login-card" aria-labelledby="form-title">
@@ -28,12 +26,11 @@
         <div class="auth-error" id="login-error" role="alert" hidden></div>
         <button type="submit"><span>进入管理设置</span><span aria-hidden="true">→</span></button>
         <button class="passkey-action" id="passkey-login-button" type="button" hidden>使用 Passkey 登录</button>
-        <small class="passkey-hint" id="passkey-hint" hidden>使用设备锁屏、指纹或面容验证。</small>
       </form>
       <a class="back-link" href="/">返回数据查询台</a>
     </section>
   </main>
   <script src="/passkey.js?v=20260813-1" defer></script>
-  <script src="/login.js?v=20260829-3" defer></script>
+  <script src="/login.js?v=20260829-4" defer></script>
 </body>
 </html>

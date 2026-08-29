@@ -34,14 +34,10 @@ button { cursor: pointer; }
 .auth-page { display: grid; place-items: center; padding: clamp(24px, 6vw, 80px); background: linear-gradient(135deg, var(--mist) 0 62%, #e1ebe6 62%); }
 .login-shell { width: min(1480px, 100%); min-height: 650px; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, .75fr); border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
 .login-intro { display: flex; flex-direction: column; justify-content: center; padding: clamp(38px, 7vw, 90px); border-right: 1px solid var(--line); }
-.login-intro .auth-brand { margin-bottom: auto; }
-.login-intro .auth-eyebrow { margin-top: 72px; }
+.login-intro .auth-brand { margin-bottom: 72px; }
+.login-intro .auth-eyebrow { margin-top: 0; }
 .login-intro h1 { margin: 0; font-family: var(--display); font-size: clamp(42px, 5.5vw, 68px); font-weight: 600; line-height: 1.1; letter-spacing: -.04em; }
 .login-intro h1 em, .admin-heading h1 em { color: var(--forest); font-style: normal; border-bottom: 3px solid var(--amber); }
-.auth-lede { max-width: 590px; margin: 28px 0 0; color: var(--muted); font-size: 15px; line-height: 1.8; }
-.security-note { display: grid; gap: 5px; margin-top: auto; padding: 17px 20px; border-left: 3px solid var(--amber); color: var(--mint); background: var(--forest); }
-.security-note strong { color: white; font-size: 12px; }
-.security-note span { font-size: 10px; line-height: 1.6; }
 .login-card { position: relative; display: flex; flex-direction: column; justify-content: center; padding: clamp(35px, 5vw, 66px); background: var(--white); }
 .ledger-edge { position: absolute; top: 30px; bottom: 30px; left: 0; width: 8px; border-left: 2px solid var(--forest); background: repeating-linear-gradient(0deg, var(--line) 0 1px, transparent 1px 20px); }
 .login-card h2 { margin: 0 0 34px; font-family: var(--display); font-size: 30px; font-weight: 600; }
@@ -55,7 +51,6 @@ input:focus, textarea:focus { border-color: var(--jade); background: white; box-
 .login-card form button, .primary-action { min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 18px; padding: 0 20px; border: 0; color: white; background: var(--forest); font-weight: 700; }
 .login-card form button { margin-top: 5px; justify-content: space-between; }
 .login-card form .passkey-action { justify-content: center; margin-top: 0; color: var(--forest); background: var(--mint); }
-.passkey-hint { color: var(--muted); font-size: 10px; line-height: 1.5; }
 button:hover:not(:disabled) { filter: brightness(1.12); }
 button:disabled { cursor: not-allowed; opacity: .55; }
 .auth-error, .admin-message { padding: 12px 14px; color: var(--forest); background: var(--mint); border-left: 3px solid var(--jade); font-size: 12px; }
@@ -160,7 +155,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .auth-page { display: block; padding: 0; }
   .login-shell { min-height: 100vh; border: 0; }
   .login-intro { min-height: 460px; padding: 30px 22px 38px; }
-  .login-intro .auth-eyebrow { margin-top: 58px; }
+  .login-intro .auth-brand { margin-bottom: 58px; }
+  .login-intro .auth-eyebrow { margin-top: 0; }
   .login-intro h1 { font-size: 40px; }
   .login-card { min-height: 430px; padding: 48px 24px; }
   .admin-topbar { height: auto; min-height: 70px; padding: 15px 18px; }
