@@ -90,7 +90,7 @@ app.post("/api/local-auth/passkey/login/options", requireSameOrigin, asyncRoute(
   const options = await generateAuthenticationOptions({
     rpID: config.passkey.rpId,
     ...(admin ? { allowCredentials: admin.passkeys.map((passkey) => ({ id: passkey.id, transports: passkey.transports })) } : {}),
-    userVerification: "required",
+    userVerification: "preferred",
   });
   const token = accessControl.createPasskeyChallenge({ type: "login", ...(admin ? { adminUsername: admin.username } : {}), challenge: options.challenge });
   res.setHeader("Set-Cookie", accessControl.passkeyChallengeCookie(token));
@@ -117,7 +117,7 @@ app.post("/api/local-auth/passkey/login/verify", requireSameOrigin, asyncRoute(a
       counter: stored.counter,
       transports: stored.transports,
     },
-    requireUserVerification: true,
+    requireUserVerification: false,
   });
   if (!verification.verified) throw Object.assign(new Error("Passkey 验证未通过。"), { statusCode: 401 });
   accessControl.updatePasskeyCounter(admin.username, stored.id, verification.authenticationInfo.newCounter);
