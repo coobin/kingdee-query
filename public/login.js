@@ -2,6 +2,7 @@ const form = document.querySelector("#login-form");
 const errorBox = document.querySelector("#login-error");
 const passkeyButton = document.querySelector("#passkey-login-button");
 const passkeyHint = document.querySelector("#passkey-hint");
+let passkeyInProgress = false;
 
 initializePasskeyLogin();
 
@@ -13,6 +14,9 @@ async function initializePasskeyLogin() {
     if (status.available) {
       passkeyButton.hidden = false;
       passkeyHint.hidden = false;
+      if (new URLSearchParams(location.search).get("next") === "/admin") {
+        void startPasskeyLogin({ automatic: true });
+      }
     }
   } catch { /* keep password login available */ }
 }
@@ -43,8 +47,12 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-passkeyButton.addEventListener("click", async () => {
-  const username = String(form.elements.username.value || "").trim();
+passkeyButton.addEventListener("click", () => startPasskeyLogin());
+
+async function startPasskeyLogin({ automatic = false } = {}) {
+  if (passkeyInProgress) return;
+  passkeyInProgress = true;
+  const username = automatic ? "" : String(form.elements.username.value || "").trim();
   passkeyButton.disabled = true;
   passkeyButton.textContent = "等待设备验证";
   try {
@@ -55,12 +63,13 @@ passkeyButton.addEventListener("click", async () => {
     const requested = new URLSearchParams(location.search).get("next");
     location.assign(requested === "/admin" ? requested : payload.redirect || "/admin");
   } catch (error) {
-    showError(error.message || "Passkey 登录没有完成。");
+    showError(automatic && error.name === "NotAllowedError" ? "请点击“使用 Passkey 登录”重试。" : error.message || "Passkey 登录没有完成。");
   } finally {
     passkeyButton.disabled = false;
     passkeyButton.textContent = "使用 Passkey 登录";
+    passkeyInProgress = false;
   }
-});
+}
 
 function showError(message) {
   errorBox.textContent = message;
