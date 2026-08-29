@@ -58,7 +58,7 @@ passkeyButton.addEventListener("click", async () => {
     showError(error.message || "Passkey 登录没有完成。");
   } finally {
     passkeyButton.disabled = false;
-    passkeyButton.textContent = "使用 Passkey 登录（无需用户名）";
+    passkeyButton.textContent = "使用 Passkey 登录";
   }
 });
 
