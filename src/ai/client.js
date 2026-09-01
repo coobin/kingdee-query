@@ -149,6 +149,10 @@ class AIClient {
           temperature: Number.isFinite(Number(temperature)) ? Number(temperature) : 0.2,
           max_tokens: safeMaxTokens,
           stream,
+          // The analysis contract needs a short, reliable JSON answer. DeepSeek
+          // enables thinking by default, which can spend the output budget on
+          // reasoning_content and occasionally leave JSON content empty.
+          thinking: { type: "disabled" },
           response_format: { type: "json_object" },
           messages: [
             { role: "system", content: String(systemPrompt || "") },

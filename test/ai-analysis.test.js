@@ -107,6 +107,7 @@ test("DeepSeek client sends JSON mode and parses a completion", async () => {
   const body = JSON.parse(calls[0].options.body);
   assert.equal(body.model, "deepseek-v4-flash");
   assert.deepEqual(body.response_format, { type: "json_object" });
+  assert.deepEqual(body.thinking, { type: "disabled" });
   assert.equal(body.max_tokens, 600);
   assert.equal(body.stream, false);
   assert.match(calls[0].options.headers.Authorization, /^Bearer /);
