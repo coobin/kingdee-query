@@ -241,6 +241,16 @@ function rowsToObjects(rows, fields, valueMappings = {}) {
   })));
 }
 
+function analysisSourceSnapshot(rows, maxRows = 300) {
+  const list = Array.isArray(rows) ? rows : [];
+  const maximum = Math.min(Math.max(Number(maxRows) || 300, 20), 1000);
+  return {
+    rows: list.slice(0, maximum),
+    count: list.length,
+    truncated: list.length > maximum,
+  };
+}
+
 function combinedBaseData(number, name) {
   const cleanNumber = String(number || "").trim();
   const cleanName = String(name || "").trim();
@@ -878,7 +888,7 @@ class QueryEngine {
     };
   }
 
-  async overdueReceivables(identity, item, args, { returnAll = false } = {}) {
+  async overdueReceivables(identity, item, args, { returnAll = false, includeDetails = false, maxDetailRows = 300 } = {}) {
     const asOfDate = businessDate(this.now());
     const minimumDays = normalizeMinimumDays(args.minimumDays);
     const cutoffDate = shiftDate(asOfDate, -minimumDays);
@@ -944,6 +954,11 @@ class QueryEngine {
       minimumDays,
       partial: false,
     });
+    const invoiceWriteoffRows = invoiceWriteoffSource ? rowsToObjects(invoiceWriteoffs.rows, invoiceWriteoffSource.fields) : [];
+    const receiptWriteoffRows = receiptWriteoffSource ? rowsToObjects(receiptWriteoffs.rows, receiptWriteoffSource.fields) : [];
+    const receiptRows = receiptSource ? rowsToObjects(receipts.rows, receiptSource.fields) : [];
+    const refundRows = refundSource ? rowsToObjects(refunds.rows, refundSource.fields) : [];
+    const paymentConditionRows = paymentConditionSource ? rowsToObjects(paymentConditions.rows, paymentConditionSource.fields) : [];
     return {
       tool: "overdue_receivables",
       label: item.label,
@@ -954,10 +969,22 @@ class QueryEngine {
       truncated: result.rows.length > limit,
       statistics: result.statistics,
       summary: result.summary,
+      ...(includeDetails ? {
+        analysisSources: {
+          invoices: analysisSourceSnapshot(invoiceRows, maxDetailRows),
+          overdueInvoices: analysisSourceSnapshot(overdueInvoiceRows, maxDetailRows),
+          receivables: analysisSourceSnapshot(receivableRows, maxDetailRows),
+          invoiceWriteoffs: analysisSourceSnapshot(invoiceWriteoffRows, maxDetailRows),
+          receiptWriteoffs: analysisSourceSnapshot(receiptWriteoffRows, maxDetailRows),
+          receipts: analysisSourceSnapshot(receiptRows, maxDetailRows),
+          refunds: analysisSourceSnapshot(refundRows, maxDetailRows),
+          paymentConditions: analysisSourceSnapshot(paymentConditionRows, maxDetailRows),
+        },
+      } : {}),
     };
   }
 
-  async receivableAging(identity, item, args, { returnAll = false } = {}) {
+  async receivableAging(identity, item, args, { returnAll = false, includeDetails = false, maxDetailRows = 300 } = {}) {
     const asOfDate = businessDate(this.now());
     const { filter, accepted } = buildReceivableAgingCandidateFilter(args, asOfDate);
     const limit = returnAll ? Number.MAX_SAFE_INTEGER : normalizeLimit(args.limit, this.config.kingdee.maxRows);
@@ -986,6 +1013,8 @@ class QueryEngine {
       minimumDays: accepted.minimumDays,
       partial: false,
     });
+    const invoiceWriteoffRows = invoiceWriteoffSource ? rowsToObjects(invoiceWriteoffs.rows, invoiceWriteoffSource.fields) : [];
+    const paymentConditionRows = paymentConditionSource ? rowsToObjects(paymentConditions.rows, paymentConditionSource.fields) : [];
     return {
       tool: "receivable_aging",
       label: item.label,
@@ -996,6 +1025,13 @@ class QueryEngine {
       truncated: result.rows.length > limit,
       statistics: result.statistics,
       summary: result.summary,
+      ...(includeDetails ? {
+        analysisSources: {
+          receivables: analysisSourceSnapshot(receivableRows, maxDetailRows),
+          invoiceWriteoffs: analysisSourceSnapshot(invoiceWriteoffRows, maxDetailRows),
+          paymentConditions: analysisSourceSnapshot(paymentConditionRows, maxDetailRows),
+        },
+      } : {}),
     };
   }
 
@@ -1026,6 +1062,43 @@ class QueryEngine {
       truncated: result.rows.length > limit || invoiceResult.truncated || receivableResult.truncated,
       statistics: result.statistics,
       summary: result.summary,
+    };
+  }
+
+  async overdueRiskDetails(identity, args, { maxDetailRows = 300 } = {}) {
+    const subprojectNumber = String(args?.subprojectNumber || args?.projectNumber || "").trim().slice(0, 100);
+    if (!subprojectNumber) {
+      throw Object.assign(new Error("请先选择一个销售子项目，再读取超期风险明细。"), { statusCode: 400 });
+    }
+    const invoiceDays = normalizeMinimumDays(args?.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
+    const receivableDays = normalizeMinimumDays(args?.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
+    const sharedArgs = {
+      ...(args || {}),
+      subprojectNumber,
+    };
+    const [invoiceResult, receivableResult] = await Promise.all([
+      this.overdueReceivables(identity, this.catalog.overdue_receivables, { ...sharedArgs, minimumDays: invoiceDays }, { returnAll: true, includeDetails: true, maxDetailRows }),
+      this.receivableAging(identity, this.catalog.receivable_aging, { ...sharedArgs, minimumDays: receivableDays }, { returnAll: true, includeDetails: true, maxDetailRows }),
+    ]);
+    const combined = aggregateOverdueRiskCombined(invoiceResult, receivableResult, { invoiceDays, receivableDays });
+    const key = normalizeSubprojectKey(subprojectNumber);
+    const combinedRow = combined.rows.find((row) => normalizeSubprojectKey(row["销售子项目编码"]) === key);
+    if (!combinedRow) {
+      throw Object.assign(new Error("没有找到这条销售子项目，或当前账号无权查看。"), { statusCode: 404 });
+    }
+    return {
+      tool: "overdue_risk_detail",
+      label: "超期风险明细",
+      query: {
+        asOfDate: invoiceResult.query.asOfDate,
+        invoiceDays,
+        receivableDays,
+        subprojectNumber,
+        ...(args?.customerName ? { customerName: String(args.customerName).trim() } : {}),
+      },
+      combinedRow,
+      invoiceResult,
+      receivableResult,
     };
   }
 
@@ -1920,6 +1993,7 @@ module.exports = {
   QueryEngine,
   buildFilter,
   rowsToObjects,
+  analysisSourceSnapshot,
   escapeValue,
   resolveAggregation,
   calculateAggregate,

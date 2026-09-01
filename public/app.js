@@ -13,13 +13,14 @@ const TOOL_META = {
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
-const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set() };
+const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false } };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), actions: document.querySelector(".query-actions"), formError: document.querySelector("#form-error"),
   tabs: [...document.querySelectorAll("[data-tool]")], panels: [...document.querySelectorAll("[data-panel]")], panel: document.querySelector("#result-panel"),
   tool: document.querySelector("#result-tool"), summary: document.querySelector("#result-summary"), plan: document.querySelector("#plan-strip"),
-  table: document.querySelector("#table-wrap"), export: document.querySelector("#export-button"),
+  table: document.querySelector("#table-wrap"), export: document.querySelector("#export-button"), aiSummary: document.querySelector("#ai-summary-button"),
+  aiSelected: document.querySelector("#ai-selected-button"), aiPanel: document.querySelector("#ai-analysis-panel"),
 };
 
 initialize();
@@ -33,6 +34,7 @@ async function initialize() {
     els.sessionLabel.textContent = `${session.user.name || session.user.userId} · ${session.user.kingdeeUsername}`;
     document.querySelector("#admin-link").hidden = !session.user.isSuperAdmin;
     els.service.textContent = "READY";
+    state.aiAnalysis = session.aiAnalysis || { enabled: false };
     state.tools = catalog.tools;
     applyCatalogAccess(catalog.tools);
   } catch (error) {
@@ -61,6 +63,14 @@ document.querySelectorAll('[data-aging-threshold-input]').forEach((input) => {
 });
 els.form.addEventListener("submit", runQuery);
 els.export.addEventListener("click", exportCsv);
+els.aiSummary.addEventListener("click", () => {
+  const view = state.resultViews.get(state.selectedTool);
+  if (view) startAiAnalysis(view, []);
+});
+els.aiSelected.addEventListener("click", () => {
+  const view = state.resultViews.get(state.selectedTool);
+  if (view) startAiAnalysis(view, selectedProjects(view));
+});
 
 function selectTool(tool, focus = true) {
   if (!TOOL_META[tool]) return;
@@ -118,7 +128,7 @@ async function runQuery(event) {
   if (error) { showFormError(error); return; }
   els.formError.hidden = true;
   state.loadingTools.add(tool);
-  state.resultViews.set(tool, { status: "loading", payload: null, tableRows: [], tableSort: { column: "", direction: 1 } });
+  state.resultViews.set(tool, { status: "loading", payload: null, tableRows: [], tableSort: { column: "", direction: 1 }, analysisSelection: new Set(), aiAnalysis: null });
   if (state.selectedTool === tool) {
     renderSelectedResult();
     syncLoadingState();
@@ -127,9 +137,9 @@ async function runQuery(event) {
   try {
     const question = `${TOOL_META[tool].action}（结构化表单）`;
     const payload = await api("/api/query", { method: "POST", body: JSON.stringify({ tool, arguments: arguments_, question }) });
-    state.resultViews.set(tool, { status: "success", payload, tableRows: [], tableSort: { column: "", direction: 1 } });
+    state.resultViews.set(tool, { status: "success", payload, tableRows: [], tableSort: { column: "", direction: 1 }, analysisSelection: new Set(), aiAnalysis: null });
   } catch (error_) {
-    state.resultViews.set(tool, { status: "error", message: error_.message, requestId: error_.requestId || "", tableRows: [], tableSort: { column: "", direction: 1 } });
+    state.resultViews.set(tool, { status: "error", message: error_.message, requestId: error_.requestId || "", tableRows: [], tableSort: { column: "", direction: 1 }, analysisSelection: new Set(), aiAnalysis: null });
   } finally {
     state.loadingTools.delete(tool);
     if (state.selectedTool === tool) {
@@ -193,6 +203,7 @@ function renderSelectedResult() {
   if (!view) {
     els.panel.hidden = true;
     els.export.hidden = true;
+    hideAiControls();
     return;
   }
   els.panel.hidden = false;
@@ -202,6 +213,7 @@ function renderSelectedResult() {
     els.tool.textContent = "QUERY IN PROGRESS";
     els.summary.textContent = "正在向金蝶读取数据…";
     els.export.hidden = true;
+    hideAiControls();
     return;
   }
   if (view.status === "error") {
@@ -209,6 +221,7 @@ function renderSelectedResult() {
     els.summary.textContent = "这次查询没有完成";
     els.table.innerHTML = `<div class="error-box">${escapeHtml(view.message)}${view.requestId ? `<br><small>请求编号：${escapeHtml(view.requestId)}</small>` : ""}</div>`;
     els.export.hidden = true;
+    hideAiControls();
     return;
   }
   renderResult(view);
@@ -223,6 +236,8 @@ function renderResult(view) {
   els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && value !== "" && value != null).map(([key, value]) => {
     const tag = document.createElement("span"); tag.textContent = `${labels[key] || key}：${value === "sum_amount" ? "是" : value}`; return tag;
   }));
+  renderAiControls(view, result);
+  renderAiPanel(view);
   if (result.tool === "supplier_purchase_analysis") {
     renderSupplierPurchaseResult(result, view);
     els.export.hidden = !result.rows?.length;
@@ -248,6 +263,257 @@ function renderResult(view) {
   }
   renderResultTable(result, view);
   els.export.hidden = false;
+}
+
+function hideAiControls() {
+  els.aiSummary.hidden = true;
+  els.aiSelected.hidden = true;
+  els.aiSelected.disabled = true;
+  els.aiPanel.hidden = true;
+  els.aiPanel.replaceChildren();
+}
+
+function aiContextFor(view) {
+  return view?.payload?.analysisContext || null;
+}
+
+function aiSupported(view, result) {
+  const context = aiContextFor(view);
+  return Boolean(
+    state.aiAnalysis?.enabled
+    && result?.tool === "overdue_risk_combined"
+    && context?.contextId,
+  );
+}
+
+function analysisProjectCode(row) {
+  return String(row?.["销售子项目编码"] || "").normalize("NFKC").trim();
+}
+
+function analysisProjectKey(rowOrCode) {
+  const value = typeof rowOrCode === "object" ? analysisProjectCode(rowOrCode) : String(rowOrCode || "");
+  return value.normalize("NFKC").trim().toUpperCase();
+}
+
+function selectedProjects(view) {
+  const result = view?.payload?.result;
+  if (!result?.rows?.length) return [];
+  const selection = view.analysisSelection || new Set();
+  return result.rows.map(analysisProjectCode).filter((code) => code && selection.has(analysisProjectKey(code)));
+}
+
+function renderAiControls(view, result) {
+  if (!aiSupported(view, result) || !result.rows?.length) {
+    hideAiControls();
+    return;
+  }
+  view.analysisSelection ||= new Set();
+  els.aiSummary.hidden = false;
+  els.aiSelected.hidden = !view.payload.analysisContext.supportsSelection;
+  const selected = selectedProjects(view);
+  const busy = view.aiAnalysis?.status === "loading";
+  els.aiSummary.disabled = busy;
+  els.aiSummary.textContent = busy && view.aiAnalysis?.mode === "summary" ? "正在分析当前结果…" : "AI 分析当前结果";
+  els.aiSelected.disabled = busy || !selected.length || selected.length > 5;
+  els.aiSelected.textContent = busy && view.aiAnalysis?.mode === "project" ? "正在分析选中项目…" : `分析选中项目${selected.length ? `（${selected.length}${selected.length > 5 ? "，最多5个" : ""}）` : ""}`;
+}
+
+function appendAiText(parent, className, text) {
+  const node = document.createElement("p");
+  if (className) node.className = className;
+  node.textContent = text || "";
+  parent.append(node);
+  return node;
+}
+
+function appendAiSection(parent, titleText) {
+  const section = document.createElement("section");
+  section.className = "ai-analysis-section";
+  const title = document.createElement("h3");
+  title.textContent = titleText;
+  section.append(title);
+  parent.append(section);
+  return section;
+}
+
+function appendAiReferenceList(parent, references) {
+  if (!references?.length) return;
+  const list = document.createElement("div");
+  list.className = "ai-evidence-list";
+  references.forEach((reference) => {
+    const item = document.createElement("span");
+    item.className = "ai-evidence-ref";
+    const identity = reference.documentNumber || reference.subprojectNumber || reference.subprojectName || "";
+    item.textContent = `${reference.ref || ""} · ${reference.type || "证据"}${identity ? ` · ${identity}` : ""}`;
+    list.append(item);
+  });
+  parent.append(list);
+}
+
+function renderAiPanel(view) {
+  const result = view?.payload?.result;
+  if (!aiSupported(view, result) || !view.aiAnalysis) {
+    els.aiPanel.hidden = true;
+    els.aiPanel.replaceChildren();
+    return;
+  }
+  const aiState = view.aiAnalysis;
+  els.aiPanel.hidden = false;
+  els.aiPanel.className = `ai-analysis-panel${aiState.status === "loading" ? " is-loading" : ""}${aiState.status === "error" ? " is-error" : ""}`;
+  els.aiPanel.replaceChildren();
+  const header = document.createElement("div");
+  header.className = "ai-analysis-head";
+  const copy = document.createElement("div");
+  const kicker = document.createElement("p"); kicker.className = "ai-kicker"; kicker.textContent = "AI ASSISTED REVIEW";
+  const title = document.createElement("h3"); title.textContent = aiState.mode === "project" ? "选中项目的风险追溯" : "当前结果的风险摘要";
+  copy.append(kicker, title);
+  header.append(copy);
+  if (aiState.status === "success") {
+    const level = aiState.result?.analysis?.riskLevel || "unknown";
+    const badge = document.createElement("span"); badge.className = `ai-risk-badge ${level}`;
+    badge.textContent = ({ high: "高风险", medium: "中风险", low: "低风险", unknown: "待复核" })[level] || "待复核";
+    header.append(badge);
+  }
+  els.aiPanel.append(header);
+
+  if (aiState.status === "loading") {
+    appendAiText(els.aiPanel, "ai-loading-copy", `正在按结构化数据生成分析${aiState.chunks ? ` · 已接收 ${aiState.chunks} 个片段` : "…"}`);
+    appendAiText(els.aiPanel, "ai-disclaimer", "分析只读，不会修改金蝶单据；金额和单据以结构化查询结果为准。");
+    return;
+  }
+  if (aiState.status === "error") {
+    appendAiText(els.aiPanel, "ai-error-copy", aiState.message || "AI 分析失败，请稍后重试。");
+    const retry = document.createElement("button"); retry.type = "button"; retry.className = "quiet-button ai-retry"; retry.textContent = "重新分析";
+    retry.addEventListener("click", () => startAiAnalysis(view, aiState.selectedCodes || []));
+    els.aiPanel.append(retry);
+    return;
+  }
+
+  const output = aiState.result || {};
+  const analysis = output.analysis || {};
+  appendAiText(els.aiPanel, "ai-headline", analysis.headline || "需要人工复核的超期风险");
+  appendAiText(els.aiPanel, "ai-overview", analysis.overview || "暂无 AI 概览。");
+  const meta = document.createElement("p");
+  meta.className = "ai-analysis-meta";
+  const metaParts = [
+    output.meta?.asOfDate ? `数据截至 ${output.meta.asOfDate}` : "",
+    output.meta?.omittedRows ? `重点分析 ${output.meta.analyzedRows || 0} / 共 ${output.meta.rowCount || 0} 行` : `分析 ${output.meta?.analyzedRows || 0} 行`,
+    output.meta?.cached ? "缓存命中" : "刚刚生成",
+    output.meta?.partial ? "来源存在不完整" : "来源完整",
+  ].filter(Boolean);
+  meta.textContent = metaParts.join(" · ");
+  els.aiPanel.append(meta);
+
+  if (analysis.keyFindings?.length) {
+    const section = appendAiSection(els.aiPanel, "重点发现");
+    const grid = document.createElement("div"); grid.className = "ai-finding-grid";
+    analysis.keyFindings.forEach((finding) => {
+      const card = document.createElement("article"); card.className = `ai-finding ${finding.severity || "medium"}`;
+      const cardTitle = document.createElement("h4"); cardTitle.textContent = finding.title || "重点发现";
+      card.append(cardTitle);
+      appendAiText(card, "ai-finding-description", finding.description || "");
+      if (finding.evidence?.length) {
+        const evidence = document.createElement("div"); evidence.className = "ai-finding-evidence";
+        finding.evidence.forEach((item) => {
+          const line = document.createElement("span"); line.textContent = item.meaning ? `${item.field}：${item.meaning}` : item.field; evidence.append(line);
+        });
+        card.append(evidence);
+      }
+      appendAiReferenceList(card, (output.analysis.evidenceReferences || []).filter((reference) => finding.refs?.includes(reference.ref)));
+      grid.append(card);
+    });
+    section.append(grid);
+  }
+  if (analysis.priorityActions?.length) {
+    const section = appendAiSection(els.aiPanel, "优先跟进");
+    const list = document.createElement("ol"); list.className = "ai-action-list";
+    analysis.priorityActions.forEach((action) => {
+      const item = document.createElement("li");
+      const actionText = document.createElement("strong"); actionText.textContent = action.action || "建议核对";
+      item.append(actionText);
+      if (action.reason) appendAiText(item, "ai-action-reason", action.reason);
+      appendAiReferenceList(item, (output.analysis.evidenceReferences || []).filter((reference) => action.refs?.includes(reference.ref)));
+      list.append(item);
+    });
+    section.append(list);
+  }
+  if (analysis.caveats?.length) {
+    const section = appendAiSection(els.aiPanel, "边界与待核对项");
+    const list = document.createElement("ul"); list.className = "ai-caveat-list";
+    analysis.caveats.forEach((caveat) => { const item = document.createElement("li"); item.textContent = caveat; list.append(item); });
+    section.append(list);
+  }
+  if (analysis.evidenceReferences?.length) {
+    const section = appendAiSection(els.aiPanel, "引用证据");
+    appendAiReferenceList(section, analysis.evidenceReferences);
+  }
+  appendAiText(els.aiPanel, "ai-disclaimer", "AI 结果仅作辅助判断；最终风险金额、账龄和单据状态以本页结构化查询结果及金蝶原单为准。");
+}
+
+async function startAiAnalysis(view, selectedCodes) {
+  const result = view?.payload?.result;
+  const context = aiContextFor(view);
+  if (!aiSupported(view, result) || !context?.contextId) return;
+  const selected = [...new Set((selectedCodes || []).map((code) => String(code || "").trim()).filter(Boolean))].slice(0, 5);
+  view.aiAnalysis = { status: "loading", mode: selected.length ? "project" : "summary", selectedCodes: selected, chunks: 0 };
+  renderAiControls(view, result);
+  renderAiPanel(view);
+  try {
+    const output = await streamAiAnalysis({ contextId: context.contextId, subprojectNumbers: selected }, (event, payload) => {
+      if (event === "delta") {
+        view.aiAnalysis.chunks += 1;
+        view.aiAnalysis.characters = (view.aiAnalysis.characters || 0) + String(payload?.text || "").length;
+        if (state.resultViews.get(state.selectedTool) === view) renderAiPanel(view);
+      }
+    });
+    view.aiAnalysis = { status: "success", mode: selected.length ? "project" : "summary", selectedCodes: selected, result: output };
+  } catch (error) {
+    view.aiAnalysis = { status: "error", mode: selected.length ? "project" : "summary", selectedCodes: selected, message: error.message || "AI 分析失败，请稍后重试。", requestId: error.requestId || "" };
+  }
+  if (state.resultViews.get(state.selectedTool) === view) renderSelectedResult();
+}
+
+async function streamAiAnalysis(body, onEvent) {
+  const response = await fetch("/api/ai/analyze/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(payload.message || `AI 分析请求失败 (${response.status})`), payload);
+  }
+  if (!response.body?.getReader) return api("/api/ai/analyze", { method: "POST", body: JSON.stringify(body) });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let complete = null;
+  const consume = (block) => {
+    const lines = block.replaceAll("\r", "").split("\n");
+    let event = "message";
+    const data = [];
+    lines.forEach((line) => {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+    });
+    if (!data.length) return;
+    const payload = JSON.parse(data.join("\n"));
+    if (event === "error") throw Object.assign(new Error(payload.message || "AI 分析失败，请稍后重试。"), payload);
+    if (event === "complete") complete = payload;
+    onEvent?.(event, payload);
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop() || "";
+    blocks.forEach(consume);
+  }
+  buffer += decoder.decode();
+  if (buffer.trim()) consume(buffer);
+  if (!complete) throw new Error("AI 分析流未正常结束，请稍后重试。");
+  return complete;
 }
 
 function renderSupplierPurchaseResult(result, view) {
@@ -456,6 +722,8 @@ function renderResultTable(result, view) {
   els.table.querySelector("table")?.remove();
   const expandable = result.tool === "expense_claims";
   const salesBusiness = result.tool === "sales_business_analysis";
+  const aiSelectable = result.tool === "overdue_risk_combined" && Boolean(view.payload?.analysisContext?.supportsSelection);
+  if (aiSelectable) view.analysisSelection ||= new Set();
   if (expandable) {
     view.expenseDetails ||= new Map();
     view.expandedBills ||= new Set();
@@ -468,6 +736,29 @@ function renderResultTable(result, view) {
     detailHead.className = "expense-expand-column";
     detailHead.setAttribute("aria-label", "报销明细");
     headRow.append(detailHead);
+  }
+  if (aiSelectable) {
+    const selectHead = document.createElement("th");
+    selectHead.scope = "col";
+    selectHead.className = "ai-select-column";
+    selectHead.setAttribute("aria-label", "选择项目");
+    const selectAll = document.createElement("input");
+    selectAll.type = "checkbox";
+    selectAll.setAttribute("aria-label", "选择全部当前项目");
+    const selectableCodes = result.rows.map(analysisProjectCode).filter(Boolean);
+    const selectedCount = selectableCodes.filter((code) => view.analysisSelection.has(analysisProjectKey(code))).length;
+    selectAll.checked = selectableCodes.length > 0 && selectedCount === selectableCodes.length;
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < selectableCodes.length;
+    selectAll.addEventListener("change", () => {
+      selectableCodes.forEach((code) => {
+        const key = analysisProjectKey(code);
+        if (selectAll.checked) view.analysisSelection.add(key); else view.analysisSelection.delete(key);
+      });
+      renderAiControls(view, result);
+      renderResultTable(result, view);
+    });
+    selectHead.append(selectAll);
+    headRow.append(selectHead);
   }
   result.columns.forEach((column) => {
     const th = document.createElement("th");
@@ -499,6 +790,23 @@ function renderResultTable(result, view) {
   view.tableRows.forEach((row) => {
     const tr = document.createElement("tr");
     const billNumber = String(row["单据编号"] || "");
+    if (aiSelectable) {
+      const selectCell = document.createElement("td");
+      selectCell.className = "ai-select-column";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      const code = analysisProjectCode(row);
+      checkbox.checked = Boolean(code && view.analysisSelection.has(analysisProjectKey(code)));
+      checkbox.disabled = !code;
+      checkbox.setAttribute("aria-label", code ? `选择${code}进行 AI 明细分析` : "该行没有销售子项目编码");
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) view.analysisSelection.add(analysisProjectKey(code));
+        else view.analysisSelection.delete(analysisProjectKey(code));
+        renderAiControls(view, result);
+      });
+      selectCell.append(checkbox);
+      tr.append(selectCell);
+    }
     if (expandable) {
       const expanded = view.expandedBills.has(billNumber);
       const controlCell = document.createElement("td");

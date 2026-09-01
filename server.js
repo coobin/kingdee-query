@@ -9,6 +9,9 @@ const { AccessControl, normalizeIdentifier } = require("./src/access-control");
 const { KingdeeClient, KingdeeError } = require("./src/kingdee");
 const { QueryEngine } = require("./src/query-engine");
 const { aiPlan } = require("./src/planner");
+const { AIClient } = require("./src/ai/client");
+const { AnalysisContextStore } = require("./src/ai/context-store");
+const { AIAnalysisService } = require("./src/ai/analysis-service");
 const {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -23,6 +26,17 @@ const accessControl = new AccessControl({ ...config.localAuth, moduleIds, restri
 const kingdee = new KingdeeClient(config.kingdee);
 const engine = new QueryEngine({ catalog, kingdee, config });
 const audit = createAuditLogger(config.auditPath, config.audit);
+const aiClient = new AIClient(config.ai.analysis);
+const analysisContextStore = new AnalysisContextStore({
+  ttlMs: config.ai.analysis.contextTtlMs,
+  maxEntries: config.ai.analysis.maxContexts,
+});
+const aiAnalysis = new AIAnalysisService({
+  client: aiClient,
+  engine,
+  config: config.ai.analysis,
+  contextStore: analysisContextStore,
+});
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", config.trustProxy);
@@ -142,14 +156,15 @@ web.get("/session", (req, res) => {
   if (req.identity.channel === "browser") {
     audit({ ...identityAudit(req), outcome: "success", action: "login" });
   }
-  res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model) });
+  res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model), aiAnalysis: aiAnalysis.capabilities() });
 });
 web.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, true, (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
 web.post("/query", asyncRoute(async (req, res) => {
   const question = String(req.body?.question || "").slice(0, 1000);
   const plan = req.body?.tool ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "explicit" } : await aiPlan(question, catalog, config);
   const result = await executeAndAudit(req, plan, question);
-  res.json({ plan, result, requestId: req.requestId });
+  const analysisContext = aiAnalysis.createContext(req.identity, plan, result);
+  res.json({ plan, result, ...(analysisContext ? { analysisContext } : {}), requestId: req.requestId });
 }));
 web.get("/expense-claims/:billNumber/details", asyncRoute(async (req, res) => {
   const result = await executeExpenseDetailsAndAudit(req, req.params.billNumber);
@@ -159,6 +174,28 @@ web.post("/sales-business/:subprojectNumber/details", asyncRoute(async (req, res
   const result = await executeSalesBusinessDetailsAndAudit(req, req.params.subprojectNumber);
   res.json({ result, requestId: req.requestId });
 }));
+web.post("/ai/analyze", asyncRoute(async (req, res) => {
+  const output = await executeAiAnalysisAndAudit(req, req.body || {});
+  res.json({ ...output, requestId: req.requestId });
+}));
+web.post("/ai/analyze/stream", (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
+  writeSse(res, "ready", { requestId: req.requestId });
+  executeAiAnalysisAndAudit(req, req.body || {}, {
+    onDelta: (text) => writeSse(res, "delta", { text }),
+  }).then((output) => {
+    writeSse(res, "complete", { ...output, requestId: req.requestId });
+    res.end();
+  }).catch((error) => {
+    writeSse(res, "error", { error: error.code || error.name || "AIError", message: publicAiErrorMessage(error), requestId: req.requestId });
+    res.end();
+  });
+});
 
 const admin = express.Router();
 admin.use(browserAuth(config, accessControl), requireSuperAdmin);
@@ -282,6 +319,23 @@ dify.post("/query", asyncRoute(async (req, res) => {
   const result = await executeAndAudit(req, plan, question);
   res.json({ answer: result.summary, data: result, plan, request_id: req.requestId });
 }));
+dify.post("/analyze", asyncRoute(async (req, res) => {
+  const question = String(req.body?.query || req.body?.question || "超期风险 AI 分析").slice(0, 1000);
+  const plan = req.body?.tool
+    ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "dify-explicit" }
+    : await aiPlan(question, catalog, config);
+  if (plan.tool !== "overdue_risk_combined") {
+    throw Object.assign(new Error("AI 分析接口当前只支持超期风险模块。"), { statusCode: 400, code: "analysis_profile_unavailable" });
+  }
+  const result = await executeAndAudit(req, plan, question);
+  const analysisContext = aiAnalysis.createContext(req.identity, plan, result);
+  if (!analysisContext) throw Object.assign(new Error("当前模块尚未启用 AI 分析。"), { statusCode: 503, code: "analysis_unavailable" });
+  const output = await executeAiAnalysisAndAudit(req, {
+    contextId: analysisContext.contextId,
+    subprojectNumbers: req.body?.subprojectNumbers ?? req.body?.subprojectNumber ?? req.body?.arguments?.subprojectNumber ?? [],
+  });
+  res.json({ answer: output.answer, analysis: output.analysis, data: result, plan, meta: output.meta, request_id: req.requestId });
+}));
 app.use("/api/dify/v1", dify);
 app.use("/api", web);
 
@@ -296,6 +350,48 @@ async function executeAndAudit(req, plan, question) {
     return result;
   } catch (error) {
     audit({ ...identityAudit(req), action: "query", outcome: "error", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, error: error.message, durationMs: Date.now() - started });
+    throw error;
+  }
+}
+
+async function executeAiAnalysisAndAudit(req, body, { onDelta = null } = {}) {
+  const started = Date.now();
+  const contextId = String(body?.contextId || "").trim();
+  const selected = body?.subprojectNumbers ?? body?.subprojectNumber ?? [];
+  const selectedCount = Array.isArray(selected) ? selected.length : (selected ? 1 : 0);
+  let context;
+  try {
+    context = analysisContextStore.get(contextId, req.identity);
+    enforceModuleAccess(req.identity, context.tool);
+    const output = await aiAnalysis.analyze(req.identity, {
+      contextId,
+      subprojectNumbers: selected,
+    }, { onDelta });
+    audit({
+      ...identityAudit(req),
+      action: "ai.analysis",
+      outcome: "success",
+      tool: context.tool,
+      mode: output.meta.mode,
+      selectedCount,
+      analyzedRows: output.meta.analyzedRows,
+      cached: Boolean(output.meta.cached),
+      model: output.meta.model,
+      contextId: crypto.createHash("sha256").update(contextId).digest("hex").slice(0, 16),
+      durationMs: Date.now() - started,
+    });
+    return output;
+  } catch (error) {
+    audit({
+      ...identityAudit(req),
+      action: "ai.analysis",
+      outcome: "error",
+      tool: context?.tool || "",
+      selectedCount,
+      error: error.message,
+      code: error.code || error.name || "analysis_failed",
+      durationMs: Date.now() - started,
+    });
     throw error;
   }
 }
@@ -365,6 +461,13 @@ function identityAudit(req) {
 }
 function sanitizeArguments(args) { return Object.fromEntries(Object.entries(args || {}).filter(([key]) => !/secret|password|token/i.test(key))); }
 function asyncRoute(handler) { return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next); }
+function writeSse(res, event, payload) {
+  if (res.writableEnded || res.destroyed) return;
+  res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+function publicAiErrorMessage(error) {
+  return error?.statusCode === 500 ? "AI 分析失败，请稍后重试。" : String(error?.message || "AI 分析失败，请稍后重试。");
+}
 
 app.use((error, req, res, next) => {
   const status = error.statusCode || (error instanceof KingdeeError ? 502 : 500);

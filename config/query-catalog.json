@@ -368,6 +368,10 @@
     "description": "按照发票超期和应收超期的设定天数，取二者查询结果的最大值",
     "formId": "AR_RECEIVABLE",
     "queryType": "overdue_risk_combined",
+    "aiAnalysis": {
+      "enabled": true,
+      "supportsSelection": true
+    },
     "fields": [],
     "publicColumns": [
       "客户",

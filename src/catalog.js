@@ -17,6 +17,12 @@ function publicCatalog(catalog, workflowEnabled, canAccess = () => true) {
     description: item.description,
     filters: Object.keys(item.filterFields),
     columns: item.publicColumns || item.fields.map(([, label]) => label),
+    ...(item.aiAnalysis ? {
+      aiAnalysis: {
+        enabled: Boolean(item.aiAnalysis.enabled),
+        supportsSelection: Boolean(item.aiAnalysis.supportsSelection),
+      },
+    } : {}),
   }));
   if (canAccess("workflow_progress")) {
     tools.push({

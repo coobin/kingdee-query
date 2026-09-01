@@ -18,6 +18,10 @@ function bool(name, fallback = false) {
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
 }
 
+function boundedNumber(name, fallback, minimum, maximum) {
+  return Math.min(Math.max(number(name, fallback), minimum), maximum);
+}
+
 const authMode = process.env.AUTH_MODE || "trusted_headers";
 if (!new Set(["trusted_headers", "dev"]).has(authMode)) {
   throw new Error("AUTH_MODE must be trusted_headers or dev");
@@ -87,6 +91,22 @@ module.exports = {
     apiKey: process.env.AI_API_KEY || "",
     model: process.env.AI_MODEL || "",
     timeoutMs: number("AI_TIMEOUT_MS", 20000),
+    analysis: {
+      enabled: bool("AI_ANALYSIS_ENABLED", false),
+      baseUrl: process.env.AI_ANALYSIS_BASE_URL || process.env.AI_BASE_URL || "",
+      apiKey: process.env.AI_ANALYSIS_API_KEY || process.env.AI_API_KEY || "",
+      model: process.env.AI_ANALYSIS_MODEL || process.env.AI_MODEL || "",
+      timeoutMs: boundedNumber("AI_ANALYSIS_TIMEOUT_MS", 30000, 5000, 120000),
+      maxTokens: Math.floor(boundedNumber("AI_ANALYSIS_MAX_TOKENS", 2500, 256, 8000)),
+      topRows: Math.floor(boundedNumber("AI_ANALYSIS_TOP_ROWS", 40, 5, 100)),
+      detailRows: Math.floor(boundedNumber("AI_ANALYSIS_DETAIL_ROWS", 300, 20, 1000)),
+      redactIdentifiers: bool("AI_ANALYSIS_REDACT_IDENTIFIERS", true),
+      cacheTtlMs: boundedNumber("AI_ANALYSIS_CACHE_TTL_SECONDS", 600, 30, 3600) * 1000,
+      contextTtlMs: boundedNumber("AI_ANALYSIS_CONTEXT_TTL_SECONDS", 600, 60, 3600) * 1000,
+      maxContexts: Math.floor(boundedNumber("AI_ANALYSIS_MAX_CONTEXTS", 100, 10, 1000)),
+      rateLimit: Math.floor(boundedNumber("AI_ANALYSIS_RATE_LIMIT", 5, 1, 100)),
+      rateLimitWindowMs: boundedNumber("AI_ANALYSIS_RATE_LIMIT_WINDOW_SECONDS", 600, 60, 3600) * 1000,
+    },
   },
   catalogPath: process.env.QUERY_CATALOG_PATH || path.join(__dirname, "..", "config", "query-catalog.json"),
   auditPath: process.env.AUDIT_LOG_PATH || path.join(__dirname, "..", "data", "audit.ndjson"),

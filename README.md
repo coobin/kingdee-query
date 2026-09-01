@@ -18,6 +18,7 @@
 - 费用报销单按单据头返回，一张单据一行，状态转换为中文
 - 人员成本按员工编号归集已审核工资单实发金额与已审核费用报销核定金额，日期范围最长 366 天并完整分页读取
 - 网页使用结构化查询表单，避免自然语言误判
+- 超期风险结果支持可选的 DeepSeek AI 辅助分析：当前结果摘要、选中销售子项目的单据链路追溯、证据引用和优先跟进建议
 - Dify API 仍支持常见中文问法，也可连接 OpenAI-compatible 模型进行查询规划
 - 提供带 Bearer 认证的 Dify API 和 OpenAPI Schema
 - 记录登录、退出、查询和管理操作审计日志，并在管理员 WebUI 中查看
@@ -29,6 +30,8 @@
 浏览器 ── SSO 反向代理 ── Query Hub ── 金蝶云星空 WebAPI
                                │
 Dify ───── Bearer API ─────────┘
+                               │
+                       DeepSeek（可选）
 ```
 
 网页不依赖 AI：用户选择业务类型并填写明确条件，前端直接调用已登记的查询工具。Dify API 可以显式传入工具和参数，也可以让 AI 或本地解析器把自然语言转换成工具调用。无论采用哪种入口，最终查询仍受服务端白名单和金蝶用户权限约束。
@@ -77,6 +80,13 @@ AUTH_MODE=dev
 | `KINGDEE_QUERY_PAGE_SIZE` | 发票账龄按销售子项目分页时每页读取行数，默认 5000，最大 5000 |
 | `KINGDEE_AGGREGATION_MAX_ROWS` | 其他汇总查询最大扫描行数；发票账龄按销售子项目分页读取 |
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
+| `AI_ANALYSIS_ENABLED` | 是否启用 DeepSeek AI 分析，默认 `false` |
+| `AI_ANALYSIS_BASE_URL`、`AI_ANALYSIS_API_KEY`、`AI_ANALYSIS_MODEL` | AI 分析服务地址、密钥和模型；未填写时回退到对应的 `AI_*` 配置 |
+| `AI_ANALYSIS_TIMEOUT_MS`、`AI_ANALYSIS_MAX_TOKENS` | 单次分析等待时间和最大输出量 |
+| `AI_ANALYSIS_TOP_ROWS`、`AI_ANALYSIS_DETAIL_ROWS` | 汇总送入模型的重点项目数、单项目各来源的最大明细数 |
+| `AI_ANALYSIS_REDACT_IDENTIFIERS` | 是否在发送给模型前用引用编号替换客户、项目和单据号，默认 `true` |
+| `AI_ANALYSIS_CACHE_TTL_SECONDS`、`AI_ANALYSIS_CONTEXT_TTL_SECONDS` | 分析结果缓存和查询上下文在内存中的保留时间 |
+| `AI_ANALYSIS_MAX_CONTEXTS`、`AI_ANALYSIS_RATE_LIMIT` | 单进程上下文上限和用户分析请求频率限制 |
 | `AUDIT_LOG_PATH` | 操作审计日志路径 |
 | `AUDIT_MAX_BYTES` | 单个审计日志文件上限，默认 10 MiB |
 | `AUDIT_MAX_FILES` | 保留的轮转日志文件数，默认 10 |
@@ -183,6 +193,31 @@ curl -X POST https://query.example.com/api/dify/v1/query \
 ```
 
 也可以在请求体中传递 `user`。Dify 应透传能够登录金蝶且与业务人员映射一致的最终用户标识，不要使用所有请求共用的管理员身份。
+
+## AI 分析（DeepSeek）
+
+AI 分析是查询结果上的只读辅助层，不改变原有查询口径，也不替代金蝶原单。启用后，网页在“超期风险”查询结果中显示两个入口：
+
+- “AI 分析当前结果”：按风险金额、金额差异、账龄等维度，对当前结果做汇总判断；数据量较大时只把重点项目送入模型，并在结果中标记省略项目。
+- 勾选项目后“分析选中项目”：重新按当前用户权限读取该项目的发票、应收、发票—应收匹配、应收—收款核销、收款、退款和收款条件，再生成明细追溯。
+
+网页请求链路是“查询 → 短期上下文 ID → AI 分析”。浏览器不会提交原始金蝶过滤表达式或 API Key；分析接口会重新校验当前用户和模块权限。默认情况下发送给模型的客户、项目和单据编号会替换为 `P001`、`I001`、`A001` 等引用，分析返回的引用再由服务端映射回可核对的单据。金额、日期、状态和收款条件仍可能发送给模型，因此启用前应确认企业数据出境、供应商和账号策略。
+
+服务端使用 DeepSeek 的 OpenAI-compatible Chat Completions 接口和 JSON 输出模式。推荐先在 `.env` 中明确填写以下配置，再将 `AI_ANALYSIS_ENABLED` 改为 `true`：
+
+```env
+AI_ANALYSIS_ENABLED=true
+AI_ANALYSIS_BASE_URL=https://api.deepseek.com
+AI_ANALYSIS_API_KEY=<只放在部署机 .env，不要提交>
+AI_ANALYSIS_MODEL=deepseek-v4-flash
+AI_ANALYSIS_REDACT_IDENTIFIERS=true
+```
+
+若 AI 服务暂时不可用，原查询结果仍然正常返回；AI 面板只显示失败原因和重试入口。服务默认在单进程内缓存相同查询的分析结果，并按用户限制请求频率。当前缓存不是 Redis，也没有历史快照：重启或多实例部署后需要重新分析，历史趋势要等业务确认快照口径后再接入。
+
+Dify 可调用 `POST /api/dify/v1/analyze`。请求可以传 `tool: "overdue_risk_combined"` 和 `arguments`，也可以传 `query` 让现有规划器先生成查询；如需单项目明细，再传不超过 5 个 `subprojectNumbers`。接口返回 `answer`、结构化 `analysis`、原始受控查询 `data`、`plan` 和 `meta`。
+
+后续模块不需要重新实现 DeepSeek 调用。新增模块时，在 `src/ai/analysis-profiles.js` 登记一个 profile，提供结果压缩、可选明细读取、系统口径和引用白名单；在查询目录中增加 `aiAnalysis` 能力标记，复用 `AIAnalysisService` 的上下文、脱敏、缓存、限流、JSON 校验和审计链路。
 
 ## Docker
 
