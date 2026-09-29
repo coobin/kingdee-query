@@ -6,6 +6,7 @@ const { browserAuth, difyAuth, requireSuperAdmin, requireSameOrigin } = require(
 const { loadCatalog, publicCatalog } = require("./src/catalog");
 const { createAuditLogger, readAuditEvents } = require("./src/audit");
 const { AccessControl, normalizeIdentifier } = require("./src/access-control");
+const { PersonnelDirectory } = require("./src/personnel-directory");
 const { KingdeeClient, KingdeeError } = require("./src/kingdee");
 const { QueryEngine } = require("./src/query-engine");
 const { aiPlan } = require("./src/planner");
@@ -25,6 +26,7 @@ const restrictedModuleIds = Object.entries(catalog).filter(([, item]) => item.re
 const accessControl = new AccessControl({ ...config.localAuth, moduleIds, restrictedModuleIds });
 config.ai.analysis.enabled = accessControl.getAiAnalysisEnabled(config.ai.analysis.enabled);
 const kingdee = new KingdeeClient(config.kingdee);
+const personnelDirectory = new PersonnelDirectory(kingdee);
 const engine = new QueryEngine({ catalog, kingdee, config });
 const audit = createAuditLogger(config.auditPath, config.audit);
 const aiClient = new AIClient(config.ai.analysis);
@@ -214,6 +216,11 @@ admin.get("/settings", (req, res) => res.json({
     restrictedByDefault: Boolean(catalog[id]?.restrictedByDefault),
   })),
   moduleAccess: accessControl.getModuleAccess(),
+}));
+admin.get("/personnel-directory", asyncRoute(async (req, res) => {
+  const directory = await personnelDirectory.get(req.identity.kingdeeUsername, { refresh: req.query.refresh === "1" });
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "personnel_directory.read", count: directory.people.length, ip: req.ip });
+  res.json(directory);
 }));
 admin.put("/ai-analysis", requireSameOrigin, (req, res) => {
   const enabled = accessControl.setAiAnalysisEnabled(req.body?.enabled);

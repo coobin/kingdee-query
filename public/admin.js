@@ -1,4 +1,4 @@
-const state = { settings: null, auditEvents: [] };
+const state = { settings: null, auditEvents: [], directory: null, picker: null };
 const moduleGrid = document.querySelector("#module-grid");
 const adminList = document.querySelector("#admin-list");
 const accessMessage = document.querySelector("#access-message");
@@ -8,6 +8,8 @@ const auditRows = document.querySelector("#audit-rows");
 const auditSearch = document.querySelector("#audit-search");
 const auditAction = document.querySelector("#audit-action");
 const auditTableWrap = document.querySelector(".audit-table-wrap");
+const pickerDialog = document.querySelector("#people-picker");
+const peopleSearch = document.querySelector("#people-search");
 
 const ACTION_LABELS = {
   login: "登录系统",
@@ -16,6 +18,7 @@ const ACTION_LABELS = {
   query: "数据查询",
   "query.detail": "报销明细查询",
   "module_access.update": "修改模块权限",
+  "personnel_directory.read": "读取人员目录",
   "ai_analysis.toggle": "切换 AI 分析",
   "admin.create": "新增管理员",
   "admin.update": "修改管理员",
@@ -206,22 +209,16 @@ function renderModules() {
     const strong = document.createElement("strong"); strong.textContent = module.label;
     const description = document.createElement("small"); description.textContent = module.description;
     title.append(strong, description); head.append(number, title);
-    const label = document.createElement("label");
-    const labelText = document.createElement("span"); labelText.textContent = module.selfScoped ? "允许查看的金蝶用户（可选）" : "允许查看的金蝶用户";
-    const textarea = document.createElement("textarea");
-    textarea.rows = 4;
-    textarea.placeholder = "例如：张三";
-    const hint = document.createElement("small");
-    hint.className = "field-hint";
-    hint.textContent = module.restrictedByDefault
-      ? "敏感模块：名单留空时仅超级管理员可见；填写后仅名单人员和超级管理员可见。"
-      : module.selfScoped
-      ? "该模块只返回本人数据，名单留空时默认向所有已登录用户开放。"
-      : "直接填写金蝶用户名；多个用户请每行填写一个，也可以用逗号分隔。";
-    textarea.value = (state.settings.moduleAccess[module.id] || []).join("\n");
-    textarea.addEventListener("input", () => card.classList.toggle("restricted", module.restrictedByDefault || Boolean(parsePeople(textarea.value).length)));
-    label.append(labelText, textarea, hint); card.append(head, label);
-    card.classList.toggle("restricted", module.restrictedByDefault || Boolean(parsePeople(textarea.value).length));
+    const names = state.settings.moduleAccess[module.id] || [];
+    const summary = document.createElement("p"); summary.className = "module-access-summary";
+    summary.textContent = names.length ? `已选 ${names.length} 人` : module.restrictedByDefault ? "仅超级管理员可见" : "所有已登录员工可见";
+    const list = document.createElement("div"); list.className = "module-people";
+    names.slice(0, 6).forEach((name) => { const chip = document.createElement("span"); chip.textContent = name; list.append(chip); });
+    if (names.length > 6) { const more = document.createElement("span"); more.textContent = `另有 ${names.length - 6} 人`; list.append(more); }
+    const button = document.createElement("button"); button.type = "button"; button.className = "secondary-action module-pick-action"; button.textContent = "从组织架构选择人员";
+    button.addEventListener("click", () => openPeoplePicker(module));
+    card.append(head, summary, list, button);
+    card.classList.toggle("restricted", module.restrictedByDefault || names.length > 0);
     return card;
   }));
 }
@@ -334,16 +331,147 @@ function adminField(labelText, name, value, placeholder = "", type = "text") {
   label.append(span, input); return label;
 }
 
-document.querySelector("#save-access").addEventListener("click", async () => {
-  const button = document.querySelector("#save-access");
-  button.disabled = true;
+async function openPeoplePicker(module) {
+  accessMessage.hidden = true;
+  state.picker = { module, scope: "all", selected: new Map((state.settings.moduleAccess[module.id] || []).map((name) => [personKey(name), name])) };
+  peopleSearch.value = "";
+  document.querySelector("#people-picker-title").textContent = `${module.label} · 选择查看人员`;
+  document.querySelector("#picker-subtitle").textContent = module.restrictedByDefault
+    ? "名单为空时仅超级管理员可见。选择人员后，名单中的人员也可查看。"
+    : "名单为空时所有已登录员工可见。按组织、部门选择，可跨部门多选。";
+  document.querySelector("#picker-message").textContent = "正在读取组织架构…";
+  pickerDialog.showModal();
   try {
-    const moduleAccess = Object.fromEntries([...moduleGrid.querySelectorAll(".module-card")].map((card) => [card.dataset.moduleId, parsePeople(card.querySelector("textarea").value)]));
-    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify({ moduleAccess }) });
+    if (!state.directory) state.directory = await api("/api/admin/personnel-directory");
+    if (!state.picker || state.picker.module.id !== module.id || !pickerDialog.open) return;
+    document.querySelector("#picker-message").textContent = state.directory.ambiguousUsers
+      ? `${state.directory.ambiguousUsers} 个重名账号无法安全授权，已从可选人员中排除。` : "";
+    renderOrganizationTree();
+    renderPeopleList();
+  } catch (error) {
+    document.querySelector("#picker-message").textContent = `读取人员失败：${error.message}`;
+  }
+}
+
+function personKey(value) { return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN"); }
+
+function scopePeople() {
+  if (!state.directory || !state.picker) return [];
+  const scope = state.picker.scope;
+  if (scope === "all") return state.directory.people;
+  if (scope === "unassigned") return state.directory.people.filter((person) => !person.departmentIds.length);
+  if (scope.startsWith("org:")) {
+    const ids = new Set(state.directory.departments.filter((dept) => dept.organizationId === scope.slice(4)).map((dept) => dept.id));
+    return state.directory.people.filter((person) => person.departmentIds.some((id) => ids.has(id)));
+  }
+  const ids = new Set([scope.slice(5)]);
+  for (let previous = -1; previous !== ids.size;) {
+    previous = ids.size;
+    state.directory.departments.forEach((dept) => { if (ids.has(dept.parentId)) ids.add(dept.id); });
+  }
+  return state.directory.people.filter((person) => person.departmentIds.some((id) => ids.has(id)));
+}
+
+function renderOrganizationTree() {
+  const tree = document.querySelector("#org-tree");
+  if (!state.directory || !state.picker) { tree.textContent = "读取中…"; return; }
+  const nodes = [];
+  const addNode = (scope, title, depth, count) => {
+    const button = document.createElement("button"); button.type = "button"; button.className = "org-node";
+    button.style.paddingLeft = `${12 + depth * 16}px`;
+    button.setAttribute("aria-current", String(state.picker.scope === scope));
+    const label = document.createElement("span"); label.textContent = title;
+    const number = document.createElement("small"); number.textContent = count;
+    button.append(label, number);
+    button.addEventListener("click", () => { state.picker.scope = scope; renderOrganizationTree(); renderPeopleList(); });
+    nodes.push(button);
+  };
+  addNode("all", "全部人员", 0, state.directory.people.length);
+  const children = (orgId, parentId, depth, seen = new Set()) => {
+    state.directory.departments.filter((dept) => dept.organizationId === orgId && dept.parentId === parentId && !seen.has(dept.id)).forEach((dept) => {
+      addNode(`dept:${dept.id}`, dept.name, depth, state.directory.people.filter((person) => person.departmentIds.includes(dept.id)).length);
+      children(orgId, dept.id, depth + 1, new Set([...seen, dept.id]));
+    });
+  };
+  state.directory.organizations.forEach((org) => {
+    addNode(`org:${org.id}`, org.name, 0, state.directory.people.filter((person) => person.departmentIds.some((id) => state.directory.departments.some((dept) => dept.id === id && dept.organizationId === org.id))).length);
+    children(org.id, "", 1);
+  });
+  if (state.directory.unassignedCount) addNode("unassigned", "未归属部门", 0, state.directory.unassignedCount);
+  tree.replaceChildren(...nodes);
+}
+
+function visiblePeople() {
+  const keyword = personKey(peopleSearch.value);
+  const departmentById = new Map(state.directory.departments.map((dept) => [dept.id, dept]));
+  return scopePeople().filter((person) => !keyword || personKey([person.username, person.account, ...person.departmentIds.map((id) => departmentById.get(id)?.fullName || departmentById.get(id)?.name)].join(" ")).includes(keyword));
+}
+
+function renderPeopleList() {
+  if (!state.directory || !state.picker) return;
+  const people = visiblePeople();
+  const scope = state.picker.scope;
+  document.querySelector("#picker-scope-title").textContent = scope === "all" ? "全部人员" : scope === "unassigned" ? "未归属部门" : scope.startsWith("org:")
+    ? state.directory.organizations.find((org) => org.id === scope.slice(4))?.name || "组织"
+    : state.directory.departments.find((dept) => dept.id === scope.slice(5))?.name || "部门";
+  document.querySelector("#picker-results-count").textContent = `${people.length} 人`;
+  document.querySelector("#picker-selected-count").textContent = `已选 ${state.picker.selected.size} 人`;
+  const departmentById = new Map(state.directory.departments.map((dept) => [dept.id, dept]));
+  const rows = people.map((person) => {
+    const row = document.createElement("label"); row.className = "person-row";
+    const check = document.createElement("input"); check.type = "checkbox"; check.checked = state.picker.selected.has(personKey(person.username));
+    check.addEventListener("change", () => {
+      if (check.checked) state.picker.selected.set(personKey(person.username), person.username);
+      else state.picker.selected.delete(personKey(person.username));
+      document.querySelector("#picker-selected-count").textContent = `已选 ${state.picker.selected.size} 人`;
+    });
+    const body = document.createElement("span");
+    const name = document.createElement("strong"); name.textContent = person.username;
+    const detail = document.createElement("small"); detail.textContent = [person.account, ...person.departmentIds.map((id) => departmentById.get(id)?.fullName || departmentById.get(id)?.name).filter(Boolean)].join(" · ") || "未归属部门";
+    body.append(name, detail); row.append(check, body); return row;
+  });
+  if (!rows.length) { const empty = document.createElement("p"); empty.className = "picker-empty"; empty.textContent = "当前范围没有符合条件的人员。"; rows.push(empty); }
+  document.querySelector("#people-list").replaceChildren(...rows);
+  const directoryNames = new Set(state.directory.people.map((person) => personKey(person.username)));
+  const missing = [...state.picker.selected.values()].filter((name) => !directoryNames.has(personKey(name)));
+  document.querySelector("#picker-message").textContent = missing.length
+    ? `${missing.length} 个原有名单人员不在当前启用账号中，保存时仍会保留；如需移除，请使用“清空名单”后重新选择。`
+    : state.directory.ambiguousUsers ? `${state.directory.ambiguousUsers} 个重名账号已从可选人员中排除。` : "";
+}
+
+peopleSearch.addEventListener("input", renderPeopleList);
+document.querySelector("#close-people-picker").addEventListener("click", () => pickerDialog.close());
+pickerDialog.addEventListener("close", () => { state.picker = null; });
+document.querySelector("#refresh-directory").addEventListener("click", async (event) => {
+  const button = event.currentTarget; button.disabled = true;
+  try { state.directory = await api("/api/admin/personnel-directory?refresh=1"); renderOrganizationTree(); renderPeopleList(); }
+  catch (error) { document.querySelector("#picker-message").textContent = `刷新失败：${error.message}`; }
+  finally { button.disabled = false; }
+});
+for (const [id, selected] of [["select-visible", true], ["deselect-visible", false]]) {
+  document.querySelector(`#${id}`).addEventListener("click", () => {
+    if (!state.directory || !state.picker) return;
+    for (const person of visiblePeople()) {
+      if (selected) state.picker.selected.set(personKey(person.username), person.username);
+      else state.picker.selected.delete(personKey(person.username));
+    }
+    renderPeopleList();
+  });
+}
+document.querySelector("#clear-selection").addEventListener("click", () => { if (state.picker) { state.picker.selected.clear(); renderPeopleList(); } });
+document.querySelector("#save-module-access").addEventListener("click", async (event) => {
+  if (!state.picker || !state.directory) return;
+  const button = event.currentTarget;
+  if (state.picker.selected.size > 200) { document.querySelector("#picker-message").textContent = "每个模块最多可选择 200 人。"; return; }
+  button.disabled = true;
+  const module = state.picker.module;
+  try {
+    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify({ moduleAccess: { [module.id]: [...state.picker.selected.values()] } }) });
     state.settings.moduleAccess = payload.moduleAccess;
     renderModules();
-    showMessage(accessMessage, "模块权限已保存。", false);
-  } catch (error) { showMessage(accessMessage, error.message, true); }
+    pickerDialog.close();
+    showMessage(accessMessage, `${module.label}的查看人员已保存。`, false);
+  } catch (error) { document.querySelector("#picker-message").textContent = `保存失败：${error.message}`; }
   finally { button.disabled = false; }
 });
 
@@ -401,10 +529,6 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 async function reloadSettings() {
   state.settings = await api("/api/admin/settings");
   renderAdmins();
-}
-
-function parsePeople(value) {
-  return [...new Set(String(value || "").split(/[\n,，;；]+/).map((part) => part.trim()).filter(Boolean))];
 }
 
 function showMessage(element, message, isError) {
