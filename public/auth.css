@@ -90,6 +90,14 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .module-card label { display: grid; gap: 7px; }
 .field-hint { color: var(--muted); font-size: 9px; line-height: 1.55; }
 .settings-section > .admin-message { margin-top: 18px; }
+.ai-setting-heading { align-items: center; }
+.ai-setting-heading .auth-eyebrow { margin-bottom: 8px; }
+.ai-analysis-toggle { min-width: 170px; min-height: 48px; padding: 0 20px; border: 1px solid var(--forest); color: var(--forest); background: white; font-weight: 700; }
+.ai-analysis-toggle[aria-pressed="true"] { border-color: var(--forest); color: white; background: var(--forest); }
+.ai-setting-body { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(280px, 1.2fr); gap: 12px 28px; align-items: start; margin-top: 20px; }
+.ai-setting-status { margin: 0; color: var(--forest); font-size: 14px; font-weight: 700; }
+.ai-setting-copy { max-width: 650px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.75; }
+.ai-setting-body .field-hint { grid-column: 2; margin: -4px 0 0; }
 .audit-toolbar { display: grid; grid-template-columns: 210px minmax(260px, 1fr) auto; gap: 14px; align-items: end; margin: 20px 0 14px; }
 .audit-toolbar label { display: grid; gap: 7px; }
 .audit-toolbar label > span { font-size: 11px; font-weight: 700; }
@@ -170,6 +178,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .settings-section { margin-top: 24px; padding: 18px 14px; }
   .section-heading { align-items: stretch; flex-direction: column; }
   .primary-action { width: 100%; }
+  .ai-setting-heading { align-items: stretch; }
+  .ai-analysis-toggle { width: 100%; }
+  .ai-setting-body { grid-template-columns: 1fr; gap: 10px; }
+  .ai-setting-body .field-hint { grid-column: auto; margin-top: 0; }
   .module-explainer { grid-template-columns: auto 1fr; }
   .module-grid { grid-template-columns: 1fr; }
   .audit-toolbar { grid-template-columns: 1fr; }

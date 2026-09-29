@@ -71,12 +71,13 @@ class AccessControl {
   }
 
   load() {
-    let state = { version: 1, admins: [], moduleAccess: {} };
+    let state = { version: 1, admins: [], moduleAccess: {}, settings: {} };
     if (fs.existsSync(this.dataPath)) {
       state = JSON.parse(fs.readFileSync(this.dataPath, "utf8"));
     }
     if (!Array.isArray(state.admins)) state.admins = [];
     if (!state.moduleAccess || typeof state.moduleAccess !== "object") state.moduleAccess = {};
+    if (!state.settings || typeof state.settings !== "object" || Array.isArray(state.settings)) state.settings = {};
     for (const moduleId of this.moduleIds) {
       if (!Array.isArray(state.moduleAccess[moduleId])) state.moduleAccess[moduleId] = [];
     }
@@ -329,6 +330,19 @@ class AccessControl {
 
   getModuleAccess() {
     return Object.fromEntries(this.moduleIds.map((moduleId) => [moduleId, [...(this.state.moduleAccess[moduleId] || [])]]));
+  }
+
+  getAiAnalysisEnabled(fallback = false) {
+    return typeof this.state.settings.aiAnalysisEnabled === "boolean"
+      ? this.state.settings.aiAnalysisEnabled
+      : Boolean(fallback);
+  }
+
+  setAiAnalysisEnabled(enabled) {
+    if (typeof enabled !== "boolean") throw Object.assign(new Error("AI 分析开关状态不正确。"), { statusCode: 400 });
+    this.state.settings.aiAnalysisEnabled = enabled;
+    this.persist();
+    return enabled;
   }
 
   setModuleAccess(moduleAccess) {

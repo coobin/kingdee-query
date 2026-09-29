@@ -80,7 +80,7 @@ AUTH_MODE=dev
 | `KINGDEE_QUERY_PAGE_SIZE` | 发票账龄按销售子项目分页时每页读取行数，默认 5000，最大 5000 |
 | `KINGDEE_AGGREGATION_MAX_ROWS` | 其他汇总查询最大扫描行数；发票账龄按销售子项目分页读取 |
 | `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL` | 可选的 OpenAI-compatible 查询规划模型 |
-| `AI_ANALYSIS_ENABLED` | 是否启用 DeepSeek AI 分析，默认 `false` |
+| `AI_ANALYSIS_ENABLED` | 管理设置尚未保存开关状态时的初始值，默认 `false`；保存后的开关状态以超级管理员设置为准 |
 | `AI_ANALYSIS_BASE_URL`、`AI_ANALYSIS_API_KEY`、`AI_ANALYSIS_MODEL` | AI 分析服务地址、密钥和模型；未填写时回退到对应的 `AI_*` 配置 |
 | `AI_ANALYSIS_TIMEOUT_MS`、`AI_ANALYSIS_MAX_TOKENS` | 单次分析等待时间和最大输出量 |
 | `AI_ANALYSIS_TOP_ROWS`、`AI_ANALYSIS_DETAIL_ROWS` | 汇总送入模型的重点项目数、单项目各来源的最大明细数 |
@@ -90,7 +90,7 @@ AUTH_MODE=dev
 | `AUDIT_LOG_PATH` | 操作审计日志路径 |
 | `AUDIT_MAX_BYTES` | 单个审计日志文件上限，默认 10 MiB |
 | `AUDIT_MAX_FILES` | 保留的轮转日志文件数，默认 10 |
-| `LOCAL_AUTH_DATA_PATH` | 超级管理员和模块权限文件路径；只保存加盐密码摘要，不保存明文密码 |
+| `LOCAL_AUTH_DATA_PATH` | 超级管理员、模块权限和功能开关文件路径；密码只保存加盐摘要，不保存明文密码 |
 | `LOCAL_AUTH_SESSION_HOURS` | 超级管理员登录有效小时数，默认 8 小时 |
 | `LOCAL_AUTH_COOKIE_SECURE` | HTTPS 部署时设为 `true`；未填写时根据 `APP_BASE_URL` 判断 |
 | `PASSKEY_ENABLED` | 是否启用超级管理员 Passkey，默认 `true` |
@@ -196,14 +196,14 @@ curl -X POST https://query.example.com/api/dify/v1/query \
 
 ## AI 分析（DeepSeek）
 
-AI 分析是查询结果上的只读辅助层，不改变原有查询口径，也不替代金蝶原单。启用后，网页在“超期风险”查询结果中显示两个入口：
+AI 分析是查询结果上的只读辅助层，不改变原有查询口径，也不替代金蝶原单。超级管理员可在 `/admin` 设置中单独开关此功能；开关状态保存在 `LOCAL_AUTH_DATA_PATH`，并优先于 `AI_ANALYSIS_ENABLED` 初始值。开启后，网页在“超期风险”查询结果中显示两个入口：
 
 - “AI 分析当前结果”：按风险金额、金额差异、账龄等维度，对当前结果做汇总判断；数据量较大时只把重点项目送入模型，并在结果中标记省略项目。
 - 勾选项目后“分析选中项目”：重新按当前用户权限读取该项目的发票、应收、发票—应收匹配、应收—收款核销、收款、退款和收款条件，再生成明细追溯。
 
 网页请求链路是“查询 → 短期上下文 ID → AI 分析”。浏览器不会提交原始金蝶过滤表达式或 API Key；分析接口会重新校验当前用户和模块权限。默认情况下发送给模型的客户、项目和单据编号会替换为 `P001`、`I001`、`A001` 等引用，分析返回的引用再由服务端映射回可核对的单据。金额、日期、状态和收款条件仍可能发送给模型，因此启用前应确认企业数据出境、供应商和账号策略。
 
-服务端使用 DeepSeek 的 OpenAI-compatible Chat Completions 接口和 JSON 输出模式。推荐先在 `.env` 中明确填写以下配置，再将 `AI_ANALYSIS_ENABLED` 改为 `true`：
+服务端使用 DeepSeek 的 OpenAI-compatible Chat Completions 接口和 JSON 输出模式。推荐先在 `.env` 中填写以下模型配置，再由超级管理员在 `/admin` 开启 AI 分析。新安装也可将 `AI_ANALYSIS_ENABLED` 设为 `true` 作为尚未保存开关时的初始值：
 
 ```env
 AI_ANALYSIS_ENABLED=true

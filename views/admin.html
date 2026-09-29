@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员设置 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=20260819-4">
+  <link rel="stylesheet" href="/auth.css?v=20260929-1">
 </head>
 <body class="admin-page">
   <header class="admin-topbar">
@@ -18,6 +18,19 @@
     <section class="admin-heading">
       <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>模块名单直接匹配员工的金蝶用户名。普通模块名单为空时向所有已登录员工开放；敏感模块会明确标注并默认关闭。</p></div>
       <div class="admin-identity"><span>当前超级管理员</span><strong id="current-admin">读取中</strong></div>
+    </section>
+
+    <section class="settings-section" aria-labelledby="ai-analysis-title">
+      <div class="section-heading ai-setting-heading">
+        <div><p class="auth-eyebrow">AI ASSISTANCE</p><h2 id="ai-analysis-title">AI 分析</h2></div>
+        <button class="ai-analysis-toggle" id="toggle-ai-analysis" type="button" aria-pressed="false" disabled>读取中</button>
+      </div>
+      <div class="ai-setting-body">
+        <p id="ai-analysis-status" class="ai-setting-status" role="status">正在读取 AI 分析设置…</p>
+        <p class="ai-setting-copy">开启后，超期风险查询会显示 AI 分析入口，查询摘要将发送到服务器配置的 AI 模型。此开关不影响其他查询；已打开的查询页刷新后同步状态。</p>
+        <p id="ai-analysis-model" class="field-hint"></p>
+      </div>
+      <div class="admin-message" id="ai-analysis-message" role="status" hidden></div>
     </section>
 
     <section class="settings-section" aria-labelledby="module-title">
@@ -60,6 +73,6 @@
     </section>
   </main>
   <script src="/passkey.js?v=20260813-1" defer></script>
-  <script src="/admin.js?v=20260825-1" defer></script>
+  <script src="/admin.js?v=20260929-1" defer></script>
 </body>
 </html>

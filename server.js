@@ -23,6 +23,7 @@ const catalog = loadCatalog(config.catalogPath);
 const moduleIds = [...Object.keys(catalog), "workflow_progress"];
 const restrictedModuleIds = Object.entries(catalog).filter(([, item]) => item.restrictedByDefault).map(([id]) => id);
 const accessControl = new AccessControl({ ...config.localAuth, moduleIds, restrictedModuleIds });
+config.ai.analysis.enabled = accessControl.getAiAnalysisEnabled(config.ai.analysis.enabled);
 const kingdee = new KingdeeClient(config.kingdee);
 const engine = new QueryEngine({ catalog, kingdee, config });
 const audit = createAuditLogger(config.auditPath, config.audit);
@@ -203,6 +204,7 @@ admin.use((req, res, next) => { res.setHeader("Cache-Control", "no-store"); next
 admin.get("/settings", (req, res) => res.json({
   currentAdmin: req.identity.adminUsername,
   passkey: { enabled: config.passkey.enabled, available: config.passkey.enabled && config.passkey.available, rpName: config.passkey.rpName },
+  aiAnalysis: { enabled: config.ai.analysis.enabled, configured: aiClient.available() },
   admins: accessControl.listAdmins(),
   modules: moduleIds.map((id) => ({
     id,
@@ -213,6 +215,13 @@ admin.get("/settings", (req, res) => res.json({
   })),
   moduleAccess: accessControl.getModuleAccess(),
 }));
+admin.put("/ai-analysis", requireSameOrigin, (req, res) => {
+  const enabled = accessControl.setAiAnalysisEnabled(req.body?.enabled);
+  config.ai.analysis.enabled = enabled;
+  if (!enabled) analysisContextStore.entries.clear();
+  audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "ai_analysis.toggle", enabled, ip: req.ip });
+  res.json({ ok: true, enabled, configured: aiClient.available() });
+});
 admin.get("/audit", (req, res) => {
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 1000);
   res.json({ events: readAuditEvents(config.auditPath, { limit, maxFiles: config.audit.maxFiles }) });

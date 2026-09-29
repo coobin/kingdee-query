@@ -16,6 +16,7 @@ const ACTION_LABELS = {
   query: "数据查询",
   "query.detail": "报销明细查询",
   "module_access.update": "修改模块权限",
+  "ai_analysis.toggle": "切换 AI 分析",
   "admin.create": "新增管理员",
   "admin.update": "修改管理员",
   "admin.delete": "删除管理员",
@@ -43,6 +44,7 @@ async function initialize() {
   try {
     state.settings = await api("/api/admin/settings");
     document.querySelector("#current-admin").textContent = state.settings.currentAdmin;
+    renderAiAnalysisSetting();
     renderModules();
     renderAdmins();
     await loadAudit();
@@ -124,6 +126,7 @@ function auditOutcomeCell(event) {
 }
 
 function auditDetail(event) {
+  if (event.action === "ai_analysis.toggle") return `AI 分析已${event.enabled ? "开启" : "关闭"}`;
   if (String(event.action || "").startsWith("query")) {
     const tool = TOOL_LABELS[event.tool] || event.tool || "未知模块";
     const detail = event.question || readableArguments(event.arguments);
@@ -158,6 +161,39 @@ auditTableWrap.addEventListener("wheel", (event) => {
   const reachedBottom = event.deltaY > 0 && auditTableWrap.scrollTop >= maximum - 1;
   if (maximum <= 0 || reachedTop || reachedBottom) event.preventDefault();
 }, { passive: false });
+
+document.querySelector("#toggle-ai-analysis").addEventListener("click", async () => {
+  const button = document.querySelector("#toggle-ai-analysis");
+  button.disabled = true;
+  document.querySelector("#ai-analysis-message").hidden = true;
+  try {
+    const enabled = !state.settings.aiAnalysis.enabled;
+    const payload = await api("/api/admin/ai-analysis", { method: "PUT", body: JSON.stringify({ enabled }) });
+    state.settings.aiAnalysis = { enabled: payload.enabled, configured: payload.configured };
+    renderAiAnalysisSetting();
+    showMessage(document.querySelector("#ai-analysis-message"), payload.enabled
+      ? (payload.configured ? "AI 分析已开启。" : "开关已开启；完成 AI 模型配置后即可使用。")
+      : "AI 分析已关闭。", false);
+  } catch (error) {
+    showMessage(document.querySelector("#ai-analysis-message"), `保存失败：${error.message}`, true);
+    button.disabled = false;
+  }
+});
+
+function renderAiAnalysisSetting() {
+  const setting = state.settings?.aiAnalysis;
+  const button = document.querySelector("#toggle-ai-analysis");
+  if (!setting || !button) return;
+  button.disabled = false;
+  button.setAttribute("aria-pressed", String(setting.enabled));
+  button.textContent = setting.enabled ? "关闭 AI 分析" : "开启 AI 分析";
+  document.querySelector("#ai-analysis-status").textContent = setting.enabled
+    ? (setting.configured ? "AI 分析已开启，模型配置可用。" : "AI 分析开关已开启，模型配置尚未完成。")
+    : "AI 分析已关闭，其他查询不受影响。";
+  document.querySelector("#ai-analysis-model").textContent = setting.configured
+    ? "AI 模型已配置。关闭后，新的查询不会生成分析上下文。"
+    : "尚未检测到完整的 AI 模型配置。开启开关后，补齐模型配置即可使用。";
+}
 
 function renderModules() {
   moduleGrid.replaceChildren(...state.settings.modules.map((module, index) => {
