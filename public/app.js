@@ -6,7 +6,7 @@ const TOOL_META = {
   project_pur_sale_consistency: { action: "查询购销一致性", conditionLabels: { organizationNumber: "业务组织编码", projectNumber: "销售项目编码", departmentNumber: "销售部门编码", customerNumber: "客户编码", subprojectNumber: "销售子项目编码", dateFrom: "签订开始日期", dateTo: "签订结束日期" } },
   overdue_receivables: { action: "统计发票账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
-  overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
+  overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码", projectOwnership: "项目归属" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   supplier_purchase_analysis: { action: "分析供应商采购", conditionLabels: { supplierNumber: "供应商编码", supplierName: "供应商名称", organizationName: "组织名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },

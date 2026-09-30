@@ -97,11 +97,13 @@ function localPlan(question) {
     const invoiceDays = text.match(/(?:开票|发票)[^\d]{0,8}(\d{1,4})\s*天/);
     const receivableDays = text.match(/应收[^\d]{0,8}(\d{1,4})\s*天/);
     const customer = text.match(/客户(?:名称)?\s*[：:=是为]?\s*([^，。,.;；\s]{1,30})/);
+    const ownership = text.match(/项目归属\s*[：:=是为]?\s*([^，。,.;；\s]{1,40})/);
     const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i)
       || text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
     if (invoiceDays) arguments_.invoiceDays = Number(invoiceDays[1]);
     if (receivableDays) arguments_.receivableDays = Number(receivableDays[1]);
     if (customer) arguments_.customerName = customer[1];
+    if (ownership) arguments_.projectOwnership = ownership[1];
     if (subproject) arguments_.subprojectNumber = subproject[1];
     delete arguments_.dateFrom;
     delete arguments_.dateTo;

@@ -396,7 +396,8 @@
       "invoiceDays": "FINVOICEDATE",
       "receivableDays": "FDate",
       "customerName": "FCustomerID.FName",
-      "subprojectNumber": "F_PARA_SaleSubProId.FNumber"
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber",
+      "projectOwnership": "F_ora_Assistant.FDataValue"
     },
     "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC"
   },

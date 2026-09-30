@@ -1038,6 +1038,8 @@ class QueryEngine {
   async overdueRiskCombined(identity, item, args) {
     const invoiceDays = normalizeMinimumDays(args.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
     const receivableDays = normalizeMinimumDays(args.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
+    const projectOwnership = String(args.projectOwnership || "").normalize("NFKC").trim();
+    if (projectOwnership.length > 80) throw Object.assign(new Error("项目归属最多输入 80 个字。"), { statusCode: 400 });
     const limit = Number.MAX_SAFE_INTEGER;
     const sharedArgs = { ...args };
     const returnAll = { returnAll: true };
@@ -1045,7 +1047,28 @@ class QueryEngine {
       this.overdueReceivables(identity, this.catalog.overdue_receivables, { ...sharedArgs, minimumDays: invoiceDays }, returnAll),
       this.receivableAging(identity, this.catalog.receivable_aging, { ...sharedArgs, minimumDays: receivableDays }, returnAll),
     ]);
-    const result = aggregateOverdueRiskCombined(invoiceResult, receivableResult, { invoiceDays, receivableDays });
+    let scopedInvoiceResult = invoiceResult;
+    let scopedReceivableResult = receivableResult;
+    if (projectOwnership) {
+      // The attribution lives on the sales subproject master, not on either
+      // financial document. Restrict both amount sources before aggregation.
+      const candidateSubprojects = [...new Set([...invoiceResult.rows, ...receivableResult.rows]
+        .map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
+      const master = await this.queryBySubprojects(identity, {
+        formId: "PARA_SaleSubProject",
+        fields: [["FBillNo", "销售子项目编码"], ["F_ora_Assistant.FDataValue", "项目归属"]],
+        subprojectFilterField: "FBillNo",
+        defaultOrder: "FBillNo ASC",
+      }, candidateSubprojects, [], this.config.kingdee.queryPageSize || 5000);
+      const keyword = projectOwnership.toLocaleLowerCase("zh-CN");
+      const matchedCodes = new Set(master.rows
+        .filter((row) => String(row[1] || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN").includes(keyword))
+        .map((row) => normalizeSubprojectKey(row[0])));
+      const inOwnership = (row) => matchedCodes.has(normalizeSubprojectKey(row["销售子项目编码"]));
+      scopedInvoiceResult = { ...invoiceResult, rows: invoiceResult.rows.filter(inOwnership) };
+      scopedReceivableResult = { ...receivableResult, rows: receivableResult.rows.filter(inOwnership) };
+    }
+    const result = aggregateOverdueRiskCombined(scopedInvoiceResult, scopedReceivableResult, { invoiceDays, receivableDays });
     return {
       tool: "overdue_risk_combined",
       label: item.label,
@@ -1055,6 +1078,7 @@ class QueryEngine {
         receivableDays,
         ...(args.customerName ? { customerName: args.customerName } : {}),
         ...((args.subprojectNumber || args.projectNumber) ? { subprojectNumber: args.subprojectNumber || args.projectNumber } : {}),
+        ...(projectOwnership ? { projectOwnership } : {}),
       },
       columns: item.publicColumns,
       rows: result.rows.slice(0, limit),
