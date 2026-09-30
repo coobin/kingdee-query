@@ -76,6 +76,21 @@ main { min-height: calc(100vh - 60px); }
 .field input::placeholder { color: #96a59f; }
 .field input:focus, .field select:focus { border-color: var(--jade); background: white; box-shadow: inset 3px 0 var(--jade); }
 .field input:invalid:not(:placeholder-shown) { border-color: var(--red); }
+.ownership-field { min-width: 0; }
+.ownership-picker { position: relative; }
+.ownership-picker summary { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; border: 1px solid var(--line); background: var(--paper); font-size: 12px; cursor: pointer; list-style: none; }
+.ownership-picker summary::-webkit-details-marker { display: none; }
+.ownership-picker summary::after { content: "⌄"; color: var(--jade); font-size: 18px; }
+.ownership-picker[open] summary { border-color: var(--jade); background: white; }
+.ownership-picker[open] summary::after { transform: rotate(180deg); }
+.ownership-menu { position: absolute; z-index: 20; top: 42px; right: 0; left: 0; min-width: 230px; padding: 7px; border: 1px solid var(--jade); background: white; box-shadow: 0 16px 38px rgba(20, 50, 39, .16); }
+.ownership-options { max-height: 250px; overflow: auto; }
+.ownership-option { display: flex; align-items: center; gap: 9px; padding: 8px; font-size: 11px; cursor: pointer; }
+.ownership-option:hover { background: var(--mist); }
+.ownership-option input { width: 16px; height: 16px; flex: none; margin: 0; accent-color: var(--jade); }
+.ownership-actions { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--line); }
+.ownership-actions button { padding: 5px 7px; border: 1px solid var(--line); color: var(--forest); background: var(--paper); font-size: 10px; }
+.ownership-state { margin: 8px; color: var(--muted); font-size: 11px; }
 .scope-lock { grid-column: 1 / -1; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: center; margin-top: 12px; padding: 9px 12px; color: var(--forest); background: var(--mint); border-left: 3px solid var(--jade); }
 .scope-lock > span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--jade); font-size: 10px; }
 .scope-lock strong, .scope-lock small { display: block; }

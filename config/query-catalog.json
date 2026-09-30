@@ -373,6 +373,12 @@
       "supportsSelection": true
     },
     "fields": [],
+    "projectOwnershipSource": {
+      "formId": "BOS_ASSISTANTDATA_SELECT",
+      "filter": "FId='606d852cca26c6'",
+      "fields": [["FNumber", "编码"], ["FDataValue", "名称"]],
+      "defaultOrder": "FNumber ASC"
+    },
     "publicColumns": [
       "客户",
       "销售子项目编码",
@@ -397,7 +403,8 @@
       "receivableDays": "FDate",
       "customerName": "FCustomerID.FName",
       "subprojectNumber": "F_PARA_SaleSubProId.FNumber",
-      "projectOwnership": "F_ora_Assistant.FDataValue"
+      "projectOwnership": "F_ora_Assistant.FDataValue",
+      "projectOwnerships": "F_ora_Assistant.FNumber"
     },
     "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC"
   },

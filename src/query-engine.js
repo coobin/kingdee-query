@@ -1035,11 +1035,35 @@ class QueryEngine {
     };
   }
 
+  async projectOwnershipOptions(identity) {
+    const source = this.catalog.overdue_risk_combined.projectOwnershipSource;
+    const rows = await this.queryAllPages(identity, {
+      FormId: source.formId,
+      FieldKeys: source.fields.map(([key]) => key).join(","),
+      FilterString: source.filter,
+      OrderString: source.defaultOrder,
+      TopRowCount: 0,
+    }, 500);
+    return [...new Map(rows.map((row) => [String(row[0] || "").trim(), {
+      value: String(row[0] || "").trim(),
+      label: String(row[1] || "").trim(),
+    }]).filter(([value, option]) => value && option.label)).values()];
+  }
+
   async overdueRiskCombined(identity, item, args) {
     const invoiceDays = normalizeMinimumDays(args.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
     const receivableDays = normalizeMinimumDays(args.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
     const projectOwnership = String(args.projectOwnership || "").normalize("NFKC").trim();
     if (projectOwnership.length > 80) throw Object.assign(new Error("项目归属最多输入 80 个字。"), { statusCode: 400 });
+    if (args.projectOwnerships != null && !Array.isArray(args.projectOwnerships)) throw Object.assign(new Error("项目归属选项格式不正确。"), { statusCode: 400 });
+    const projectOwnerships = [...new Set((args.projectOwnerships || []).map((value) => String(value || "").normalize("NFKC").trim()).filter(Boolean))];
+    if (projectOwnerships.length > 30 || projectOwnerships.some((value) => value.length > 80)) throw Object.assign(new Error("项目归属选项过多或格式不正确。"), { statusCode: 400 });
+    let ownershipOptions = [];
+    if (projectOwnerships.length) {
+      ownershipOptions = await this.projectOwnershipOptions(identity);
+      const validCodes = new Set(ownershipOptions.map((option) => option.value));
+      if (projectOwnerships.some((value) => !validCodes.has(value))) throw Object.assign(new Error("项目归属选项已变化，请刷新后重新选择。"), { statusCode: 400 });
+    }
     const limit = Number.MAX_SAFE_INTEGER;
     const sharedArgs = { ...args };
     const returnAll = { returnAll: true };
@@ -1049,20 +1073,23 @@ class QueryEngine {
     ]);
     let scopedInvoiceResult = invoiceResult;
     let scopedReceivableResult = receivableResult;
-    if (projectOwnership) {
+    if (projectOwnership || projectOwnerships.length) {
       // The attribution lives on the sales subproject master, not on either
       // financial document. Restrict both amount sources before aggregation.
       const candidateSubprojects = [...new Set([...invoiceResult.rows, ...receivableResult.rows]
         .map((row) => String(row["销售子项目编码"] || "").trim()).filter(Boolean))];
       const master = await this.queryBySubprojects(identity, {
         formId: "PARA_SaleSubProject",
-        fields: [["FBillNo", "销售子项目编码"], ["F_ora_Assistant.FDataValue", "项目归属"]],
+        fields: [["FBillNo", "销售子项目编码"], ["F_ora_Assistant.FDataValue", "项目归属"], ["F_ora_Assistant.FNumber", "项目归属编码"]],
         subprojectFilterField: "FBillNo",
         defaultOrder: "FBillNo ASC",
       }, candidateSubprojects, [], this.config.kingdee.queryPageSize || 5000);
       const keyword = projectOwnership.toLocaleLowerCase("zh-CN");
+      const selectedCodes = new Set(projectOwnerships);
       const matchedCodes = new Set(master.rows
-        .filter((row) => String(row[1] || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN").includes(keyword))
+        .filter((row) => selectedCodes.size
+          ? selectedCodes.has(String(row[2] || "").trim())
+          : String(row[1] || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN").includes(keyword))
         .map((row) => normalizeSubprojectKey(row[0])));
       const inOwnership = (row) => matchedCodes.has(normalizeSubprojectKey(row["销售子项目编码"]));
       scopedInvoiceResult = { ...invoiceResult, rows: invoiceResult.rows.filter(inOwnership) };
@@ -1079,6 +1106,7 @@ class QueryEngine {
         ...(args.customerName ? { customerName: args.customerName } : {}),
         ...((args.subprojectNumber || args.projectNumber) ? { subprojectNumber: args.subprojectNumber || args.projectNumber } : {}),
         ...(projectOwnership ? { projectOwnership } : {}),
+        ...(projectOwnerships.length ? { projectOwnerships: ownershipOptions.filter((option) => projectOwnerships.includes(option.value)).map((option) => option.label) } : {}),
       },
       columns: item.publicColumns,
       rows: result.rows.slice(0, limit),

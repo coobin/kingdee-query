@@ -6,14 +6,14 @@ const TOOL_META = {
   project_pur_sale_consistency: { action: "查询购销一致性", conditionLabels: { organizationNumber: "业务组织编码", projectNumber: "销售项目编码", departmentNumber: "销售部门编码", customerNumber: "客户编码", subprojectNumber: "销售子项目编码", dateFrom: "签订开始日期", dateTo: "签订结束日期" } },
   overdue_receivables: { action: "统计发票账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
-  overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码", projectOwnership: "项目归属" } },
+  overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码", projectOwnership: "项目归属", projectOwnerships: "项目归属" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   supplier_purchase_analysis: { action: "分析供应商采购", conditionLabels: { supplierNumber: "供应商编码", supplierName: "供应商名称", organizationName: "组织名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
-const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false } };
+const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: null, selectedProjectOwnerships: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), actions: document.querySelector(".query-actions"), formError: document.querySelector("#form-error"),
@@ -61,6 +61,10 @@ document.querySelectorAll('[data-aging-threshold-input]').forEach((input) => {
     if (badge) badge.textContent = Number.isInteger(value) && value > 0 ? `${value + 1}+` : "AGE";
   });
 });
+const ownershipPicker = document.querySelector("#ownership-picker");
+ownershipPicker.addEventListener("toggle", () => { if (ownershipPicker.open && !state.projectOwnershipOptions) loadProjectOwnershipOptions(); });
+document.querySelector("#ownership-clear").addEventListener("click", () => { state.selectedProjectOwnerships.clear(); renderProjectOwnershipOptions(); });
+document.querySelector("#ownership-refresh").addEventListener("click", () => loadProjectOwnershipOptions(true));
 els.form.addEventListener("submit", runQuery);
 els.export.addEventListener("click", exportCsv);
 els.aiSummary.addEventListener("click", () => {
@@ -155,7 +159,51 @@ function collectArguments(panel) {
     if (input.type === "checkbox") { if (input.checked) args[input.name] = input.value; return; }
     const value = input.value.trim(); if (value) args[input.name] = value;
   });
+  if (panel.dataset.panel === "overdue_risk_combined" && state.selectedProjectOwnerships.size) args.projectOwnerships = [...state.selectedProjectOwnerships];
   return args;
+}
+
+async function loadProjectOwnershipOptions(refresh = false) {
+  if (state.projectOwnershipOptions && !refresh) return;
+  const container = document.querySelector("#ownership-options");
+  container.textContent = "正在读取项目归属…";
+  try {
+    const payload = await api("/api/project-ownership-options");
+    state.projectOwnershipOptions = Array.isArray(payload.options) ? payload.options : [];
+    const valid = new Set(state.projectOwnershipOptions.map((option) => option.value));
+    for (const value of state.selectedProjectOwnerships) if (!valid.has(value)) state.selectedProjectOwnerships.delete(value);
+    renderProjectOwnershipOptions();
+  } catch (error) {
+    container.textContent = `读取失败：${error.message}。请点击“刷新选项”重试。`;
+    container.className = "ownership-options ownership-state";
+  }
+}
+
+function renderProjectOwnershipOptions() {
+  const container = document.querySelector("#ownership-options");
+  container.className = "ownership-options";
+  const options = state.projectOwnershipOptions || [];
+  if (!options.length) {
+    container.textContent = "当前没有可选的项目归属。";
+  } else {
+    container.replaceChildren(...options.map((option) => {
+      const label = document.createElement("label"); label.className = "ownership-option";
+      const input = document.createElement("input"); input.type = "checkbox"; input.value = option.value; input.checked = state.selectedProjectOwnerships.has(option.value);
+      input.addEventListener("change", () => {
+        if (input.checked) state.selectedProjectOwnerships.add(option.value);
+        else state.selectedProjectOwnerships.delete(option.value);
+        renderProjectOwnershipSummary();
+      });
+      const name = document.createElement("span"); name.textContent = option.label;
+      label.append(input, name); return label;
+    }));
+  }
+  renderProjectOwnershipSummary();
+}
+
+function renderProjectOwnershipSummary() {
+  const count = state.selectedProjectOwnerships.size;
+  document.querySelector("#ownership-summary").textContent = count ? `已选 ${count} 个项目归属` : "全部项目归属";
 }
 
 function validateArguments(tool, args) {
@@ -233,8 +281,11 @@ function renderResult(view) {
   els.tool.textContent = `${result.label || plan.tool} · ${String(result.count ?? 0).padStart(2, "0")} ROWS`;
   els.summary.textContent = result.summary || "查询完成";
   const labels = TOOL_META[plan.tool]?.conditionLabels || {};
-  els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && value !== "" && value != null).map(([key, value]) => {
-    const tag = document.createElement("span"); tag.textContent = `${labels[key] || key}：${value === "sum_amount" ? "是" : value}`; return tag;
+  els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && value !== "" && value != null && (!Array.isArray(value) || value.length)).map(([key, value]) => {
+    const readable = key === "projectOwnerships" && Array.isArray(value)
+      ? value.map((code) => state.projectOwnershipOptions?.find((option) => option.value === code)?.label || code).join("、")
+      : value === "sum_amount" ? "是" : value;
+    const tag = document.createElement("span"); tag.textContent = `${labels[key] || key}：${readable}`; return tag;
   }));
   renderAiControls(view, result);
   renderAiPanel(view);

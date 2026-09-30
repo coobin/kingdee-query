@@ -162,6 +162,11 @@ web.get("/session", (req, res) => {
   res.json({ user: publicIdentity(req.identity), aiPlanner: Boolean(config.ai.model), aiAnalysis: aiAnalysis.capabilities() });
 });
 web.get("/catalog", (req, res) => res.json({ tools: publicCatalog(catalog, true, (moduleId) => accessControl.canAccess(req.identity, moduleId)) }));
+web.get("/project-ownership-options", asyncRoute(async (req, res) => {
+  enforceModuleAccess(req.identity, "overdue_risk_combined");
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ options: await engine.projectOwnershipOptions(req.identity) });
+}));
 web.post("/query", asyncRoute(async (req, res) => {
   const question = String(req.body?.question || "").slice(0, 1000);
   const plan = req.body?.tool ? { tool: req.body.tool, arguments: req.body.arguments || {}, source: "explicit" } : await aiPlan(question, catalog, config);
