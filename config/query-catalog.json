@@ -373,12 +373,14 @@
       "supportsSelection": true
     },
     "fields": [],
-    "projectOwnershipSource": {
-      "formId": "BOS_ASSISTANTDATA_SELECT",
-      "filter": "FId='606d852cca26c6'",
-      "fields": [["FNumber", "编码"], ["FDataValue", "名称"]],
-      "defaultOrder": "FNumber ASC"
-    },
+    "projectOwnershipOptions": [
+      { "value": "XMGSA", "label": "东区作战平台" },
+      { "value": "XMGSB", "label": "西区作战平台" },
+      { "value": "XMGSC", "label": "广东作战平台" },
+      { "value": "XMGSD", "label": "中区作战平台" },
+      { "value": "XMGSE", "label": "上海作战平台" },
+      { "value": "XMGSF", "label": "公司-其他" }
+    ],
     "publicColumns": [
       "客户",
       "销售子项目编码",

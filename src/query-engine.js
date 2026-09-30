@@ -1035,21 +1035,6 @@ class QueryEngine {
     };
   }
 
-  async projectOwnershipOptions(identity) {
-    const source = this.catalog.overdue_risk_combined.projectOwnershipSource;
-    const rows = await this.queryAllPages(identity, {
-      FormId: source.formId,
-      FieldKeys: source.fields.map(([key]) => key).join(","),
-      FilterString: source.filter,
-      OrderString: source.defaultOrder,
-      TopRowCount: 0,
-    }, 500);
-    return [...new Map(rows.map((row) => [String(row[0] || "").trim(), {
-      value: String(row[0] || "").trim(),
-      label: String(row[1] || "").trim(),
-    }]).filter(([value, option]) => value && option.label)).values()];
-  }
-
   async overdueRiskCombined(identity, item, args) {
     const invoiceDays = normalizeMinimumDays(args.invoiceDays == null || args.invoiceDays === "" ? 180 : args.invoiceDays);
     const receivableDays = normalizeMinimumDays(args.receivableDays == null || args.receivableDays === "" ? 270 : args.receivableDays);
@@ -1057,12 +1042,11 @@ class QueryEngine {
     if (projectOwnership.length > 80) throw Object.assign(new Error("项目归属最多输入 80 个字。"), { statusCode: 400 });
     if (args.projectOwnerships != null && !Array.isArray(args.projectOwnerships)) throw Object.assign(new Error("项目归属选项格式不正确。"), { statusCode: 400 });
     const projectOwnerships = [...new Set((args.projectOwnerships || []).map((value) => String(value || "").normalize("NFKC").trim()).filter(Boolean))];
-    if (projectOwnerships.length > 30 || projectOwnerships.some((value) => value.length > 80)) throw Object.assign(new Error("项目归属选项过多或格式不正确。"), { statusCode: 400 });
-    let ownershipOptions = [];
+    if (projectOwnerships.length > 6 || projectOwnerships.some((value) => value.length > 80)) throw Object.assign(new Error("项目归属选项过多或格式不正确。"), { statusCode: 400 });
+    const ownershipOptions = item.projectOwnershipOptions || [];
     if (projectOwnerships.length) {
-      ownershipOptions = await this.projectOwnershipOptions(identity);
       const validCodes = new Set(ownershipOptions.map((option) => option.value));
-      if (projectOwnerships.some((value) => !validCodes.has(value))) throw Object.assign(new Error("项目归属选项已变化，请刷新后重新选择。"), { statusCode: 400 });
+      if (projectOwnerships.some((value) => !validCodes.has(value))) throw Object.assign(new Error("项目归属不在可选范围内。"), { statusCode: 400 });
     }
     const limit = Number.MAX_SAFE_INTEGER;
     const sharedArgs = { ...args };

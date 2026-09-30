@@ -17,6 +17,7 @@ function publicCatalog(catalog, workflowEnabled, canAccess = () => true) {
     description: item.description,
     filters: Object.keys(item.filterFields),
     columns: item.publicColumns || item.fields.map(([, label]) => label),
+    ...(item.projectOwnershipOptions ? { projectOwnershipOptions: item.projectOwnershipOptions } : {}),
     ...(item.aiAnalysis ? {
       aiAnalysis: {
         enabled: Boolean(item.aiAnalysis.enabled),

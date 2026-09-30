@@ -13,7 +13,7 @@ const TOOL_META = {
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
-const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: null, selectedProjectOwnerships: new Set() };
+const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: [], selectedProjectOwnerships: new Set() };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), actions: document.querySelector(".query-actions"), formError: document.querySelector("#form-error"),
@@ -36,6 +36,8 @@ async function initialize() {
     els.service.textContent = "READY";
     state.aiAnalysis = session.aiAnalysis || { enabled: false };
     state.tools = catalog.tools;
+    state.projectOwnershipOptions = catalog.tools.find((tool) => tool.id === "overdue_risk_combined")?.projectOwnershipOptions || [];
+    renderProjectOwnershipOptions();
     applyCatalogAccess(catalog.tools);
   } catch (error) {
     els.session.classList.add("error");
@@ -61,10 +63,7 @@ document.querySelectorAll('[data-aging-threshold-input]').forEach((input) => {
     if (badge) badge.textContent = Number.isInteger(value) && value > 0 ? `${value + 1}+` : "AGE";
   });
 });
-const ownershipPicker = document.querySelector("#ownership-picker");
-ownershipPicker.addEventListener("toggle", () => { if (ownershipPicker.open && !state.projectOwnershipOptions) loadProjectOwnershipOptions(); });
 document.querySelector("#ownership-clear").addEventListener("click", () => { state.selectedProjectOwnerships.clear(); renderProjectOwnershipOptions(); });
-document.querySelector("#ownership-refresh").addEventListener("click", () => loadProjectOwnershipOptions(true));
 els.form.addEventListener("submit", runQuery);
 els.export.addEventListener("click", exportCsv);
 els.aiSummary.addEventListener("click", () => {
@@ -163,26 +162,9 @@ function collectArguments(panel) {
   return args;
 }
 
-async function loadProjectOwnershipOptions(refresh = false) {
-  if (state.projectOwnershipOptions && !refresh) return;
-  const container = document.querySelector("#ownership-options");
-  container.textContent = "正在读取项目归属…";
-  try {
-    const payload = await api("/api/project-ownership-options");
-    state.projectOwnershipOptions = Array.isArray(payload.options) ? payload.options : [];
-    const valid = new Set(state.projectOwnershipOptions.map((option) => option.value));
-    for (const value of state.selectedProjectOwnerships) if (!valid.has(value)) state.selectedProjectOwnerships.delete(value);
-    renderProjectOwnershipOptions();
-  } catch (error) {
-    container.textContent = `读取失败：${error.message}。请点击“刷新选项”重试。`;
-    container.className = "ownership-options ownership-state";
-  }
-}
-
 function renderProjectOwnershipOptions() {
   const container = document.querySelector("#ownership-options");
-  container.className = "ownership-options";
-  const options = state.projectOwnershipOptions || [];
+  const options = state.projectOwnershipOptions;
   if (!options.length) {
     container.textContent = "当前没有可选的项目归属。";
   } else {

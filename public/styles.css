@@ -88,9 +88,8 @@ main { min-height: calc(100vh - 60px); }
 .ownership-option { display: flex; align-items: center; gap: 9px; padding: 8px; font-size: 11px; cursor: pointer; }
 .ownership-option:hover { background: var(--mist); }
 .ownership-option input { width: 16px; height: 16px; flex: none; margin: 0; accent-color: var(--jade); }
-.ownership-actions { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--line); }
+.ownership-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--line); }
 .ownership-actions button { padding: 5px 7px; border: 1px solid var(--line); color: var(--forest); background: var(--paper); font-size: 10px; }
-.ownership-state { margin: 8px; color: var(--muted); font-size: 11px; }
 .scope-lock { grid-column: 1 / -1; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: center; margin-top: 12px; padding: 9px 12px; color: var(--forest); background: var(--mint); border-left: 3px solid var(--jade); }
 .scope-lock > span { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--jade); font-size: 10px; }
 .scope-lock strong, .scope-lock small { display: block; }

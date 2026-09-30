@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20260930-2">
+  <link rel="stylesheet" href="/styles.css?v=20260930-3">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -187,7 +187,7 @@
               <label class="field"><span>应收超过天数 <b>必填</b></span><input name="receivableDays" type="number" min="1" max="3650" step="1" value="270" required></label>
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="不填则查询全部客户" autocomplete="off"></label>
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="支持包含匹配" autocomplete="off"></label>
-              <div class="field ownership-field"><span id="ownership-label">项目归属</span><details class="ownership-picker" id="ownership-picker"><summary id="ownership-summary">全部项目归属</summary><div class="ownership-menu" role="group" aria-labelledby="ownership-label"><div class="ownership-options" id="ownership-options">展开后读取选项…</div><div class="ownership-actions"><button type="button" id="ownership-clear">清空选择</button><button type="button" id="ownership-refresh">刷新选项</button></div></div></details></div>
+              <div class="field ownership-field"><span id="ownership-label">项目归属</span><details class="ownership-picker" id="ownership-picker"><summary id="ownership-summary">全部项目归属</summary><div class="ownership-menu" role="group" aria-labelledby="ownership-label"><div class="ownership-options" id="ownership-options">正在读取选项…</div><div class="ownership-actions"><button type="button" id="ownership-clear">清空选择</button></div></div></details></div>
             </div>
           </section>
 
@@ -281,6 +281,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20260930-2" defer></script>
+  <script src="/app.js?v=20260930-3" defer></script>
 </body>
 </html>
