@@ -38,7 +38,8 @@ Dify ───── Bearer API ─────────┘
 
 ## 技术设计
 
-- [模块化 MCP 与统一中心接入方案](docs/design/mcp-module-integration.md)：现有及未来模块的工具注册、身份委托、权限、中心发现与发布流程（设计稿，尚未实施）。
+- [模块化 MCP 与统一中心接入方案](docs/design/mcp-module-integration.md)：现有及未来模块的工具注册、身份委托、权限、中心发现与发布流程。
+- [MCP 实施和运行说明](docs/design/mcp-operations.md)：内部部署、身份映射、模块登记、中心审核与回滚。
 
 ## 快速开始
 

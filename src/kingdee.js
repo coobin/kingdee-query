@@ -1,4 +1,7 @@
 const crypto = require("crypto");
+const { AsyncLocalStorage } = require("node:async_hooks");
+const queryDeadline = new AsyncLocalStorage();
+const withQueryDeadline = (signal, action) => queryDeadline.run(signal, action);
 
 class KingdeeError extends Error {
   constructor(message, details = {}) {
@@ -28,6 +31,8 @@ class KingdeeClient {
 
   async request(method, parameters, cookie = "") {
     const controller = new AbortController();
+    const deadline = queryDeadline.getStore();
+    deadline?.throwIfAborted();
     const timeoutMs = method.endsWith(".GetSysReportData")
       ? (this.config.reportTimeoutMs || this.config.timeoutMs)
       : this.config.timeoutMs;
@@ -49,7 +54,7 @@ class KingdeeClient {
           ...(cookie ? { Cookie: cookie } : {}),
         },
         body: JSON.stringify(envelope),
-        signal: controller.signal,
+        signal: deadline ? AbortSignal.any([controller.signal, deadline]) : controller.signal,
       });
       const text = await response.text();
       let payload;
@@ -143,4 +148,4 @@ class KingdeeClient {
 
 }
 
-module.exports = { KingdeeClient, KingdeeError };
+module.exports = { withQueryDeadline, KingdeeClient, KingdeeError };

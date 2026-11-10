@@ -353,6 +353,36 @@ dify.post("/analyze", asyncRoute(async (req, res) => {
   res.json({ answer: output.answer, analysis: output.analysis, data: result, plan, meta: output.meta, request_id: req.requestId });
 }));
 app.use("/api/dify/v1", dify);
+if (process.env.MCP_ENABLED === "true") {
+  const { buildRegistry } = require("./src/mcp/registry");
+  const { mountMcp } = require("./src/mcp/server");
+  const https = require("node:https");
+  const fs = require("node:fs");
+  const mcp = express();
+  mcp.disable("x-powered-by");
+  mcp.use(express.json({ limit: "64kb" }));
+  mcp.use((req, res, next) => {
+    req.requestId = crypto.randomUUID();
+    res.setHeader("X-Request-ID", req.requestId);
+    next();
+  });
+  mountMcp(mcp, {
+    registry: buildRegistry(catalog, {
+      query: (req, tool, args) => executeAndAudit(req, { tool, arguments: args, source: "mcp" }, ""),
+      expense: (req, args) => executeExpenseDetailsAndAudit(req, args.billNumber),
+      sales: (req, args) => executeSalesBusinessDetailsAndAudit(req, args.subprojectNumber, args),
+    }),
+    canAccess: (identity, id) => accessControl.canAccess(identity, id),
+  });
+  const port = Number(process.env.MCP_INTERNAL_PORT || 8093);
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535 || port === config.port)
+    throw new Error("Invalid MCP internal listener port");
+  https.createServer({
+    cert: fs.readFileSync(process.env.MCP_TLS_CERT_FILE),
+    key: fs.readFileSync(process.env.MCP_TLS_KEY_FILE),
+    minVersion: "TLSv1.2",
+  }, mcp).listen(port, "0.0.0.0");
+}
 app.use("/api", web);
 
 app.get("/openapi.json", (req, res) => res.json(require("./src/openapi")(config)));
@@ -362,10 +392,10 @@ async function executeAndAudit(req, plan, question) {
   try {
     enforceModuleAccess(req.identity, plan.tool);
     const result = await engine.execute(req.identity, plan);
-    audit({ ...identityAudit(req), action: "query", outcome: "success", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query", outcome: "success", tool: plan.tool, arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(plan.arguments), question, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
-    audit({ ...identityAudit(req), action: "query", outcome: "error", tool: plan.tool, arguments: sanitizeArguments(plan.arguments), question, error: error.message, durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query", outcome: "error", tool: plan.tool, arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(plan.arguments), question, error: req.identity.channel === "mcp" ? "MCP 查询失败" : error.message, durationMs: Date.now() - started });
     throw error;
   }
 }
@@ -418,19 +448,18 @@ async function executeExpenseDetailsAndAudit(req, billNumber) {
   try {
     enforceModuleAccess(req.identity, "expense_claims");
     const result = await engine.expenseDetails(req.identity, args.billNumber);
-    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "expense_claims", arguments: args, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "expense_claims", arguments: req.identity.channel === "mcp" ? {} : args, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
-    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "expense_claims", arguments: args, error: error.message, durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "expense_claims", arguments: req.identity.channel === "mcp" ? {} : args, error: req.identity.channel === "mcp" ? "MCP 查询失败" : error.message, durationMs: Date.now() - started });
     throw error;
   }
 }
 
-async function executeSalesBusinessDetailsAndAudit(req, subprojectNumber) {
+async function executeSalesBusinessDetailsAndAudit(req, subprojectNumber, body = req.body || {}) {
   const started = Date.now();
   const code = String(subprojectNumber || "").trim().slice(0, 80);
   if (!code) throw Object.assign(new Error("销售子项目编码不正确。"), { statusCode: 400 });
-  const body = req.body || {};
   const args = {
     subprojectNumber: code,
     dateFrom: String(body.dateFrom || "").slice(0, 10),
@@ -443,10 +472,10 @@ async function executeSalesBusinessDetailsAndAudit(req, subprojectNumber) {
     enforceModuleAccess(req.identity, "sales_business_analysis");
     const result = await engine.salesBusinessAnalysis(req.identity, catalog.sales_business_analysis, args, { includeDetails: true });
     if (!result.rows.length) throw Object.assign(new Error("没有找到这条销售子项目，或当前账号无权查看。"), { statusCode: 404 });
-    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "sales_business_analysis", arguments: sanitizeArguments(args), count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "sales_business_analysis", arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(args), count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
-    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "sales_business_analysis", arguments: sanitizeArguments(args), error: error.message, durationMs: Date.now() - started });
+    audit({ ...identityAudit(req), action: "query.detail", outcome: "error", tool: "sales_business_analysis", arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(args), error: req.identity.channel === "mcp" ? "MCP 查询失败" : error.message, durationMs: Date.now() - started });
     throw error;
   }
 }

@@ -1,0 +1,19 @@
+# Add with: docker compose -f docker-compose.yml -f deploy/docker-compose.mcp.yml up -d
+# Mount secrets outside the repository; the internal TLS port has no host mapping.
+services:
+  kingdee-query-hub:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/queryhub-mcp/ca.crt
+      MCP_TLS_CERT_FILE: /run/queryhub-mcp/server.crt
+      MCP_TLS_KEY_FILE: /run/queryhub-mcp/server.key
+      MCP_IDENTITY_MAP_PATH: /run/queryhub-mcp/identities.json
+    volumes:
+      - ${QUERYHUB_MCP_PRIVATE_DIR:?Set QUERYHUB_MCP_PRIVATE_DIR}:/run/queryhub-mcp:ro
+    networks:
+      business:
+        aliases: [queryhub-mcp-internal]
+
+networks:
+  business:
+    external: true
+    name: invoice-reimbursement-system_default
