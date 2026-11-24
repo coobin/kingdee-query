@@ -11,7 +11,7 @@ const date = { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "
 const limit = { type: "integer", minimum: 1, maximum: 200, description: "最多返回的明细条数（以模块上限为准）" };
 const days = { type: "integer", minimum: 1, maximum: 3650, description: "账龄阈值（天）" };
 const named = {
-  dateFrom: date, dateTo: date, minimumDays: days, invoiceDays: days, receivableDays: days,
+  dateFrom: date, dateTo: date, bizDateFrom: date, bizDateTo: date, minimumDays: days, invoiceDays: days, receivableDays: days,
   warehouseScope: { type: "string", enum: ["all", "company", "project", "customer"] },
 };
 
@@ -61,6 +61,7 @@ function buildRegistry(catalog, handlers) {
   for (const [id, item] of Object.entries(catalog)) {
     if (item.mcp?.enabled === false) continue;
     const fields = Object.fromEntries(Object.keys(item.filterFields).map((key) => [key, named[key] || str(key)]));
+    if (item.queryType === "system_report") fields.page = { type: "integer", minimum: 1, maximum: 100000, description: "页码，从 1 开始" };
     if (item.projectOwnershipOptions) {
       fields.projectOwnerships = { type: "array", maxItems: 6, uniqueItems: true, items: str("项目归属编码") };
     }

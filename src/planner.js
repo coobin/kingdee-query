@@ -7,7 +7,9 @@ function localPlan(question) {
   if (!text) throw Object.assign(new Error("请输入要查询的内容。"), { statusCode: 400 });
   const arguments_ = { limit: 50 };
   let tool;
-  if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
+  if (/项目现金流量?表?/.test(text)) tool = "project_cash_flow";
+  else if (/项目预算执行/.test(text)) tool = "project_budget_execution";
+  else if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
   else if (/人员成本|人力成本|工资.*报销|报销.*工资|工资单/.test(text)) tool = "personnel_cost";
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
   else if (/(?:供应商.*(?:采购|金额|订单|入库|到货|付款|应付|发票|交付|质量|风险))|(?:采购.*供应商)|供应商采购分析/.test(text)) tool = "supplier_purchase_analysis";
@@ -74,8 +76,10 @@ function localPlan(question) {
     if (salespersonName) arguments_.salespersonName = salespersonName[1];
     if (organizationName) arguments_.organizationName = organizationName[1];
   }
-  if (tool === "project_pur_sale_consistency") {
-    if (projectNumber || genericProject) arguments_.projectNumber = (projectNumber || genericProject)[1];
+  if (["project_cash_flow", "project_budget_execution", "project_pur_sale_consistency"].includes(tool)) {
+    if (!subproject) delete arguments_.subprojectNumber;
+    const parentProject = text.match(/(?<!子)项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
+    if (parentProject) arguments_.projectNumber = parentProject[1];
     if (organizationNumber) arguments_.organizationNumber = organizationNumber[1];
     if (departmentNumber) arguments_.departmentNumber = departmentNumber[1];
     if (customerNumber) arguments_.customerNumber = customerNumber[1];

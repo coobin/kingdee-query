@@ -451,7 +451,7 @@ class QueryEngine {
     if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
     if (item.queryType === "supplier_purchase_analysis") return this.supplierPurchaseAnalysis(identity, item, args);
     if (item.queryType === "sales_business_analysis") return this.salesBusinessAnalysis(identity, item, args);
-    if (item.queryType === "system_report") return this.systemReport(identity, item, args);
+    if (item.queryType === "system_report") return this.systemReport(identity, plan.tool, item, args);
     const { filter, accepted } = buildFilter(item, args, identity, this.config);
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
     const request = {
@@ -483,7 +483,11 @@ class QueryEngine {
     };
   }
 
-  async systemReport(identity, item, args) {
+  async systemReport(identity, tool, item, args) {
+    const page = Number(args.page ?? 1);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
+      throw Object.assign(new Error("报表页码应在 1 至 100000 之间。"), { statusCode: 400 });
+    }
     const model = {};
     const accepted = {};
     const sources = item.modelFilters || {};
@@ -494,13 +498,14 @@ class QueryEngine {
     );
 
     if (organizationNumber && organizationSource) {
-      model[organizationSource.modelKey] = await this.resolveReportBaseData(
-        identity,
-        organizationSource,
-        organizationNumber,
-        "",
-        "业务组织编码",
-      );
+      let organization;
+      try {
+        organization = await this.resolveReportBaseData(identity, organizationSource, organizationNumber, "", "业务组织编码");
+      } catch (error) {
+        if (!item.organizationFallback || !(error instanceof KingdeeError) || !error.message.includes("没有组织机构的查看权限")) throw error;
+        organization = await this.resolveReportBaseData(identity, item.organizationFallback, organizationNumber, "", "业务组织编码");
+      }
+      model[organizationSource.modelKey] = organizationSource.serializeId ? String(organization.Id) : organization;
       accepted.organizationNumber = organizationNumber;
     }
 
@@ -533,26 +538,40 @@ class QueryEngine {
       accepted.dateTo = dateTo;
     }
 
+    if (item.filterFields.bizDateFrom) {
+      const from = args.bizDateFrom && isoDate(args.bizDateFrom);
+      const to = args.bizDateTo && isoDate(args.bizDateTo);
+      if (from && to && from > to) throw Object.assign(new Error("业务开始日期不能晚于结束日期。"), { statusCode: 400 });
+      if (from) model.FBizStartDate = accepted.bizDateFrom = from;
+      if (to) model.FBizEndDate = accepted.bizDateTo = to;
+    }
+
     const maxRows = Math.min(item.maxRows || this.config.kingdee.maxRows, this.config.kingdee.maxRows);
     const requestedLimit = args.limit == null || args.limit === "" ? item.defaultLimit : args.limit;
     const limit = normalizeLimit(requestedLimit, maxRows);
     const report = await this.kingdee.getSysReportData(identity.kingdeeUsername, item.formId, {
       FieldKeys: item.fields.map(([key]) => key).join(","),
       SchemeId: "",
-      StartRow: 0,
+      StartRow: (page - 1) * limit,
       Limit: limit,
       IsVerifyBaseDataField: "true",
       FilterString: "",
       Model: model,
     });
     const rawRows = Array.isArray(report.Rows) ? report.Rows : [];
+    if (rawRows.some((row) => !Array.isArray(row) || row.length !== item.fields.length)) {
+      throw new KingdeeError("金蝶报表返回的列数发生变化，请核对报表字段。");
+    }
     const parsedCount = Number(report.RowCount);
     const count = Number.isFinite(parsedCount) ? parsedCount : rawRows.length;
     const rows = rowsToObjects(rawRows, item.fields);
-    const truncated = count > rows.length;
-    const returnedText = truncated ? `当前返回 ${rows.length} 条` : `已返回全部 ${rows.length} 条`;
+    const truncated = page > 1 || count > rows.length;
+    const unassigned = tool === "project_pur_sale_consistency" && (accepted.projectNumber || accepted.subprojectNumber)
+      ? rows.filter((row) => !row[accepted.subprojectNumber ? "销售子项目编码" : "销售项目编码"]).length : 0;
+    const scopeNote = unassigned ? ` 本页含 ${unassigned} 条原表未标项目编码的行。` : "";
+    const returnedText = truncated ? `当前第 ${page} 页，返回 ${rows.length} 条` : `已返回全部 ${rows.length} 条`;
     return {
-      tool: "project_pur_sale_consistency",
+      tool,
       label: item.label,
       query: accepted,
       columns: item.fields.map(([, label]) => label),
@@ -560,8 +579,10 @@ class QueryEngine {
       count,
       truncated,
       partial: false,
+      page,
+      pageSize: limit,
       reportFormId: item.formId,
-      summary: `${item.label}共 ${count} 条，${returnedText}${truncated ? "；可缩小筛选范围后继续查看" : "。"}`,
+      summary: `${item.label}共 ${count} 条，${returnedText}${truncated ? "；导出仅含当前页" : "。"}${scopeNote}`,
     };
   }
 
@@ -578,7 +599,7 @@ class QueryEngine {
       FilterString: filters.join(" AND "),
       OrderString: `${source.idField} ASC`,
       StartRow: 0,
-      Limit: 50,
+      Limit: source.lookupFirst ? 1 : 50,
       TopRowCount: 0,
     });
     const fieldIndexes = Object.fromEntries(fields.map((field, index) => [field, index]));

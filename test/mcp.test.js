@@ -62,11 +62,11 @@ test("MCP publishes registered tools, enforces directory isolation, version, inp
   const manifest = await fetch(base + "/internal/mcp/v1/manifest", { headers: { authorization: "Bearer " + directory } });
   const discovered = await connect({ authorization: "Bearer " + directory });
   const listed = (await discovered.listTools()).tools;
-  assert.equal(listed.length, 16);
+  assert.equal(listed.length, 18);
   assert.ok(listed.some((tool) => tool.name === "future_query"));
   const tool = listed.find((entry) => entry.name === "inventory_query");
   const rev = tool._meta["chency/capability"].hash;
-  assert.equal((await manifest.json()).tools.length, 16);
+  assert.equal((await manifest.json()).tools.length, 18);
   const args = { materialNumber: "TEST" };
   const call = (client, input = args) => client.callTool({ name: tool.name, arguments: input });
   assert.equal((await call(discovered)).isError, true);

@@ -66,7 +66,7 @@ test("queries the original project purchase-sales report with resolved base data
       assert.equal(username, "240001");
       assert.equal(formId, "PARA_PM_ProjectPurSaleRpt");
       reportRequests.push(data);
-      return { IsSuccess: true, RowCount: 8, Rows: [["ORG001", "P-001", "SP-001"]] };
+      return { IsSuccess: true, RowCount: 8, Rows: [["ORG001", ...Array(catalog.project_pur_sale_consistency.fields.length - 1).fill(null)]] };
     },
   };
   const engine = new QueryEngine({
@@ -815,4 +815,33 @@ test("keeps the list date tied to the overdue invoice query, not the full invoic
   const result = await engine.execute(identity, { tool: "overdue_receivables", arguments: { minimumDays: 180, subprojectNumber: "SP-DATE", limit: 1 } });
   assert.equal(result.rows[0]["开票日期"], "2026-01-10");
   assert.equal(result.rows[0]["超期发票数"], 1);
+});
+
+test("project financial reports use employee identity, organization IDs, separate date ranges and page offsets", async () => {
+  for (const tool of ["project_cash_flow", "project_budget_execution"]) {
+    const entry = catalog[tool];
+    const kingdee = {
+      async executeBillQuery(user, request) {
+        assert.equal(user, identity.kingdeeUsername);
+        assert.equal(request.FormId, "PARA_SaleSubProject");
+        assert.equal(request.FilterString, "FOrgId.FNumber='100'");
+        return [[123, "100", "测试组织"]];
+      },
+      async getSysReportData(user, form, request) {
+        assert.equal(user, identity.kingdeeUsername);
+        assert.equal(form, entry.formId);
+        assert.equal(request.StartRow, 5);
+        assert.deepEqual(request.Model, { FOrgList: "123", FContractStartDate: "2026-01-01", FBizEndDate: "2026-02-01" });
+        return { Rows: [entry.fields.map(() => "")], RowCount: 6 };
+      },
+    };
+    const engine = new QueryEngine({ catalog, kingdee, config: { kingdee: { maxRows: 200 } } });
+    const result = await engine.execute(identity, { tool, arguments: { page: 2, limit: 5, dateFrom: "2026-01-01", bizDateTo: "2026-02-01" } });
+    assert.equal(result.tool, tool);
+    assert.equal(result.truncated, true);
+    assert.equal(result.page, 2);
+    await assert.rejects(engine.execute(identity, { tool, arguments: { page: 0 } }), /页码/);
+    kingdee.getSysReportData = async () => ({ Rows: [["缺列"]], RowCount: 1 });
+    await assert.rejects(engine.execute(identity, { tool }), /列数/);
+  }
 });
