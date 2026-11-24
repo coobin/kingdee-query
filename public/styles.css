@@ -25,7 +25,7 @@ button { cursor: pointer; }
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 10px 14px; color: white; background: var(--ink); white-space: nowrap; transform: translateY(-150%); }
 .skip-link:focus { transform: none; }
 
-.topbar { position: sticky; top: 0; z-index: 20; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(18px, 3vw, 42px); border-bottom: 1px solid var(--line); background: rgba(248, 250, 248, .97); backdrop-filter: blur(10px); }
+.topbar { position: sticky; top: 0; z-index: 20; height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 clamp(16px, 2vw, 32px); border-bottom: 1px solid var(--line); background: rgba(248, 250, 248, .97); backdrop-filter: blur(10px); }
 .brand { display: inline-flex; align-items: center; gap: 13px; color: var(--ink); text-decoration: none; }
 .brand-mark { width: 32px; height: 32px; display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 3px; padding: 7px; background: var(--forest); transform: rotate(-2deg); }
 .brand-mark i { display: block; height: 50%; background: var(--mint); }
@@ -43,7 +43,7 @@ button { cursor: pointer; }
 
 .eyebrow { margin: 0 0 5px; color: var(--jade); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
 main { min-height: calc(100vh - 60px); }
-.workspace { width: min(1560px, 100%); min-width: 0; margin: 0 auto; padding: 24px clamp(18px, 3vw, 42px) 64px; }
+.workspace { width: 100%; max-width: none; min-width: 0; margin: 0; padding: 20px clamp(16px, 2vw, 32px) 56px; }
 .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
 .intro h1 { margin: 0; font-family: var(--display); font-size: clamp(27px, 2.4vw, 36px); font-weight: 600; line-height: 1.1; letter-spacing: -.03em; }
 .intro > p { margin: 0 0 3px; color: var(--muted); font-size: 12px; }
@@ -53,7 +53,7 @@ main { min-height: calc(100vh - 60px); }
 .query-card-head h2 { margin: 0; font-size: 13px; font-weight: 700; }
 .read-only-stamp { color: var(--jade); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .08em; }
 
-.query-tabs { display: flex; gap: 2px; margin-top: 12px; padding-bottom: 1px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.query-tabs { display: flex; flex-wrap: wrap; gap: 2px; row-gap: 4px; margin-top: 12px; padding-bottom: 1px; border-bottom: 1px solid var(--line); }
 .query-tabs button { position: relative; min-width: max-content; min-height: 46px; display: inline-flex; align-items: center; gap: 8px; padding: 0 13px; border: 1px solid transparent; border-bottom: 0; background: transparent; text-align: left; transition: color .15s ease, background .15s ease; }
 .query-tabs button span { color: var(--muted); font-family: var(--utility); font-size: 8px; letter-spacing: .08em; }
 .query-tabs button strong { font-size: 12px; }
@@ -145,7 +145,7 @@ main { min-height: calc(100vh - 60px); }
 #query-button:disabled { cursor: wait; opacity: .65; transform: none; }
 #query-button svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 
-.result-panel { width: 100%; min-width: 0; margin-top: 28px; padding: 28px 30px 30px; border: 1px solid var(--line); background: var(--white); }
+.result-panel { width: 100%; min-width: 0; margin-top: 24px; padding: 24px clamp(16px, 2vw, 28px) 28px; border: 1px solid var(--line); background: var(--white); }
 .result-heading { display: flex; align-items: start; justify-content: space-between; gap: 20px; }
 .result-heading h2 { margin: 0; font-family: var(--display); font-size: 26px; font-weight: 600; }
 .result-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -357,7 +357,7 @@ tbody tr:hover { background: #f1f7f3; }
   .intro h1 { font-size: 27px; }
   .intro > p { margin: 0; }
   .query-card, .result-panel { padding-left: 14px; padding-right: 14px; }
-  .query-tabs { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+  .query-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
   .panel-copy { align-items: start; flex-direction: column; gap: 4px; }
   .field-grid, .field-grid.one-column { grid-template-columns: 1fr; }
   .cycle-rail { grid-template-columns: 1fr; gap: 7px; }
