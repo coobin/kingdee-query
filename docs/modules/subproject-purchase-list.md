@@ -31,7 +31,7 @@
 | 外部参数 | 页面 | 金蝶筛选字段 | 匹配方式 | 备注 |
 | --- | --- | --- | --- | --- |
 | `subprojectNumber` | 是 | `F_PARA_SaleSubProId.FNumber` | 包含 | 与 `subprojectName` 至少填一项 |
-| `subprojectName` | 是 | `F_PARA_SaleSubProId.FName` / `F_PARA_SaleProId.FName` | 包含 | 同时匹配子项目名称和销售项目名称 |
+| `subprojectName` | 是 | `F_PARA_SaleSubProId.FName` / `F_PARA_SaleProId.FName` | 分词模糊 | 支持按空格/标点及中英数字边界分词（如 `长沙6号线` 拆为 `长沙` + `6` + `号线`），同时匹配子项目名称和销售项目名称；命中多个子项目时会在结果与页面顶部提醒并支持一键点选单个子项目精确查询 |
 | `supplierName` | 是 | `FSupplierId.FName` | 包含 | 可选 |
 | `materialName` | 是 | `FMaterialId.FName` | 包含 | 可选 |
 | `dateFrom` | 是 | `FDate` | 大于等于 | 可选，包含开始日 |

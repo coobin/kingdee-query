@@ -198,6 +198,18 @@ main { min-height: calc(100vh - 60px); }
 .aggregate-card strong { grid-row: span 2; color: var(--forest); font-family: var(--display); font-size: clamp(34px, 5vw, 54px); font-weight: 600; letter-spacing: -.03em; }
 .aggregate-card small { color: var(--muted); font-size: 11px; }
 .aging-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); border-bottom: 1px solid var(--line); background: var(--paper); }
+.subproject-multi-alert { padding: 14px 16px; border-bottom: 1px solid var(--line); border-left: 4px solid var(--amber); background: #fbf6e8; }
+.subproject-multi-alert-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.subproject-multi-alert-badge { padding: 4px 9px; color: white; background: var(--amber); font-family: var(--utility); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.subproject-multi-alert-head strong, .subproject-multi-alert-head small { display: block; }
+.subproject-multi-alert-head strong { color: #7a4f00; font-size: 13px; }
+.subproject-multi-alert-head small { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.subproject-match-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+.subproject-match-chip { max-width: 100%; display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 7px 11px; border: 1px solid #dec792; background: white; color: var(--ink); font-size: 12px; text-align: left; transition: border-color .15s ease, background .15s ease; }
+.subproject-match-chip:hover { border-color: var(--forest); background: var(--mist); }
+.subproject-match-chip strong { color: var(--forest); font-family: var(--utility); font-size: 11px; }
+.subproject-match-chip span { color: var(--ink); font-size: 12px; }
+.subproject-match-chip small { color: var(--muted); font-family: var(--utility); font-size: 10px; }
 .aging-stat { min-width: 0; min-height: 112px; display: flex; flex-direction: column; justify-content: flex-end; gap: 6px; padding: 17px 15px; border-right: 1px solid var(--line); container-type: inline-size; }
 .aging-stat:last-child { border-right: 0; }
 .aging-stat span { min-width: 0; color: var(--muted); font-family: var(--utility); font-size: 9px; font-weight: 700; letter-spacing: .08em; overflow-wrap: anywhere; }

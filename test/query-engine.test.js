@@ -18,6 +18,7 @@ const {
   workflowRows,
   buildSubprojectPurchaseListFilter,
   formatSubprojectPurchaseList,
+  tokenizeFuzzyName,
 } = require("../src/query-engine");
 const catalog = require("../config/query-catalog.json");
 
@@ -884,6 +885,36 @@ test("builds completed subproject purchase list filter and requires a subproject
   assert.match(result.bindingFilter, /FBillNo LIKE '%SP-001%'/);
   assert.match(result.bindingFilter, /\(FName LIKE '%示例项目%' OR FSaleProjectId\.FName LIKE '%示例项目%'\)/);
   assert.match(result.bindingFilter, /FPurMaterialId\.FName LIKE '%交换机%'/);
+
+  assert.deepEqual(tokenizeFuzzyName("示例地铁6号线 GPU"), ["示例地铁", "6", "号线", "GPU"]);
+  const fuzzy = buildSubprojectPurchaseListFilter(entry, { subprojectName: "示例地铁6号线 GPU" });
+  assert.match(fuzzy.bindingFilter, /FName LIKE '%示例地铁%'/);
+  assert.match(fuzzy.bindingFilter, /FName LIKE '%6%'/);
+  assert.match(fuzzy.bindingFilter, /FName LIKE '%号线%'/);
+  assert.match(fuzzy.bindingFilter, /FName LIKE '%GPU%'/);
+
+  const exact = buildSubprojectPurchaseListFilter(entry, { subprojectNumber: "SP-001", exactSubproject: true });
+  assert.match(exact.bindingFilter, /FBillNo='SP-001'/);
+  assert.match(exact.filter, /F_PARA_SaleSubProId\.FNumber='SP-001'/);
+});
+
+test("warns and lists matched subprojects when fuzzy query matches multiple subprojects", () => {
+  const formatted = formatSubprojectPurchaseList(
+    [
+      { 销售子项目编码: "SP-001", 销售子项目名称: "示例项目一", 采购订单号: "PO-1", 采购明细行号: 1, 采购订单分录Id: "1", 物料名称: "设备A", 规格型号: "M1", 单位: "台", 数量: 1, 单价: 100, 合价: 100 },
+      { 销售子项目编码: "SP-002", 销售子项目名称: "示例项目二", 采购订单号: "PO-2", 采购明细行号: 1, 采购订单分录Id: "2", 物料名称: "设备B", 规格型号: "M2", 单位: "台", 数量: 2, 单价: 200, 合价: 400 },
+    ],
+    [
+      { 采购订单号: "PO-1", 采购日期: "2026-04-01T00:00:00", 供应商: "供应商A", 采购订单分录Id: "1", 采购明细行号: 1 },
+      { 采购订单号: "PO-2", 采购日期: "2026-04-02T00:00:00", 供应商: "供应商B", 采购订单分录Id: "2", 采购明细行号: 1 },
+    ],
+    [],
+  );
+  assert.equal(formatted.statistics.multipleSubprojects, true);
+  assert.equal(formatted.statistics.matchedSubprojects.length, 2);
+  assert.equal(formatted.statistics.matchedSubprojects[0].subprojectNumber, "SP-001");
+  assert.equal(formatted.statistics.matchedSubprojects[1].totalAmount, 400);
+  assert.match(formatted.summary, /提醒：当前条件模糊匹配到 2 个销售子项目/);
 });
 
 test("merges bound subproject purchase details with direct PO rows, deduplicates, and respects MCP limit", async () => {

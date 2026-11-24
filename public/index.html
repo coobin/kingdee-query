@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20261124-fluid">
+  <link rel="stylesheet" href="/styles.css?v=20261124-fuzzy">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -249,7 +249,7 @@
             <div class="panel-copy"><h3>子项目采购清单表</h3><p>以销售子项目为维度，查询该子项目下已审核的采购订单明细清单（不限关闭状态）；销售子项目编码或项目名称至少填写一项。</p></div>
             <div class="field-grid">
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="支持包含匹配，与项目名称至少填一项" autocomplete="off"></label>
-              <label class="field"><span>项目名称</span><input name="subprojectName" type="text" maxlength="100" placeholder="支持包含匹配，与子项目编码至少填一项" autocomplete="off"></label>
+              <label class="field"><span>项目名称</span><input name="subprojectName" type="text" maxlength="100" placeholder="支持模糊匹配（如：长沙6号线），多项目时自动提醒" autocomplete="off"></label>
               <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="可选，支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>物料名称</span><input name="materialName" type="text" maxlength="80" placeholder="可选，支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>采购开始日期</span><input name="dateFrom" type="date"></label>
@@ -338,6 +338,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20261124-subproject-purchase-list" defer></script>
+  <script src="/app.js?v=20261124-fuzzy" defer></script>
 </body>
 </html>

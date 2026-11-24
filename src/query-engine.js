@@ -439,6 +439,19 @@ function roundUnitPrice(value) {
   return Math.round(((Number(value) || 0) + Number.EPSILON) * 10000) / 10000;
 }
 
+function tokenizeFuzzyName(value) {
+  const cleaned = String(value || "").normalize("NFKC").trim();
+  if (!cleaned) return [];
+  const parts = cleaned.split(/[\s,，、/|;；]+/).filter(Boolean);
+  const tokens = [];
+  for (const part of parts) {
+    const pieces = part.match(/[\u4e00-\u9fff]+|[A-Za-z]+|\d+(?:\.\d+)?/g);
+    if (pieces && pieces.length > 1) tokens.push(...pieces);
+    else tokens.push(part);
+  }
+  return [...new Set(tokens)].slice(0, 8);
+}
+
 function buildSubprojectPurchaseListFilter(item, args = {}) {
   const clauses = [
     "FDocumentStatus='C'",
@@ -462,6 +475,7 @@ function buildSubprojectPurchaseListFilter(item, args = {}) {
   const materialName = String(args.materialName || "").trim();
   const dateFrom = args.dateFrom ? isoDate(args.dateFrom) : "";
   const dateTo = args.dateTo ? isoDate(args.dateTo) : "";
+  const exactSubproject = args.exactSubproject === true || args.exactSubproject === "true";
 
   if (!subprojectNumber && !subprojectName) {
     throw Object.assign(new Error("请至少填写销售子项目编码或项目名称。"), { statusCode: 400 });
@@ -471,14 +485,22 @@ function buildSubprojectPurchaseListFilter(item, args = {}) {
   }
   if (subprojectNumber) {
     const escaped = escapeValue(subprojectNumber);
-    clauses.push(`${item.filterFields.subprojectNumber} LIKE '%${escaped}%'`);
-    bindingClauses.push(`FBillNo LIKE '%${escaped}%'`);
+    if (exactSubproject) {
+      clauses.push(`${item.filterFields.subprojectNumber}='${escaped}'`);
+      bindingClauses.push(`FBillNo='${escaped}'`);
+    } else {
+      clauses.push(`${item.filterFields.subprojectNumber} LIKE '%${escaped}%'`);
+      bindingClauses.push(`FBillNo LIKE '%${escaped}%'`);
+    }
     accepted.subprojectNumber = subprojectNumber;
   }
   if (subprojectName) {
-    const escaped = escapeValue(subprojectName);
-    clauses.push(`(${item.filterFields.subprojectName} LIKE '%${escaped}%' OR F_PARA_SaleProId.FName LIKE '%${escaped}%')`);
-    bindingClauses.push(`(FName LIKE '%${escaped}%' OR FSaleProjectId.FName LIKE '%${escaped}%')`);
+    const tokens = tokenizeFuzzyName(subprojectName);
+    for (const token of tokens) {
+      const escaped = escapeValue(token);
+      clauses.push(`(${item.filterFields.subprojectName} LIKE '%${escaped}%' OR F_PARA_SaleProId.FName LIKE '%${escaped}%')`);
+      bindingClauses.push(`(FName LIKE '%${escaped}%' OR FSaleProjectId.FName LIKE '%${escaped}%')`);
+    }
     accepted.subprojectName = subprojectName;
   }
   if (supplierName) {
@@ -596,12 +618,30 @@ function formatSubprojectPurchaseList(bindingObjects, orderMetaObjects, directOr
   ));
 
   const subprojects = new Set();
+  const subprojectMap = new Map();
   const orders = new Set();
   const suppliers = new Set();
   let totalQuantity = 0;
   let totalAmount = 0;
   const rows = records.map(({ row }) => {
-    if (row["销售子项目编码"]) subprojects.add(row["销售子项目编码"]);
+    const code = row["销售子项目编码"];
+    if (code) {
+      subprojects.add(code);
+      if (!subprojectMap.has(code)) {
+        subprojectMap.set(code, {
+          subprojectNumber: code,
+          projectName: row["项目名称"] || "",
+          rowCount: 0,
+          orders: new Set(),
+          totalAmount: 0,
+        });
+      }
+      const bucket = subprojectMap.get(code);
+      if (!bucket.projectName && row["项目名称"]) bucket.projectName = row["项目名称"];
+      bucket.rowCount += 1;
+      if (row["采购订单号"]) bucket.orders.add(row["采购订单号"]);
+      bucket.totalAmount = roundMoney(bucket.totalAmount + (Number(row["合价"]) || 0));
+    }
     if (row["采购订单号"]) orders.add(row["采购订单号"]);
     if (row["供应商"]) suppliers.add(row["供应商"]);
     totalQuantity += Number(row["数量"]) || 0;
@@ -609,10 +649,20 @@ function formatSubprojectPurchaseList(bindingObjects, orderMetaObjects, directOr
     return row;
   });
 
+  const matchedSubprojects = [...subprojectMap.values()].map((bucket) => ({
+    subprojectNumber: bucket.subprojectNumber,
+    projectName: bucket.projectName,
+    rowCount: bucket.rowCount,
+    orderCount: bucket.orders.size,
+    totalAmount: bucket.totalAmount,
+  }));
+
   const statistics = {
     type: "subproject_purchase_list",
     rowCount: rows.length,
     subprojectCount: subprojects.size,
+    multipleSubprojects: matchedSubprojects.length > 1,
+    matchedSubprojects,
     orderCount: orders.size,
     supplierCount: suppliers.size,
     totalQuantity: roundQuantity(totalQuantity),
@@ -620,8 +670,11 @@ function formatSubprojectPurchaseList(bindingObjects, orderMetaObjects, directOr
     partial: truncated,
   };
   const formattedAmount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(statistics.totalAmount);
+  const multiNotice = matchedSubprojects.length > 1
+    ? `提醒：当前条件模糊匹配到 ${matchedSubprojects.length} 个销售子项目，结果已合并展示。`
+    : "";
   const summary = rows.length
-    ? `共${truncated ? "读取前" : "找到"} ${rows.length} 条已审核采购订单明细（${statistics.subprojectCount} 个销售子项目、${statistics.orderCount} 张采购订单、${statistics.supplierCount} 家供应商），合价合计 ¥${formattedAmount}${truncated ? "；结果达到上限，请缩小查询范围" : ""}。`
+    ? `${multiNotice}共${truncated ? "读取前" : "找到"} ${rows.length} 条已审核采购订单明细（${statistics.subprojectCount} 个销售子项目、${statistics.orderCount} 张采购订单、${statistics.supplierCount} 家供应商），合价合计 ¥${formattedAmount}${truncated ? "；结果达到上限，请缩小查询范围" : ""}。`
     : "没有找到符合条件的已审核采购订单明细。";
   return { rows, statistics, summary };
 }
@@ -2365,4 +2418,5 @@ module.exports = {
   aggregateSalesBusiness,
   buildSubprojectPurchaseListFilter,
   formatSubprojectPurchaseList,
+  tokenizeFuzzyName,
 };

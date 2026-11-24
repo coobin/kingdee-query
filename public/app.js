@@ -16,7 +16,7 @@ const TOOL_META = {
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
   workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
 };
-const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: [], selectedProjectOwnerships: new Set() };
+const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: [], selectedProjectOwnerships: new Set(), exactSubprojectNumber: "" };
 const els = {
   session: document.querySelector("#session"), sessionLabel: document.querySelector("#session-label"), service: document.querySelector("#service-status"),
   form: document.querySelector("#query-form"), button: document.querySelector("#query-button"), actions: document.querySelector(".query-actions"), formError: document.querySelector("#form-error"),
@@ -162,6 +162,9 @@ function collectArguments(panel) {
     const value = input.value.trim(); if (value) args[input.name] = value;
   });
   if (panel.dataset.panel === "overdue_risk_combined" && state.selectedProjectOwnerships.size) args.projectOwnerships = [...state.selectedProjectOwnerships];
+  if (panel.dataset.panel === "subproject_purchase_list" && state.exactSubprojectNumber && args.subprojectNumber === state.exactSubprojectNumber && !args.subprojectName) {
+    args.exactSubproject = true;
+  }
   return args;
 }
 
@@ -268,7 +271,7 @@ function renderResult(view) {
   els.tool.textContent = `${result.label || plan.tool} · ${String(result.count ?? 0).padStart(2, "0")} ROWS`;
   els.summary.textContent = result.summary || "查询完成";
   const labels = TOOL_META[plan.tool]?.conditionLabels || {};
-  els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && value !== "" && value != null && (!Array.isArray(value) || value.length)).map(([key, value]) => {
+  els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && key !== "exactSubproject" && value !== "" && value != null && (!Array.isArray(value) || value.length)).map(([key, value]) => {
     const readable = key === "projectOwnerships" && Array.isArray(value)
       ? value.map((code) => state.projectOwnershipOptions?.find((option) => option.value === code)?.label || code).join("、")
       : value === "sum_amount" ? "是" : value;
@@ -1119,12 +1122,48 @@ function renderPersonnelCostStatistics(statistics) {
 }
 
 function renderSubprojectPurchaseListStatistics(statistics) {
+  if (Array.isArray(statistics.matchedSubprojects) && statistics.matchedSubprojects.length > 1) {
+    const alert = document.createElement("section");
+    alert.className = "subproject-multi-alert";
+    alert.setAttribute("role", "status");
+    alert.setAttribute("aria-label", "模糊匹配到多个销售子项目提醒");
+    const head = document.createElement("div");
+    head.className = "subproject-multi-alert-head";
+    const badge = document.createElement("span");
+    badge.className = "subproject-multi-alert-badge";
+    badge.textContent = `匹配到 ${statistics.matchedSubprojects.length} 个项目`;
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = `当前模糊条件匹配到 ${statistics.matchedSubprojects.length} 个销售子项目，下方列表与合价为合并展示`;
+    const hint = document.createElement("small");
+    hint.textContent = "点击任意销售子项目可一键切换为该单个子项目的精确采购清单：";
+    copy.append(title, hint);
+    head.append(badge, copy);
+    const list = document.createElement("div");
+    list.className = "subproject-match-list";
+    statistics.matchedSubprojects.forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "subproject-match-chip";
+      const code = document.createElement("strong");
+      code.textContent = item.subprojectNumber;
+      const name = document.createElement("span");
+      name.textContent = item.projectName || "未命名项目";
+      const meta = document.createElement("small");
+      meta.textContent = `${item.rowCount} 条 · ${item.orderCount} 单 · ${formatMoney(item.totalAmount)}`;
+      button.append(code, name, meta);
+      button.addEventListener("click", () => selectSubprojectForPurchaseList(item.subprojectNumber));
+      list.append(button);
+    });
+    alert.append(head, list);
+    els.table.append(alert);
+  }
   const strip = document.createElement("section");
   strip.className = "aging-summary";
   strip.setAttribute("aria-label", "子项目采购清单汇总");
   const items = [
     ["采购合价合计", formatMoney(statistics.totalAmount), `${statistics.rowCount} 条已审核明细`, "primary"],
-    ["销售子项目", `${statistics.subprojectCount} 个`, "已关联销售子项目"],
+    ["销售子项目", `${statistics.subprojectCount} 个`, statistics.multipleSubprojects ? "多项目已合并，见上方提醒" : "已关联销售子项目", statistics.multipleSubprojects ? "caution" : ""],
     ["采购订单", `${statistics.orderCount} 张`, "已审核且未作废（不限关闭状态）"],
     ["供应商", `${statistics.supplierCount} 家`, "去重统计"],
     ["采购总数量", formatQuantity(statistics.totalQuantity), statistics.partial ? "已达上限，请缩小范围" : "明细数量合计", statistics.partial ? "caution" : ""],
@@ -1138,6 +1177,18 @@ function renderSubprojectPurchaseListStatistics(statistics) {
     item.append(labelNode, valueNode, noteNode); strip.append(item);
   });
   els.table.append(strip);
+}
+
+function selectSubprojectForPurchaseList(subprojectNumber) {
+  const panel = document.querySelector('[data-panel="subproject_purchase_list"]');
+  if (!panel) return;
+  const codeInput = panel.querySelector('[name="subprojectNumber"]');
+  const nameInput = panel.querySelector('[name="subprojectName"]');
+  if (codeInput) codeInput.value = subprojectNumber;
+  if (nameInput) nameInput.value = "";
+  state.exactSubprojectNumber = subprojectNumber;
+  selectTool("subproject_purchase_list");
+  els.form.requestSubmit();
 }
 
 function renderReceivableAgingStatistics(statistics) {
