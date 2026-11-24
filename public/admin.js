@@ -1,5 +1,22 @@
-const state = { settings: null, auditEvents: [], directory: null, picker: null };
-const moduleGrid = document.querySelector("#module-grid");
+const state = {
+  settings: null,
+  auditEvents: [],
+  directory: null,
+  picker: null,
+  moduleView: "modules",
+  moduleFilter: "all",
+  moduleSearch: "",
+  checkedModules: new Set(),
+  rosterFilter: "all",
+  rosterSearch: "",
+};
+const moduleRows = document.querySelector("#module-rows");
+const rosterRows = document.querySelector("#roster-rows");
+const moduleSearchInput = document.querySelector("#module-search");
+const rosterSearchInput = document.querySelector("#roster-search");
+const selectAllModules = document.querySelector("#select-all-modules");
+const moduleBatchBar = document.querySelector("#module-batch-bar");
+const pickerCopySelect = document.querySelector("#picker-copy-from");
 const adminList = document.querySelector("#admin-list");
 const accessMessage = document.querySelector("#access-message");
 const adminMessage = document.querySelector("#admin-message");
@@ -49,7 +66,7 @@ async function initialize() {
     state.settings = await api("/api/admin/settings");
     document.querySelector("#current-admin").textContent = state.settings.currentAdmin;
     renderAiAnalysisSetting();
-    renderModules();
+    renderAccessSection();
     renderAdmins();
     await loadAudit();
   } catch (error) {
@@ -200,82 +217,240 @@ function renderAiAnalysisSetting() {
 }
 
 function renderModules() {
-  moduleGrid.replaceChildren(...state.settings.modules.map((module, index) => {
-    const card = document.createElement("article");
-    card.className = "module-card";
-    card.dataset.moduleId = module.id;
-    const mode = getModuleMode(module);
-    const isOpen = mode === "all";
-    const head = document.createElement("div"); head.className = "module-card-head";
-    const number = document.createElement("span"); number.textContent = String(index + 1).padStart(2, "0");
-    const title = document.createElement("div");
-    const strong = document.createElement("strong"); strong.textContent = module.label;
-    const description = document.createElement("small"); description.textContent = module.description;
-    title.append(strong, description); head.append(number, title);
-    const modeSwitch = document.createElement("div");
-    modeSwitch.className = "module-mode-switch";
-    modeSwitch.setAttribute("role", "group");
-    modeSwitch.setAttribute("aria-label", `${module.label}访问范围`);
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.dataset.mode = "all";
-    openButton.setAttribute("aria-pressed", String(isOpen));
-    openButton.textContent = "开放所有人员";
-    const restrictedButton = document.createElement("button");
-    restrictedButton.type = "button";
-    restrictedButton.dataset.mode = "restricted";
-    restrictedButton.setAttribute("aria-pressed", String(!isOpen));
-    restrictedButton.textContent = "仅授权人员";
-    const modeButtons = [openButton, restrictedButton];
-    openButton.addEventListener("click", () => updateModuleMode(module, "all", modeButtons));
-    restrictedButton.addEventListener("click", () => updateModuleMode(module, "restricted", modeButtons));
-    modeSwitch.append(openButton, restrictedButton);
+  const modules = state.settings?.modules || [];
+  const counts = { all: modules.length, open: 0, restricted: 0, uniform_dev: 0, admin_only: 0 };
+  for (const module of modules) {
+    const isOpen = getModuleMode(module) === "all";
+    const isUniformDev = getModuleQueryMode(module) === "dev";
     const names = state.settings.moduleAccess[module.id] || [];
-    const summary = document.createElement("p"); summary.className = "module-access-summary";
+    if (isOpen) counts.open += 1;
+    else {
+      counts.restricted += 1;
+      if (!names.length) counts.admin_only += 1;
+    }
+    if (isUniformDev) counts.uniform_dev += 1;
+  }
+  document.querySelector("#tab-modules-count").textContent = String(modules.length);
+  document.querySelectorAll(".module-filters [data-count]").forEach((el) => {
+    el.textContent = String(counts[el.dataset.count] ?? 0);
+  });
+  document.querySelectorAll(".module-filters button[data-filter]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.filter === state.moduleFilter));
+  });
+
+  const visible = filteredModules();
+  const checkedVisibleCount = visible.filter((module) => state.checkedModules.has(module.id)).length;
+  selectAllModules.checked = visible.length > 0 && checkedVisibleCount === visible.length;
+  selectAllModules.indeterminate = checkedVisibleCount > 0 && checkedVisibleCount < visible.length;
+  moduleBatchBar.hidden = state.checkedModules.size === 0;
+  document.querySelector("#batch-count").textContent = `已选 ${state.checkedModules.size} 项`;
+
+  if (!visible.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 6;
+    cell.className = "module-empty-row";
+    cell.textContent = "没有符合条件的模块。";
+    row.append(cell);
+    moduleRows.replaceChildren(row);
+    return;
+  }
+
+  moduleRows.replaceChildren(...visible.map((module) => {
+    const index = modules.indexOf(module);
+    const mode = getModuleMode(module);
+    const queryMode = getModuleQueryMode(module);
+    const isOpen = mode === "all";
+    const isUniformDev = queryMode === "dev";
+    const names = state.settings.moduleAccess[module.id] || [];
     const devNames = state.settings.moduleDevAccess[module.id] || [];
     const devKeys = new Set(devNames.map(personKey));
-    if (isOpen) {
-      summary.textContent = devNames.length
-        ? `开放所有人员，其中 ${devNames.length} 人使用 dev`
-        : "开放所有人员（默认本人金蝶账号）";
-    } else {
-      summary.textContent = names.length
-        ? `已授权 ${names.length} 人，其中 ${devNames.length} 人使用 dev`
-        : "仅超级管理员可见";
-    }
-    const list = document.createElement("div"); list.className = "module-people";
-    const displayedNames = isOpen ? devNames : names;
-    if (displayedNames.length) {
-      displayedNames.slice(0, 6).forEach((name) => {
-        const chip = document.createElement("span");
-        const isDev = isOpen || devKeys.has(personKey(name));
-        chip.textContent = isDev ? `${name} · dev` : name;
-        if (isDev) chip.className = "is-dev";
-        list.append(chip);
-      });
-      if (displayedNames.length > 6) {
-        const more = document.createElement("span");
-        more.textContent = `另有 ${displayedNames.length - 6} 人`;
-        list.append(more);
+
+    const row = document.createElement("tr");
+    row.dataset.moduleId = module.id;
+    if (state.checkedModules.has(module.id)) row.className = "is-checked";
+
+    const checkCell = document.createElement("td");
+    checkCell.className = "col-check";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.checkedModules.has(module.id);
+    checkbox.setAttribute("aria-label", `选择 ${module.label}`);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.checkedModules.add(module.id);
+      else state.checkedModules.delete(module.id);
+      renderModules();
+    });
+    checkCell.append(checkbox);
+
+    const nameCell = document.createElement("td");
+    nameCell.className = "col-module";
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "module-name-cell";
+    const num = document.createElement("span");
+    num.className = "module-index";
+    num.textContent = String(index + 1).padStart(2, "0");
+    const name = document.createElement("strong");
+    name.className = "module-name";
+    name.textContent = module.label;
+    if (module.description) name.title = module.description;
+    nameWrap.append(num, name);
+    nameCell.append(nameWrap);
+
+    const scopeCell = document.createElement("td");
+    scopeCell.className = "col-scope";
+    const scopeSwitch = createSegSwitch(`${module.label}访问范围`, [
+      { value: "all", label: "全员", attr: "scope", active: isOpen },
+      { value: "restricted", label: "指定", attr: "scope", active: !isOpen },
+    ], (nextMode, buttons) => updateModuleMode(module, nextMode, buttons));
+    scopeCell.append(scopeSwitch);
+
+    const queryCell = document.createElement("td");
+    queryCell.className = "col-query";
+    const querySwitch = createSegSwitch(`${module.label}查询账号`, [
+      { value: "self", label: "本人", attr: "query", active: !isUniformDev },
+      { value: "dev", label: "统一 dev", attr: "query", active: isUniformDev },
+    ], (nextQueryMode, buttons) => updateModuleQueryMode(module, nextQueryMode, buttons));
+    queryCell.append(querySwitch);
+
+    const rosterCell = document.createElement("td");
+    rosterCell.className = "col-roster";
+    const rosterWrap = document.createElement("div");
+    rosterWrap.className = "roster-cell";
+    if (isOpen && isUniformDev) {
+      rosterWrap.append(createPill("全员 dev", "is-dev"));
+    } else if (isOpen) {
+      if (devNames.length) {
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "roster-trigger is-dev";
+        trigger.textContent = `${devNames.length} 人 dev`;
+        trigger.addEventListener("click", () => openPeoplePicker(module, "selected"));
+        rosterWrap.append(trigger, createPreview(devNames));
+      } else {
+        rosterWrap.append(createPill("全员本人", "is-muted"));
       }
     } else {
-      const note = document.createElement("span");
-      note.className = "module-people-empty";
-      note.textContent = isOpen ? "所有人员均按本人金蝶账号查询" : "尚未添加授权人员";
-      list.append(note);
+      if (!names.length) {
+        rosterWrap.append(createPill("仅超管", "is-muted"));
+      } else {
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "roster-trigger";
+        trigger.textContent = `${names.length} 人`;
+        trigger.addEventListener("click", () => openPeoplePicker(module, "selected"));
+        rosterWrap.append(trigger);
+        if (isUniformDev) {
+          rosterWrap.append(createPill("全 dev", "is-dev"));
+        } else if (devNames.length) {
+          const devTrigger = document.createElement("button");
+          devTrigger.type = "button";
+          devTrigger.className = "roster-trigger is-dev";
+          devTrigger.textContent = `${devNames.length} dev`;
+          devTrigger.addEventListener("click", () => openPeoplePicker(module, "dev"));
+          rosterWrap.append(devTrigger);
+        }
+        rosterWrap.append(createPreview(names, !isUniformDev ? devKeys : null));
+      }
     }
-    const button = document.createElement("button"); button.type = "button"; button.className = "secondary-action module-pick-action";
-    button.textContent = isOpen ? "设置 dev 查询身份" : "从组织架构选择人员";
-    button.addEventListener("click", () => openPeoplePicker(module));
-    card.append(head, modeSwitch, summary, list, button);
-    card.classList.toggle("open", isOpen);
-    card.classList.toggle("restricted", !isOpen);
-    return card;
+    rosterCell.append(rosterWrap);
+
+    const actionCell = document.createElement("td");
+    actionCell.className = "col-action";
+    if (isOpen && isUniformDev) {
+      const dash = document.createElement("span");
+      dash.className = "row-action-muted";
+      dash.textContent = "—";
+      actionCell.append(dash);
+    } else {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "row-action-btn";
+      button.textContent = isOpen ? "设 dev" : "选人";
+      button.addEventListener("click", () => openPeoplePicker(module, "all"));
+      actionCell.append(button);
+    }
+
+    row.append(checkCell, nameCell, scopeCell, queryCell, rosterCell, actionCell);
+    return row;
   }));
+}
+
+function createSegSwitch(ariaLabel, options, onSelect) {
+  const group = document.createElement("div");
+  group.className = "seg-switch";
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-label", ariaLabel);
+  const buttons = options.map((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset[option.attr] = option.value;
+    button.setAttribute("aria-pressed", String(option.active));
+    button.textContent = option.label;
+    group.append(button);
+    return button;
+  });
+  buttons.forEach((button, idx) => {
+    button.addEventListener("click", () => onSelect(options[idx].value, buttons));
+  });
+  return group;
+}
+
+function createPill(text, extraClass = "") {
+  const pill = document.createElement("span");
+  pill.className = `roster-pill ${extraClass}`.trim();
+  pill.textContent = text;
+  return pill;
+}
+
+function createPreview(names, devKeys = null) {
+  const span = document.createElement("span");
+  span.className = "roster-preview";
+  const sample = names.slice(0, 3).map((name) => (devKeys && devKeys.has(personKey(name)) ? `${name}(dev)` : name));
+  span.textContent = names.length > 3 ? `${sample.join("、")} 等` : sample.join("、");
+  span.title = names.join("、");
+  return span;
+}
+
+function filteredModules() {
+  const keyword = personKey(state.moduleSearch);
+  return (state.settings?.modules || []).filter((module) => {
+    const isOpen = getModuleMode(module) === "all";
+    const isUniformDev = getModuleQueryMode(module) === "dev";
+    const names = state.settings.moduleAccess[module.id] || [];
+    if (state.moduleFilter === "open" && !isOpen) return false;
+    if (state.moduleFilter === "restricted" && isOpen) return false;
+    if (state.moduleFilter === "uniform_dev" && !isUniformDev) return false;
+    if (state.moduleFilter === "admin_only" && (isOpen || names.length > 0)) return false;
+    if (!keyword) return true;
+    return personKey(`${module.label} ${module.id} ${module.description || ""}`).includes(keyword);
+  });
 }
 
 function getModuleMode(module) {
   return state.settings?.moduleAccessModes?.[module.id] || module.defaultAccessMode || "restricted";
+}
+
+function getModuleQueryMode(module) {
+  return state.settings?.moduleQueryModes?.[module.id] === "dev" ? "dev" : "self";
+}
+
+function applyModulePayload(payload) {
+  state.settings.moduleAccess = payload.moduleAccess;
+  state.settings.moduleDevAccess = payload.moduleDevAccess;
+  state.settings.moduleAccessModes = payload.moduleAccessModes;
+  state.settings.moduleQueryModes = payload.moduleQueryModes || {};
+  renderAccessSection();
+}
+
+function renderAccessSection() {
+  const isModules = state.moduleView === "modules";
+  document.querySelector("#tab-modules").setAttribute("aria-selected", String(isModules));
+  document.querySelector("#tab-roster").setAttribute("aria-selected", String(!isModules));
+  document.querySelector("#panel-modules").hidden = !isModules;
+  document.querySelector("#panel-roster").hidden = isModules;
+  renderModules();
+  renderRoster();
 }
 
 async function updateModuleMode(module, nextMode, buttons) {
@@ -287,16 +462,273 @@ async function updateModuleMode(module, nextMode, buttons) {
       method: "PUT",
       body: JSON.stringify({ moduleAccessModes: { [module.id]: nextMode } }),
     });
-    state.settings.moduleAccess = payload.moduleAccess;
-    state.settings.moduleDevAccess = payload.moduleDevAccess;
-    state.settings.moduleAccessModes = payload.moduleAccessModes;
-    renderModules();
-    showMessage(accessMessage, `${module.label}已设为${nextMode === "all" ? "开放所有人员" : "仅授权人员"}。`, false);
+    applyModulePayload(payload);
+    showMessage(accessMessage, `${module.label}：已设为${nextMode === "all" ? "全员" : "指定人员"}。`, false);
   } catch (error) {
     showMessage(accessMessage, `保存失败：${error.message}`, true);
     buttons.forEach((button) => { button.disabled = false; });
   }
 }
+
+async function updateModuleQueryMode(module, nextQueryMode, buttons) {
+  if (getModuleQueryMode(module) === nextQueryMode) return;
+  buttons.forEach((button) => { button.disabled = true; });
+  accessMessage.hidden = true;
+  try {
+    const payload = await api("/api/admin/module-access", {
+      method: "PUT",
+      body: JSON.stringify({ moduleQueryModes: { [module.id]: nextQueryMode } }),
+    });
+    applyModulePayload(payload);
+    showMessage(accessMessage, `${module.label}：已设为${nextQueryMode === "dev" ? "统一 dev 查询" : "本人账号查询"}。`, false);
+  } catch (error) {
+    showMessage(accessMessage, `保存失败：${error.message}`, true);
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function batchUpdateModes({ accessMode = null, queryMode = null }) {
+  const ids = [...state.checkedModules];
+  if (!ids.length) return;
+  accessMessage.hidden = true;
+  const body = {};
+  if (accessMode) body.moduleAccessModes = Object.fromEntries(ids.map((id) => [id, accessMode]));
+  if (queryMode) body.moduleQueryModes = Object.fromEntries(ids.map((id) => [id, queryMode]));
+  try {
+    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify(body) });
+    state.checkedModules.clear();
+    applyModulePayload(payload);
+    const label = accessMode
+      ? (accessMode === "all" ? "全员" : "指定人员")
+      : (queryMode === "dev" ? "统一 dev" : "本人账号");
+    showMessage(accessMessage, `已将 ${ids.length} 个模块设为${label}。`, false);
+  } catch (error) {
+    showMessage(accessMessage, `批量保存失败：${error.message}`, true);
+  }
+}
+
+function buildRosterEntries() {
+  const byPerson = new Map();
+  for (const module of state.settings?.modules || []) {
+    const isOpen = getModuleMode(module) === "all";
+    const isUniformDev = getModuleQueryMode(module) === "dev";
+    const accessList = state.settings.moduleAccess[module.id] || [];
+    const devList = state.settings.moduleDevAccess[module.id] || [];
+    const devKeys = new Set(devList.map(personKey));
+    const addEntry = (name, entry) => {
+      const key = personKey(name);
+      if (!key) return;
+      if (!byPerson.has(key)) byPerson.set(key, { key, name, entries: [] });
+      byPerson.get(key).entries.push(entry);
+    };
+    if (!isOpen) {
+      for (const name of accessList) {
+        addEntry(name, { module, isOpen: false, isUniformDev, isDev: isUniformDev || devKeys.has(personKey(name)) });
+      }
+    } else if (!isUniformDev) {
+      for (const name of devList) {
+        addEntry(name, { module, isOpen: true, isUniformDev: false, isDev: true });
+      }
+    }
+  }
+  return [...byPerson.values()].sort((a, b) => b.entries.length - a.entries.length || a.name.localeCompare(b.name, "zh-CN"));
+}
+
+function renderRoster() {
+  const people = buildRosterEntries();
+  const devPeopleCount = people.filter((item) => item.entries.some((entry) => entry.isDev)).length;
+  document.querySelector("#tab-roster-count").textContent = String(people.length);
+  document.querySelector('[data-roster-count="all"]').textContent = String(people.length);
+  document.querySelector('[data-roster-count="dev"]').textContent = String(devPeopleCount);
+  document.querySelectorAll(".roster-filters button[data-roster-filter]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.rosterFilter === state.rosterFilter));
+  });
+
+  const openModules = (state.settings?.modules || []).filter((module) => getModuleMode(module) === "all");
+  const openBar = document.querySelector("#roster-open-modules");
+  if (openModules.length) {
+    openBar.hidden = false;
+    const title = document.createElement("strong");
+    title.textContent = "全员开放：";
+    const tags = openModules.map((module) => {
+      const tag = document.createElement("span");
+      tag.className = "roster-open-tag";
+      tag.textContent = getModuleQueryMode(module) === "dev" ? `${module.label} · 统一 dev` : module.label;
+      return tag;
+    });
+    openBar.replaceChildren(title, ...tags);
+  } else {
+    openBar.hidden = true;
+  }
+
+  const dirByKey = new Map((state.directory?.people || []).map((person) => [personKey(person.username), person]));
+  const deptById = new Map((state.directory?.departments || []).map((dept) => [dept.id, dept]));
+  const keyword = personKey(state.rosterSearch);
+  const visible = people.filter((item) => {
+    if (state.rosterFilter === "dev" && !item.entries.some((entry) => entry.isDev)) return false;
+    if (!keyword) return true;
+    const dirPerson = dirByKey.get(item.key);
+    const depts = dirPerson ? dirPerson.departmentIds.map((id) => deptById.get(id)?.name || "").join(" ") : "";
+    const haystack = personKey([item.name, dirPerson?.account || "", depts, ...item.entries.map((entry) => entry.module.label)].join(" "));
+    return haystack.includes(keyword);
+  });
+
+  if (!visible.length) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "module-empty-row";
+    cell.textContent = people.length ? "没有符合条件的人员。" : "暂无单独授权人员。";
+    row.append(cell);
+    rosterRows.replaceChildren(row);
+    return;
+  }
+
+  rosterRows.replaceChildren(...visible.map((item) => {
+    const row = document.createElement("tr");
+    const personCell = document.createElement("td");
+    personCell.className = "col-person roster-person";
+    const strong = document.createElement("strong");
+    strong.textContent = item.name;
+    personCell.append(strong);
+    const dirPerson = dirByKey.get(item.key);
+    if (dirPerson) {
+      const meta = [dirPerson.account, ...dirPerson.departmentIds.map((id) => deptById.get(id)?.name).filter(Boolean)].filter(Boolean).join(" · ");
+      if (meta) {
+        const small = document.createElement("small");
+        small.textContent = meta;
+        personCell.append(small);
+      }
+    }
+
+    const modulesCell = document.createElement("td");
+    modulesCell.className = "col-modules";
+    const chips = document.createElement("div");
+    chips.className = "roster-chips";
+    for (const entry of item.entries) {
+      const chip = document.createElement("span");
+      chip.className = entry.isDev ? "roster-chip is-dev" : "roster-chip";
+      const link = document.createElement("button");
+      link.type = "button";
+      link.className = "roster-chip-link";
+      link.textContent = entry.module.label;
+      if (entry.isDev) {
+        const badge = document.createElement("em");
+        badge.textContent = entry.isUniformDev ? "统一dev" : "dev";
+        link.append(badge);
+      }
+      link.addEventListener("click", () => openPeoplePicker(entry.module, "selected"));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "roster-chip-remove";
+      remove.title = entry.isOpen ? `取消 ${item.name} 在「${entry.module.label}」的 dev 权限` : `从「${entry.module.label}」移出 ${item.name}`;
+      remove.setAttribute("aria-label", remove.title);
+      remove.textContent = "×";
+      remove.addEventListener("click", () => revokePersonFromModule(item.name, entry.module, entry.isOpen));
+      chip.append(link, remove);
+      chips.append(chip);
+    }
+    modulesCell.append(chips);
+
+    const statsCell = document.createElement("td");
+    statsCell.className = "col-stats";
+    const devCount = item.entries.filter((entry) => entry.isDev).length;
+    statsCell.textContent = devCount ? `${item.entries.length} 模块 · ${devCount} dev` : `${item.entries.length} 模块`;
+
+    const actionCell = document.createElement("td");
+    actionCell.className = "col-action";
+    const removeAll = document.createElement("button");
+    removeAll.type = "button";
+    removeAll.className = "row-danger-btn";
+    removeAll.textContent = "移出全部";
+    removeAll.addEventListener("click", () => revokePersonEverywhere(item.name));
+    actionCell.append(removeAll);
+
+    row.append(personCell, modulesCell, statsCell, actionCell);
+    return row;
+  }));
+}
+
+async function revokePersonFromModule(name, module, isOpen) {
+  const key = personKey(name);
+  accessMessage.hidden = true;
+  const body = isOpen
+    ? {
+      moduleDevAccess: {
+        [module.id]: (state.settings.moduleDevAccess[module.id] || []).filter((item) => personKey(item) !== key),
+      },
+    }
+    : {
+      moduleAccess: {
+        [module.id]: (state.settings.moduleAccess[module.id] || []).filter((item) => personKey(item) !== key),
+      },
+      moduleDevAccess: {
+        [module.id]: (state.settings.moduleDevAccess[module.id] || []).filter((item) => personKey(item) !== key),
+      },
+    };
+  try {
+    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify(body) });
+    applyModulePayload(payload);
+    showMessage(accessMessage, isOpen ? `已取消 ${name} 在「${module.label}」的 dev 权限。` : `已从「${module.label}」移出 ${name}。`, false);
+  } catch (error) {
+    showMessage(accessMessage, `操作失败：${error.message}`, true);
+  }
+}
+
+async function revokePersonEverywhere(name) {
+  if (!confirm(`确定将 ${name} 从所有模块的授权和 dev 名单中移除？`)) return;
+  const key = personKey(name);
+  const moduleAccess = {};
+  const moduleDevAccess = {};
+  for (const module of state.settings?.modules || []) {
+    const access = state.settings.moduleAccess[module.id] || [];
+    const dev = state.settings.moduleDevAccess[module.id] || [];
+    if (access.some((item) => personKey(item) === key)) {
+      moduleAccess[module.id] = access.filter((item) => personKey(item) !== key);
+    }
+    if (dev.some((item) => personKey(item) === key)) {
+      moduleDevAccess[module.id] = dev.filter((item) => personKey(item) !== key);
+    }
+  }
+  accessMessage.hidden = true;
+  try {
+    const payload = await api("/api/admin/module-access", {
+      method: "PUT",
+      body: JSON.stringify({ moduleAccess, moduleDevAccess }),
+    });
+    applyModulePayload(payload);
+    showMessage(accessMessage, `已将 ${name} 移出全部授权名单。`, false);
+  } catch (error) {
+    showMessage(accessMessage, `操作失败：${error.message}`, true);
+  }
+}
+
+document.querySelector("#tab-modules").addEventListener("click", () => { state.moduleView = "modules"; renderAccessSection(); });
+document.querySelector("#tab-roster").addEventListener("click", () => { state.moduleView = "roster"; renderAccessSection(); });
+moduleSearchInput.addEventListener("input", () => { state.moduleSearch = moduleSearchInput.value; renderModules(); });
+rosterSearchInput.addEventListener("input", () => { state.rosterSearch = rosterSearchInput.value; renderRoster(); });
+document.querySelectorAll(".module-filters button[data-filter]").forEach((button) => {
+  button.addEventListener("click", () => { state.moduleFilter = button.dataset.filter; renderModules(); });
+});
+document.querySelectorAll(".roster-filters button[data-roster-filter]").forEach((button) => {
+  button.addEventListener("click", () => { state.rosterFilter = button.dataset.rosterFilter; renderRoster(); });
+});
+selectAllModules.addEventListener("change", () => {
+  for (const module of filteredModules()) {
+    if (selectAllModules.checked) state.checkedModules.add(module.id);
+    else state.checkedModules.delete(module.id);
+  }
+  renderModules();
+});
+document.querySelector("#batch-set-all").addEventListener("click", () => batchUpdateModes({ accessMode: "all" }));
+document.querySelector("#batch-set-restricted").addEventListener("click", () => batchUpdateModes({ accessMode: "restricted" }));
+document.querySelector("#batch-set-self").addEventListener("click", () => batchUpdateModes({ queryMode: "self" }));
+document.querySelector("#batch-set-dev").addEventListener("click", () => batchUpdateModes({ queryMode: "dev" }));
+document.querySelector("#batch-clear").addEventListener("click", () => { state.checkedModules.clear(); renderModules(); });
+document.querySelector("#batch-add-people").addEventListener("click", () => {
+  const modules = (state.settings?.modules || []).filter((module) => state.checkedModules.has(module.id));
+  if (modules.length) openBatchPeoplePicker(modules);
+});
 
 function renderAdmins() {
   adminList.replaceChildren(...state.settings.admins.map((admin) => {
@@ -406,33 +838,102 @@ function adminField(labelText, name, value, placeholder = "", type = "text") {
   label.append(span, input); return label;
 }
 
-async function openPeoplePicker(module) {
+async function openPeoplePicker(module, initialScope = "all") {
   accessMessage.hidden = true;
   const mode = getModuleMode(module);
+  const queryMode = getModuleQueryMode(module);
+  const selected = new Map((state.settings.moduleAccess[module.id] || []).map((name) => [personKey(name), name]));
+  const dev = new Map((state.settings.moduleDevAccess[module.id] || []).map((name) => [personKey(name), name]));
   state.picker = {
+    batch: false,
     module,
+    modules: [module],
     mode,
-    scope: "all",
-    selected: new Map((state.settings.moduleAccess[module.id] || []).map((name) => [personKey(name), name])),
-    dev: new Map((state.settings.moduleDevAccess[module.id] || []).map((name) => [personKey(name), name])),
+    queryMode,
+    scope: initialScope,
+    selected,
+    dev,
   };
   peopleSearch.value = "";
   const isOpen = mode === "all";
-  document.querySelector("#people-picker-title").textContent = isOpen ? `${module.label} · 设置 dev 查询身份` : `${module.label} · 选择查看人员`;
-  document.querySelector("#picker-subtitle").textContent = isOpen
-    ? "当前模块对所有人员开放（默认本人金蝶账号）。勾选人员以允许其使用 dev 查询全部相关数据。"
-    : "当前模块仅对授权人员开放。勾选人员以开放模块，每人默认使用本人金蝶账号，可单独改为 dev 查询该账号可见的全部相关数据。";
-  document.querySelector("#clear-selection").textContent = isOpen ? "清空 dev 授权" : "清空名单";
-  document.querySelector("#save-module-access").textContent = isOpen ? "保存 dev 授权" : "保存该模块权限";
-  document.querySelector("#picker-message").textContent = "正在读取组织架构…";
+  const isUniformDev = queryMode === "dev";
+  document.querySelector("#people-picker-title").textContent = module.label;
+  renderPickerTags([
+    { text: isOpen ? "全员开放" : "指定人员", cls: isOpen ? "is-open" : "is-restricted" },
+    { text: isUniformDev ? "统一 dev" : (isOpen ? "勾选即 dev" : "默认本人 · 可设 dev"), cls: isUniformDev ? "is-dev" : "" },
+  ]);
+  populateCopySelect(module);
+  document.querySelector("#clear-selection").textContent = isOpen ? "清空 dev" : "清空名单";
+  document.querySelector("#save-module-access").textContent = "保存";
+  await launchPickerDialog();
+}
+
+async function openBatchPeoplePicker(modules) {
+  accessMessage.hidden = true;
+  state.picker = {
+    batch: true,
+    module: null,
+    modules,
+    mode: "restricted",
+    queryMode: "self",
+    scope: "all",
+    selected: new Map(),
+    dev: new Map(),
+  };
+  peopleSearch.value = "";
+  document.querySelector("#people-picker-title").textContent = `批量添加 · ${modules.length} 个模块`;
+  renderPickerTags([
+    { text: "仅追加，保留原名单", cls: "is-open" },
+    { text: "可同时指定 dev", cls: "" },
+  ]);
+  pickerCopySelect.hidden = true;
+  document.querySelector("#clear-selection").textContent = "清空已选";
+  document.querySelector("#save-module-access").textContent = `添加到 ${modules.length} 个模块`;
+  await launchPickerDialog();
+}
+
+function renderPickerTags(tags) {
+  const container = document.querySelector("#picker-tags");
+  container.replaceChildren(...tags.map((item) => {
+    const span = document.createElement("span");
+    span.className = `picker-tag ${item.cls || ""}`.trim();
+    span.textContent = item.text;
+    return span;
+  }));
+}
+
+function populateCopySelect(currentModule) {
+  const isOpen = getModuleMode(currentModule) === "all";
+  const candidates = (state.settings?.modules || []).filter((other) => {
+    if (other.id === currentModule.id) return false;
+    const count = isOpen
+      ? (state.settings.moduleDevAccess[other.id] || []).length || (state.settings.moduleAccess[other.id] || []).length
+      : (state.settings.moduleAccess[other.id] || []).length;
+    return count > 0;
+  });
+  pickerCopySelect.hidden = candidates.length === 0;
+  pickerCopySelect.replaceChildren(
+    new Option("从其他模块复制…", ""),
+    ...candidates.map((other) => {
+      const accessCount = (state.settings.moduleAccess[other.id] || []).length;
+      const devCount = (state.settings.moduleDevAccess[other.id] || []).length;
+      const countText = isOpen && devCount ? `${devCount} dev` : `${accessCount || devCount} 人`;
+      return new Option(`${other.label} (${countText})`, other.id);
+    }),
+  );
+  pickerCopySelect.value = "";
+}
+
+async function launchPickerDialog() {
+  const token = state.picker;
+  document.querySelector("#picker-message").textContent = state.directory ? "" : "正在读取组织架构…";
   pickerDialog.showModal();
   try {
     if (!state.directory) state.directory = await api("/api/admin/personnel-directory");
-    if (!state.picker || state.picker.module.id !== module.id || !pickerDialog.open) return;
-    document.querySelector("#picker-message").textContent = state.directory.ambiguousUsers
-      ? `${state.directory.ambiguousUsers} 个重名账号无法安全授权，已从可选人员中排除。` : "";
+    if (state.picker !== token || !pickerDialog.open) return;
     renderOrganizationTree();
     renderPeopleList();
+    if (state.moduleView === "roster") renderRoster();
   } catch (error) {
     document.querySelector("#picker-message").textContent = `读取人员失败：${error.message}`;
   }
@@ -440,9 +941,31 @@ async function openPeoplePicker(module) {
 
 function personKey(value) { return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN"); }
 
+function activePickerSelection() {
+  if (!state.picker) return new Map();
+  return state.picker.mode === "all" && !state.picker.batch ? state.picker.dev : state.picker.selected;
+}
+
+function missingSelectedPeople(map) {
+  if (!state.directory) return [];
+  const known = new Set(state.directory.people.map((person) => personKey(person.username)));
+  return [...map.values()]
+    .filter((name) => !known.has(personKey(name)))
+    .map((username) => ({ username, account: "", departmentIds: [], missing: true }));
+}
+
 function scopePeople() {
   if (!state.directory || !state.picker) return [];
   const scope = state.picker.scope;
+  if (scope === "selected") {
+    const active = activePickerSelection();
+    const matched = state.directory.people.filter((person) => active.has(personKey(person.username)));
+    return [...matched, ...missingSelectedPeople(active)];
+  }
+  if (scope === "dev") {
+    const matched = state.directory.people.filter((person) => state.picker.dev.has(personKey(person.username)));
+    return [...matched, ...missingSelectedPeople(state.picker.dev)];
+  }
   if (scope === "all") return state.directory.people;
   if (scope === "unassigned") return state.directory.people.filter((person) => !person.departmentIds.length);
   if (scope.startsWith("org:")) {
@@ -461,8 +984,10 @@ function renderOrganizationTree() {
   const tree = document.querySelector("#org-tree");
   if (!state.directory || !state.picker) { tree.textContent = "读取中…"; return; }
   const nodes = [];
-  const addNode = (scope, title, depth, count) => {
-    const button = document.createElement("button"); button.type = "button"; button.className = "org-node";
+  const addNode = (scope, title, depth, count, pinned = false) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = pinned ? "org-node is-pinned" : "org-node";
     button.style.paddingLeft = `${12 + depth * 16}px`;
     button.setAttribute("aria-current", String(state.picker.scope === scope));
     const label = document.createElement("span"); label.textContent = title;
@@ -471,6 +996,16 @@ function renderOrganizationTree() {
     button.addEventListener("click", () => { state.picker.scope = scope; renderOrganizationTree(); renderPeopleList(); });
     nodes.push(button);
   };
+  const isOpen = state.picker.mode === "all" && !state.picker.batch;
+  const isUniformDev = state.picker.queryMode === "dev" && !state.picker.batch;
+  const active = activePickerSelection();
+  addNode("selected", state.picker.batch ? "本次已选" : (isOpen ? "已设 dev" : "已授权名单"), 0, active.size, true);
+  if (!isOpen && !isUniformDev && state.picker.dev.size > 0) {
+    addNode("dev", "其中 dev", 0, state.picker.dev.size, true);
+  }
+  const divider = document.createElement("div");
+  divider.className = "org-divider";
+  nodes.push(divider);
   addNode("all", "全部人员", 0, state.directory.people.length);
   const children = (orgId, parentId, depth, seen = new Set()) => {
     state.directory.departments.filter((dept) => dept.organizationId === orgId && dept.parentId === parentId && !seen.has(dept.id)).forEach((dept) => {
@@ -496,68 +1031,163 @@ function renderPeopleList() {
   if (!state.directory || !state.picker) return;
   const people = visiblePeople();
   const scope = state.picker.scope;
-  const isOpen = state.picker.mode === "all";
-  document.querySelector("#picker-scope-title").textContent = scope === "all" ? "全部人员" : scope === "unassigned" ? "未归属部门" : scope.startsWith("org:")
-    ? state.directory.organizations.find((org) => org.id === scope.slice(4))?.name || "组织"
-    : state.directory.departments.find((dept) => dept.id === scope.slice(5))?.name || "部门";
+  const isOpen = state.picker.mode === "all" && !state.picker.batch;
+  const isUniformDev = state.picker.queryMode === "dev" && !state.picker.batch;
+  const showPerPersonDev = !isOpen && !isUniformDev;
+
+  document.querySelector("#bulk-set-dev").hidden = !showPerPersonDev;
+  document.querySelector("#bulk-set-self").hidden = !showPerPersonDev;
+  document.querySelector("#picker-scope-title").textContent = scope === "selected"
+    ? (state.picker.batch ? "本次已选" : (isOpen ? "已设 dev" : "已授权名单"))
+    : scope === "dev"
+      ? "其中 dev"
+      : scope === "all"
+        ? "全部人员"
+        : scope === "unassigned"
+          ? "未归属部门"
+          : scope.startsWith("org:")
+            ? state.directory.organizations.find((org) => org.id === scope.slice(4))?.name || "组织"
+            : state.directory.departments.find((dept) => dept.id === scope.slice(5))?.name || "部门";
   document.querySelector("#picker-results-count").textContent = `${people.length} 人`;
   const updateSelectedCount = () => {
     document.querySelector("#picker-selected-count").textContent = isOpen
-      ? `已授权 dev ${state.picker.dev.size} 人`
-      : `已选 ${state.picker.selected.size} 人（其中 ${state.picker.dev.size} 人使用 dev）`;
+      ? `已设 dev ${state.picker.dev.size} 人`
+      : isUniformDev
+        ? `已选 ${state.picker.selected.size} 人（统一 dev）`
+        : state.picker.dev.size
+          ? `已选 ${state.picker.selected.size} 人 · ${state.picker.dev.size} 人 dev`
+          : `已选 ${state.picker.selected.size} 人`;
+    renderOrganizationTree();
   };
-  updateSelectedCount();
+  document.querySelector("#picker-selected-count").textContent = isOpen
+    ? `已设 dev ${state.picker.dev.size} 人`
+    : isUniformDev
+      ? `已选 ${state.picker.selected.size} 人（统一 dev）`
+      : state.picker.dev.size
+        ? `已选 ${state.picker.selected.size} 人 · ${state.picker.dev.size} 人 dev`
+        : `已选 ${state.picker.selected.size} 人`;
+
   const departmentById = new Map(state.directory.departments.map((dept) => [dept.id, dept]));
   const rows = people.map((person) => {
     const row = document.createElement("div"); row.className = "person-row";
     const label = document.createElement("label"); label.className = "person-choice";
     const key = personKey(person.username);
-    const mode = document.createElement("select");
-    mode.setAttribute("aria-label", `${person.username}的查询身份`);
-    mode.append(new Option("本人金蝶账号", "self"), new Option("全部相关数据（dev）", "dev"));
-    mode.value = state.picker.dev.has(key) ? "dev" : "self";
-    mode.disabled = !isOpen && !state.picker.selected.has(key);
+    const isChecked = isOpen ? state.picker.dev.has(key) : state.picker.selected.has(key);
     const check = document.createElement("input");
     check.type = "checkbox";
-    check.checked = isOpen ? state.picker.dev.has(key) : state.picker.selected.has(key);
-    mode.addEventListener("change", () => {
-      if (mode.value === "dev") state.picker.dev.set(key, person.username);
-      else state.picker.dev.delete(key);
-      if (isOpen) check.checked = mode.value === "dev";
-      updateSelectedCount();
-    });
+    check.checked = isChecked;
+
+    const body = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = person.username;
+    if (person.missing) {
+      const miss = document.createElement("span");
+      miss.className = "person-missing-tag";
+      miss.textContent = "不在当前目录";
+      name.append(miss);
+    }
+    const detail = document.createElement("small");
+    detail.textContent = person.missing
+      ? "原有配置账号 · 取消勾选即可移除"
+      : [person.account, ...person.departmentIds.map((id) => departmentById.get(id)?.fullName || departmentById.get(id)?.name).filter(Boolean)].join(" · ") || "未归属部门";
+    body.append(name, detail);
+    label.append(check, body);
+    row.append(label);
+
+    let identitySwitch = null;
+    let devBadge = null;
+    if (showPerPersonDev) {
+      identitySwitch = document.createElement("div");
+      identitySwitch.className = "person-identity-switch";
+      const selfBtn = document.createElement("button");
+      selfBtn.type = "button";
+      selfBtn.dataset.idMode = "self";
+      selfBtn.textContent = "本人";
+      const devBtn = document.createElement("button");
+      devBtn.type = "button";
+      devBtn.dataset.idMode = "dev";
+      devBtn.textContent = "dev";
+      const syncIdentityButtons = () => {
+        const active = state.picker.selected.has(key);
+        const isDev = active && state.picker.dev.has(key);
+        selfBtn.setAttribute("aria-pressed", String(active && !isDev));
+        devBtn.setAttribute("aria-pressed", String(isDev));
+      };
+      syncIdentityButtons();
+      selfBtn.addEventListener("click", () => {
+        state.picker.selected.set(key, person.username);
+        state.picker.dev.delete(key);
+        check.checked = true;
+        syncIdentityButtons();
+        updateSelectedCount();
+      });
+      devBtn.addEventListener("click", () => {
+        state.picker.selected.set(key, person.username);
+        state.picker.dev.set(key, person.username);
+        check.checked = true;
+        syncIdentityButtons();
+        updateSelectedCount();
+      });
+      identitySwitch.append(selfBtn, devBtn);
+      identitySwitch._sync = syncIdentityButtons;
+      row.append(identitySwitch);
+    } else if (isChecked) {
+      devBadge = document.createElement("span");
+      devBadge.className = "person-identity-badge";
+      devBadge.textContent = "dev";
+      row.append(devBadge);
+    }
+
     check.addEventListener("change", () => {
       if (isOpen) {
         if (check.checked) state.picker.dev.set(key, person.username);
         else state.picker.dev.delete(key);
-        mode.value = check.checked ? "dev" : "self";
       } else {
         if (check.checked) state.picker.selected.set(key, person.username);
         else {
           state.picker.selected.delete(key);
           state.picker.dev.delete(key);
-          mode.value = "self";
         }
-        mode.disabled = !check.checked;
       }
+      if (identitySwitch) identitySwitch._sync();
+      else renderPeopleList();
       updateSelectedCount();
     });
-    const body = document.createElement("span");
-    const name = document.createElement("strong"); name.textContent = person.username;
-    const detail = document.createElement("small"); detail.textContent = [person.account, ...person.departmentIds.map((id) => departmentById.get(id)?.fullName || departmentById.get(id)?.name).filter(Boolean)].join(" · ") || "未归属部门";
-    body.append(name, detail); label.append(check, body); row.append(label, mode); return row;
+    return row;
   });
-  if (!rows.length) { const empty = document.createElement("p"); empty.className = "picker-empty"; empty.textContent = "当前范围没有符合条件的人员。"; rows.push(empty); }
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "picker-empty";
+    empty.textContent = scope === "selected" ? "暂未选择人员。" : "当前范围没有符合条件的人员。";
+    rows.push(empty);
+  }
   document.querySelector("#people-list").replaceChildren(...rows);
-  const directoryNames = new Set(state.directory.people.map((person) => personKey(person.username)));
-  const activeSelection = isOpen ? state.picker.dev : state.picker.selected;
-  const missing = [...activeSelection.values()].filter((name) => !directoryNames.has(personKey(name)));
+  const missing = missingSelectedPeople(activePickerSelection());
   document.querySelector("#picker-message").textContent = missing.length
-    ? `${missing.length} 个原有配置人员不在当前启用账号中，保存时仍会保留；如需移除，请使用“${isOpen ? "清空 dev 授权" : "清空名单"}”后重新选择。`
-    : state.directory.ambiguousUsers ? `${state.directory.ambiguousUsers} 个重名账号已从可选人员中排除。` : "";
+    ? `${missing.length} 个账号不在当前目录，可在“${isOpen ? "已设 dev" : "已授权名单"}”中单独移除。`
+    : state.directory.ambiguousUsers ? `${state.directory.ambiguousUsers} 个重名账号已排除。` : "";
 }
 
 peopleSearch.addEventListener("input", renderPeopleList);
+pickerCopySelect.addEventListener("change", () => {
+  const sourceId = pickerCopySelect.value;
+  if (!sourceId || !state.picker || state.picker.batch) return;
+  const isOpen = state.picker.mode === "all";
+  const sourceAccess = state.settings.moduleAccess[sourceId] || [];
+  const sourceDev = state.settings.moduleDevAccess[sourceId] || [];
+  if (isOpen) {
+    const list = sourceDev.length ? sourceDev : sourceAccess;
+    state.picker.dev = new Map(list.map((name) => [personKey(name), name]));
+  } else {
+    state.picker.selected = new Map(sourceAccess.map((name) => [personKey(name), name]));
+    const allowed = new Set(sourceAccess.map(personKey));
+    state.picker.dev = new Map(sourceDev.filter((name) => allowed.has(personKey(name))).map((name) => [personKey(name), name]));
+  }
+  state.picker.scope = "selected";
+  pickerCopySelect.value = "";
+  renderOrganizationTree();
+  renderPeopleList();
+});
 document.querySelector("#close-people-picker").addEventListener("click", () => pickerDialog.close());
 pickerDialog.addEventListener("close", () => { state.picker = null; });
 document.querySelector("#refresh-directory").addEventListener("click", async (event) => {
@@ -569,7 +1199,7 @@ document.querySelector("#refresh-directory").addEventListener("click", async (ev
 for (const [id, selected] of [["select-visible", true], ["deselect-visible", false]]) {
   document.querySelector(`#${id}`).addEventListener("click", () => {
     if (!state.directory || !state.picker) return;
-    const isOpen = state.picker.mode === "all";
+    const isOpen = state.picker.mode === "all" && !state.picker.batch;
     for (const person of visiblePeople()) {
       const key = personKey(person.username);
       if (isOpen) {
@@ -582,21 +1212,90 @@ for (const [id, selected] of [["select-visible", true], ["deselect-visible", fal
         state.picker.dev.delete(key);
       }
     }
+    renderOrganizationTree();
+    renderPeopleList();
+  });
+}
+for (const [id, asDev] of [["bulk-set-dev", true], ["bulk-set-self", false]]) {
+  document.querySelector(`#${id}`).addEventListener("click", () => {
+    if (!state.directory || !state.picker) return;
+    for (const person of visiblePeople()) {
+      const key = personKey(person.username);
+      if (asDev) {
+        state.picker.selected.set(key, person.username);
+        state.picker.dev.set(key, person.username);
+      } else if (state.picker.selected.has(key)) {
+        state.picker.dev.delete(key);
+      }
+    }
+    renderOrganizationTree();
     renderPeopleList();
   });
 }
 document.querySelector("#clear-selection").addEventListener("click", () => {
   if (!state.picker) return;
-  if (state.picker.mode === "all") state.picker.dev.clear();
+  if (state.picker.mode === "all" && !state.picker.batch) state.picker.dev.clear();
   else {
     state.picker.selected.clear();
     state.picker.dev.clear();
   }
+  renderOrganizationTree();
   renderPeopleList();
 });
 document.querySelector("#save-module-access").addEventListener("click", async (event) => {
   if (!state.picker || !state.directory) return;
   const button = event.currentTarget;
+  if (state.picker.batch) {
+    if (!state.picker.selected.size) {
+      document.querySelector("#picker-message").textContent = "请至少选择 1 名人员。";
+      return;
+    }
+    const moduleAccess = {};
+    const moduleDevAccess = {};
+    const pickedNames = [...state.picker.selected.values()];
+    const pickedDev = pickedNames.filter((name) => state.picker.dev.has(personKey(name)));
+    for (const module of state.picker.modules) {
+      const isOpen = getModuleMode(module) === "all";
+      const existingAccess = state.settings.moduleAccess[module.id] || [];
+      const existingDev = state.settings.moduleDevAccess[module.id] || [];
+      if (!isOpen) {
+        const mergedAccess = new Map(existingAccess.map((name) => [personKey(name), name]));
+        for (const name of pickedNames) mergedAccess.set(personKey(name), name);
+        if (mergedAccess.size > 200) {
+          document.querySelector("#picker-message").textContent = `「${module.label}」合并后超过 200 人上限。`;
+          return;
+        }
+        moduleAccess[module.id] = [...mergedAccess.values()];
+      }
+      if (pickedDev.length) {
+        const mergedDev = new Map(existingDev.map((name) => [personKey(name), name]));
+        for (const name of pickedDev) mergedDev.set(personKey(name), name);
+        if (mergedDev.size > 200) {
+          document.querySelector("#picker-message").textContent = `「${module.label}」dev 名单超过 200 人上限。`;
+          return;
+        }
+        moduleDevAccess[module.id] = [...mergedDev.values()];
+      }
+    }
+    if (!Object.keys(moduleAccess).length && !Object.keys(moduleDevAccess).length) {
+      document.querySelector("#picker-message").textContent = "所选模块均为全员开放，请将人员切换为 dev 后再添加。";
+      return;
+    }
+    button.disabled = true;
+    try {
+      const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify({ moduleAccess, moduleDevAccess }) });
+      const count = state.picker.modules.length;
+      state.checkedModules.clear();
+      applyModulePayload(payload);
+      pickerDialog.close();
+      showMessage(accessMessage, `已将 ${pickedNames.length} 人添加到 ${count} 个模块。`, false);
+    } catch (error) {
+      document.querySelector("#picker-message").textContent = `保存失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+    return;
+  }
   const isOpen = state.picker.mode === "all";
   if ((isOpen ? state.picker.dev.size : state.picker.selected.size) > 200) {
     document.querySelector("#picker-message").textContent = "每个模块最多可选择 200 人。";
@@ -616,12 +1315,9 @@ document.querySelector("#save-module-access").addEventListener("click", async (e
         moduleDevAccess: { [module.id]: [...state.picker.selected.values()].filter((name) => state.picker.dev.has(personKey(name))) },
       };
     const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify(body) });
-    state.settings.moduleDevAccess = payload.moduleDevAccess;
-    state.settings.moduleAccess = payload.moduleAccess;
-    state.settings.moduleAccessModes = payload.moduleAccessModes;
-    renderModules();
+    applyModulePayload(payload);
     pickerDialog.close();
-    showMessage(accessMessage, isOpen ? `${module.label}的 dev 查询身份已保存。` : `${module.label}的查看人员已保存。`, false);
+    showMessage(accessMessage, `${module.label}：权限名单已保存。`, false);
   } catch (error) { document.querySelector("#picker-message").textContent = `保存失败：${error.message}`; }
   finally { button.disabled = false; }
 });

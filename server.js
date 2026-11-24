@@ -218,6 +218,7 @@ admin.get("/settings", (req, res) => res.json({
   moduleAccess: accessControl.getModuleAccess(),
   moduleDevAccess: accessControl.getModuleDevAccess(),
   moduleAccessModes: accessControl.getModuleAccessModes(),
+  moduleQueryModes: accessControl.getModuleQueryModes(),
 }));
 admin.get("/personnel-directory", asyncRoute(async (req, res) => {
   const directory = await personnelDirectory.get(req.identity.kingdeeUsername, { refresh: req.query.refresh === "1" });
@@ -306,6 +307,7 @@ admin.put("/module-access", requireSameOrigin, (req, res) => {
     req.body?.moduleAccess || {},
     req.body?.moduleDevAccess || {},
     req.body?.moduleAccessModes || {},
+    req.body?.moduleQueryModes || {},
   );
   audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "module_access.update", ip: req.ip });
   res.json({
@@ -313,6 +315,7 @@ admin.put("/module-access", requireSameOrigin, (req, res) => {
     moduleAccess,
     moduleDevAccess: accessControl.getModuleDevAccess(),
     moduleAccessModes: accessControl.getModuleAccessModes(),
+    moduleQueryModes: accessControl.getModuleQueryModes(),
   });
 });
 admin.post("/admins", requireSameOrigin, (req, res) => {

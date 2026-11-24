@@ -220,3 +220,43 @@ test("filters the public catalog before it reaches the browser", () => {
   const visible = publicCatalog(catalog, false, (id) => id === "sales_orders");
   assert.deepEqual(visible.map((item) => item.id), ["sales_orders"]);
 });
+
+test("module query modes support uniform dev across restricted and open modules and persist through reload", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kqh-access-query-mode-"));
+  const dataPath = path.join(directory, "access-control.json");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const moduleIds = ["inventory", "expense_claims"];
+  const openByDefaultModuleIds = ["expense_claims"];
+  const access = new AccessControl({ dataPath, moduleIds, openByDefaultModuleIds });
+
+  assert.deepEqual(access.getModuleQueryModes(), { inventory: "self", expense_claims: "self" });
+
+  const employeeA = { kingdeeUsername: "employee_a" };
+  const employeeB = { kingdeeUsername: "employee_b" };
+  const admin = { kingdeeUsername: "admin_kd", isSuperAdmin: true };
+
+  access.setModuleAccess(
+    { inventory: ["employee_a"] },
+    {},
+    { inventory: "restricted", expense_claims: "all" },
+    { inventory: "dev", expense_claims: "dev" },
+  );
+
+  const restored = new AccessControl({ dataPath, moduleIds, openByDefaultModuleIds });
+  assert.deepEqual(restored.getModuleQueryModes(), { inventory: "dev", expense_claims: "dev" });
+
+  assert.deepEqual(restored.queryIdentity(employeeA, "inventory"), { ...employeeA, kingdeeUsername: "dev", allData: true });
+  assert.throws(() => restored.queryIdentity(employeeB, "inventory"), { statusCode: 403 });
+  assert.deepEqual(restored.queryIdentity(admin, "inventory"), { ...admin, kingdeeUsername: "dev", allData: true });
+  assert.deepEqual(restored.queryIdentity(employeeB, "expense_claims"), { ...employeeB, kingdeeUsername: "dev", allData: true });
+
+  restored.setModuleAccess({}, { inventory: ["employee_a"] }, {}, { inventory: "self", expense_claims: "self" });
+  assert.equal(restored.queryIdentity(employeeA, "inventory").allData, true);
+  assert.equal(restored.queryIdentity(admin, "inventory").allData, false);
+  assert.equal(restored.queryIdentity(employeeB, "expense_claims").allData, false);
+
+  assert.throws(
+    () => restored.setModuleAccess({}, {}, {}, { inventory: "invalid" }),
+    { statusCode: 400 },
+  );
+});

@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员设置 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=module-mode-1">
+  <link rel="stylesheet" href="/auth.css?v=module-redesign-1">
 </head>
 <body class="admin-page">
   <header class="admin-topbar">
@@ -16,7 +16,7 @@
 
   <main class="admin-shell">
     <section class="admin-heading">
-      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>模块名单直接匹配员工的金蝶用户名。费用报销单与审批进度默认开放所有人员，其余模块默认仅授权人员可见，管理员可随时按模块调整。</p></div>
+      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>按模块配置访问范围、查询账号与授权名单。</p></div>
       <div class="admin-identity"><span>当前超级管理员</span><strong id="current-admin">读取中</strong></div>
     </section>
 
@@ -34,9 +34,76 @@
     </section>
 
     <section class="settings-section" aria-labelledby="module-title">
-      <div class="section-heading"><div><p class="auth-eyebrow">MODULE ACCESS</p><h2 id="module-title">模块查看人员</h2></div><span class="read-only-badge">按模块设置访问范围 · 支持多选</span></div>
-      <div class="module-explainer"><span class="access-state open">开放所有人员</span><p>所有登录员工默认使用本人金蝶账号查询，可单独设置 dev 查询身份</p><span class="access-state restricted">仅授权人员</span><p>只允许选中人员和超级管理员查看；名单为空时仅超级管理员可见</p></div>
-      <div class="module-grid" id="module-grid" aria-live="polite"></div>
+      <div class="section-heading module-section-heading">
+        <div><p class="auth-eyebrow">MODULE ACCESS</p><h2 id="module-title">模块权限</h2></div>
+        <div class="module-view-tabs" role="tablist" aria-label="模块权限视图">
+          <button id="tab-modules" type="button" role="tab" aria-selected="true" aria-controls="panel-modules">按模块 <span id="tab-modules-count">0</span></button>
+          <button id="tab-roster" type="button" role="tab" aria-selected="false" aria-controls="panel-roster">已授权名单 <span id="tab-roster-count">0</span></button>
+        </div>
+      </div>
+
+      <div id="panel-modules" role="tabpanel" aria-labelledby="tab-modules">
+        <div class="module-toolbar">
+          <input id="module-search" class="module-search-input" type="search" maxlength="60" placeholder="搜索模块名称" aria-label="搜索模块">
+          <div class="module-filters" role="group" aria-label="筛选模块">
+            <button type="button" data-filter="all" aria-pressed="true">全部 <span data-count="all">0</span></button>
+            <button type="button" data-filter="open" aria-pressed="false">全员 <span data-count="open">0</span></button>
+            <button type="button" data-filter="restricted" aria-pressed="false">指定 <span data-count="restricted">0</span></button>
+            <button type="button" data-filter="uniform_dev" aria-pressed="false">统一 dev <span data-count="uniform_dev">0</span></button>
+            <button type="button" data-filter="admin_only" aria-pressed="false">仅超管 <span data-count="admin_only">0</span></button>
+          </div>
+        </div>
+        <div id="module-batch-bar" class="module-batch-bar" hidden>
+          <strong id="batch-count">已选 0 项</strong>
+          <div class="module-batch-actions">
+            <button id="batch-set-all" type="button">设为全员</button>
+            <button id="batch-set-restricted" type="button">设为指定</button>
+            <button id="batch-set-self" type="button">设为本人</button>
+            <button id="batch-set-dev" type="button">设为统一 dev</button>
+            <button id="batch-add-people" type="button" class="batch-accent">批量加人</button>
+            <button id="batch-clear" type="button" class="batch-ghost">取消</button>
+          </div>
+        </div>
+        <div class="module-table-wrap" aria-live="polite">
+          <table class="module-table">
+            <thead>
+              <tr>
+                <th class="col-check"><input id="select-all-modules" type="checkbox" aria-label="全选当前模块"></th>
+                <th class="col-module">模块</th>
+                <th class="col-scope">访问范围</th>
+                <th class="col-query">查询账号</th>
+                <th class="col-roster">授权名单</th>
+                <th class="col-action">操作</th>
+              </tr>
+            </thead>
+            <tbody id="module-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="panel-roster" role="tabpanel" aria-labelledby="tab-roster" hidden>
+        <div class="module-toolbar">
+          <input id="roster-search" class="module-search-input" type="search" maxlength="60" placeholder="搜索人员或模块" aria-label="搜索已授权人员">
+          <div class="module-filters roster-filters" role="group" aria-label="筛选已授权人员">
+            <button type="button" data-roster-filter="all" aria-pressed="true">全部人员 <span data-roster-count="all">0</span></button>
+            <button type="button" data-roster-filter="dev" aria-pressed="false">含 dev <span data-roster-count="dev">0</span></button>
+          </div>
+        </div>
+        <div id="roster-open-modules" class="roster-open-bar" hidden></div>
+        <div class="module-table-wrap" aria-live="polite">
+          <table class="module-table roster-table">
+            <thead>
+              <tr>
+                <th class="col-person">人员</th>
+                <th class="col-modules">已授权模块</th>
+                <th class="col-stats">统计</th>
+                <th class="col-action">操作</th>
+              </tr>
+            </thead>
+            <tbody id="roster-rows"></tbody>
+          </table>
+        </div>
+      </div>
       <div class="admin-message" id="access-message" role="status" hidden></div>
     </section>
 
@@ -73,12 +140,39 @@
     </section>
   </main>
   <dialog id="people-picker" class="people-picker" aria-labelledby="people-picker-title">
-    <div class="picker-heading"><div><p class="auth-eyebrow">PERSONNEL ACCESS</p><h2 id="people-picker-title">选择查看人员</h2><p id="picker-subtitle">按组织或部门选择，可多选。</p></div><button id="close-people-picker" class="picker-close" type="button" aria-label="关闭选择窗口">×</button></div>
-    <div class="picker-search"><label for="people-search">搜索人员</label><input id="people-search" type="search" maxlength="100" placeholder="姓名、金蝶账号或部门"><button id="refresh-directory" class="secondary-action" type="button">刷新组织架构</button></div>
-    <div class="picker-layout"><nav id="org-tree" class="org-tree" aria-label="组织架构"></nav><section class="picker-results" aria-label="人员列表"><div class="picker-results-heading"><strong id="picker-scope-title">全部人员</strong><span id="picker-results-count"></span></div><div class="picker-bulk"><button id="select-visible" type="button">选中当前列表</button><button id="deselect-visible" type="button">取消当前列表</button></div><div id="people-list" class="people-list"></div></section></div>
-    <div class="picker-footer"><div><strong id="picker-selected-count">已选 0 人</strong><p id="picker-message" class="picker-message" role="status"></p></div><div class="picker-footer-actions"><button id="clear-selection" class="secondary-action" type="button">清空名单</button><button id="save-module-access" class="primary-action" type="button">保存该模块权限</button></div></div>
+    <div class="picker-heading">
+      <div>
+        <div class="picker-title-row">
+          <h2 id="people-picker-title">权限名单</h2>
+          <div id="picker-tags" class="picker-tags"></div>
+        </div>
+      </div>
+      <button id="close-people-picker" class="picker-close" type="button" aria-label="关闭窗口">×</button>
+    </div>
+    <div class="picker-search">
+      <input id="people-search" type="search" maxlength="100" placeholder="搜索姓名、金蝶账号或部门" aria-label="搜索人员">
+      <select id="picker-copy-from" class="picker-copy-select" aria-label="从其他模块复制名单"></select>
+      <button id="refresh-directory" class="secondary-action" type="button">刷新目录</button>
+    </div>
+    <div class="picker-layout">
+      <nav id="org-tree" class="org-tree" aria-label="组织架构"></nav>
+      <section class="picker-results" aria-label="人员列表">
+        <div class="picker-results-heading"><strong id="picker-scope-title">全部人员</strong><span id="picker-results-count"></span></div>
+        <div class="picker-bulk">
+          <button id="select-visible" type="button">全选当前</button>
+          <button id="deselect-visible" type="button">取消当前</button>
+          <button id="bulk-set-dev" type="button" hidden>当前改 dev</button>
+          <button id="bulk-set-self" type="button" hidden>当前改本人</button>
+        </div>
+        <div id="people-list" class="people-list"></div>
+      </section>
+    </div>
+    <div class="picker-footer">
+      <div><strong id="picker-selected-count">已选 0 人</strong><p id="picker-message" class="picker-message" role="status"></p></div>
+      <div class="picker-footer-actions"><button id="clear-selection" class="secondary-action" type="button">清空</button><button id="save-module-access" class="primary-action" type="button">保存</button></div>
+    </div>
   </dialog>
   <script src="/passkey.js?v=20260813-1" defer></script>
-  <script src="/admin.js?v=module-mode-1" defer></script>
+  <script src="/admin.js?v=module-redesign-1" defer></script>
 </body>
 </html>

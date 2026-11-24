@@ -6,6 +6,7 @@ const COOKIE_NAME = "kqh_admin_session";
 const PASSKEY_CHALLENGE_COOKIE = "kqh_passkey_challenge";
 const PASSWORD_MIN_LENGTH = 10;
 const MODULE_ACCESS_MODES = new Set(["all", "restricted"]);
+const MODULE_QUERY_MODES = new Set(["self", "dev"]);
 
 function normalizeIdentifier(value) {
   return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
@@ -93,7 +94,7 @@ class AccessControl {
   }
 
   load() {
-    let state = { version: 1, admins: [], moduleAccess: {}, moduleDevAccess: {}, moduleAccessModes: {}, settings: {} };
+    let state = { version: 1, admins: [], moduleAccess: {}, moduleDevAccess: {}, moduleAccessModes: {}, moduleQueryModes: {}, settings: {} };
     if (fs.existsSync(this.dataPath)) {
       state = JSON.parse(fs.readFileSync(this.dataPath, "utf8"));
     }
@@ -101,12 +102,16 @@ class AccessControl {
     if (!isPlainObject(state.moduleAccess)) state.moduleAccess = {};
     if (!isPlainObject(state.moduleDevAccess)) state.moduleDevAccess = {};
     if (!isPlainObject(state.moduleAccessModes)) state.moduleAccessModes = {};
+    if (!isPlainObject(state.moduleQueryModes)) state.moduleQueryModes = {};
     if (!isPlainObject(state.settings)) state.settings = {};
     for (const moduleId of this.moduleIds) {
       if (!Array.isArray(state.moduleAccess[moduleId])) state.moduleAccess[moduleId] = [];
       if (!Array.isArray(state.moduleDevAccess[moduleId])) state.moduleDevAccess[moduleId] = [];
       if (!MODULE_ACCESS_MODES.has(state.moduleAccessModes[moduleId])) {
         state.moduleAccessModes[moduleId] = this.defaultModuleAccessMode(moduleId);
+      }
+      if (!MODULE_QUERY_MODES.has(state.moduleQueryModes[moduleId])) {
+        state.moduleQueryModes[moduleId] = "self";
       }
     }
     return state;
@@ -386,22 +391,39 @@ class AccessControl {
     return Object.fromEntries(this.moduleIds.map((moduleId) => [moduleId, this.getModuleAccessMode(moduleId)]));
   }
 
-  setModuleAccess(moduleAccess = {}, devAccess = {}, accessModes = {}) {
+  getModuleQueryMode(moduleId) {
+    const mode = this.state.moduleQueryModes?.[moduleId];
+    return MODULE_QUERY_MODES.has(mode) ? mode : "self";
+  }
+
+  getModuleQueryModes() {
+    return Object.fromEntries(this.moduleIds.map((moduleId) => [moduleId, this.getModuleQueryMode(moduleId)]));
+  }
+
+  setModuleAccess(moduleAccess = {}, devAccess = {}, accessModes = {}, queryModes = {}) {
     if (!isPlainObject(moduleAccess)) throw Object.assign(new Error("模块人员名单格式不正确。"), { statusCode: 400 });
     if (!isPlainObject(devAccess)) throw Object.assign(new Error("查询身份名单格式不正确。"), { statusCode: 400 });
     if (!isPlainObject(accessModes)) throw Object.assign(new Error("模块访问范围格式不正确。"), { statusCode: 400 });
+    if (!isPlainObject(queryModes)) throw Object.assign(new Error("模块查询账号模式格式不正确。"), { statusCode: 400 });
     const nextAccess = this.getModuleAccess();
     const nextDev = this.getModuleDevAccess();
     const nextModes = this.getModuleAccessModes();
+    const nextQueryModes = this.getModuleQueryModes();
     for (const moduleId of this.moduleIds) {
       const hasMode = moduleId in accessModes;
       const hasAccess = moduleId in moduleAccess;
       const hasDev = moduleId in devAccess;
-      if (!hasMode && !hasAccess && !hasDev) continue;
+      const hasQueryMode = moduleId in queryModes;
+      if (!hasMode && !hasAccess && !hasDev && !hasQueryMode) continue;
       if (hasMode) {
         const mode = accessModes[moduleId];
         if (!MODULE_ACCESS_MODES.has(mode)) throw Object.assign(new Error("模块访问范围格式不正确。"), { statusCode: 400 });
         nextModes[moduleId] = mode;
+      }
+      if (hasQueryMode) {
+        const queryMode = queryModes[moduleId];
+        if (!MODULE_QUERY_MODES.has(queryMode)) throw Object.assign(new Error("模块查询账号模式格式不正确。"), { statusCode: 400 });
+        nextQueryModes[moduleId] = queryMode;
       }
       if (hasAccess) {
         nextAccess[moduleId] = normalizeUserList(moduleAccess[moduleId], "模块人员名单格式不正确。");
@@ -415,13 +437,16 @@ class AccessControl {
       }
     }
     const previous = this.state;
-    this.state = { ...previous, moduleAccess: nextAccess, moduleDevAccess: nextDev, moduleAccessModes: nextModes };
+    this.state = { ...previous, moduleAccess: nextAccess, moduleDevAccess: nextDev, moduleAccessModes: nextModes, moduleQueryModes: nextQueryModes };
     try { this.persist(); } catch (error) { this.state = previous; throw error; }
     return this.getModuleAccess();
   }
 
   queryIdentity(identity, moduleId) {
     if (!this.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
+    if (this.getModuleQueryMode(moduleId) === "dev") {
+      return { ...identity, kingdeeUsername: "dev", allData: true };
+    }
     const actor = normalizeIdentifier(identity.kingdeeUsername);
     const allData = Boolean(actor) && (this.state.moduleDevAccess[moduleId] || []).some(name => normalizeIdentifier(name) === actor);
     return { ...identity, kingdeeUsername: allData ? "dev" : identity.kingdeeUsername, allData };
