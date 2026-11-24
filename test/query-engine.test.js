@@ -841,6 +841,9 @@ test("project financial reports use employee identity, organization IDs, separat
     assert.equal(result.truncated, true);
     assert.equal(result.page, 2);
     await assert.rejects(engine.execute(identity, { tool, arguments: { page: 0 } }), /页码/);
+    kingdee.getSysReportData = async () => ({ Rows: [entry.fields.map(() => "")], RowCount: 1 });
+    const overflow = await engine.execute(identity, { tool, arguments: { page: 2, limit: 1 } });
+    assert.deepEqual(overflow.rows, []);
     kingdee.getSysReportData = async () => ({ Rows: [["缺列"]], RowCount: 1 });
     await assert.rejects(engine.execute(identity, { tool }), /列数/);
   }

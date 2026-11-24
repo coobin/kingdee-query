@@ -563,8 +563,13 @@ class QueryEngine {
       throw new KingdeeError("金蝶报表返回的列数发生变化，请核对报表字段。");
     }
     const parsedCount = Number(report.RowCount);
-    const count = Number.isFinite(parsedCount) ? parsedCount : rawRows.length;
-    const rows = rowsToObjects(rawRows, item.fields);
+    if (!Number.isSafeInteger(parsedCount) || parsedCount < 0 || report.RowCount == null) {
+      throw new KingdeeError("金蝶报表缺少有效总行数，无法确认分页结果。");
+    }
+    const count = parsedCount;
+    // Some Kingdee reports repeat the last row for offsets beyond RowCount.
+    const remaining = Math.max(0, count - (page - 1) * limit);
+    const rows = rowsToObjects(rawRows.slice(0, Math.min(limit, remaining)), item.fields);
     const truncated = page > 1 || count > rows.length;
     const unassigned = tool === "project_pur_sale_consistency" && (accepted.projectNumber || accepted.subprojectNumber)
       ? rows.filter((row) => !row[accepted.subprojectNumber ? "销售子项目编码" : "销售项目编码"]).length : 0;
