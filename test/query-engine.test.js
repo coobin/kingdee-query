@@ -880,25 +880,44 @@ test("builds completed subproject purchase list filter and requires a subproject
   assert.match(result.filter, /FMaterialId\.FName LIKE '%交换机%'/);
   assert.match(result.filter, /FDate>='2026-01-01'/);
   assert.match(result.filter, /FDate<'2026-07-01'/);
+  assert.match(result.bindingFilter, /FPurBindStatus='A'/);
+  assert.match(result.bindingFilter, /FBillNo LIKE '%SP-001%'/);
+  assert.match(result.bindingFilter, /\(FName LIKE '%示例项目%' OR FSaleProjectId\.FName LIKE '%示例项目%'\)/);
+  assert.match(result.bindingFilter, /FPurMaterialId\.FName LIKE '%交换机%'/);
 });
 
-test("paginates completed subproject purchase list rows, calculates totals, and respects MCP limit", async () => {
+test("merges bound subproject purchase details with direct PO rows, deduplicates, and respects MCP limit", async () => {
   const entry = catalog.subproject_purchase_list;
   const requests = [];
   const kingdee = {
     async executeBillQuery(user, request) {
       assert.equal(user, identity.kingdeeUsername);
-      assert.equal(request.FormId, "PUR_PurchaseOrder");
       requests.push(request);
+      if (request.FormId === "PARA_SaleSubProject") {
+        if (request.StartRow === 0) {
+          return [
+            ["SP-001", "示例子项目A", "示例项目A", "PO-001", 1, "1001", "交换机", "S5735-24P", "台", 2, 1250.5, 2501],
+            ["SP-001", "示例子项目A", "示例项目A", "PO-BIND", 1, "2001", "服务器", "SRV-800", "台", 1, 10000, 10000],
+          ];
+        }
+        return [];
+      }
+      if (request.FormId === "PUR_PurchaseOrder" && request.FilterString.includes("FBillNo IN")) {
+        return request.StartRow === 0
+          ? [
+              ["PO-001", "2026-03-10T00:00:00", "供应商甲", "1001", 1],
+              ["PO-BIND", "2026-03-12T00:00:00", "供应商丙", "2001", 1],
+            ]
+          : [];
+      }
+      assert.equal(request.FormId, "PUR_PurchaseOrder");
       if (request.StartRow === 0) {
         return [
-          ["SP-001", "示例子项目A", "示例项目A", "PO-001", "2026-03-10T00:00:00", "供应商甲", "交换机", "S5735-24P", "台", 2, 1250.5, 2501],
-          ["SP-001", "", "示例项目A", "PO-002", "2026-03-15T00:00:00", "供应商乙", "电源模块", "PWR-500", "个", 4, 300, 1200],
+          ["1001", 1, "SP-001", "示例子项目A", "示例项目A", "PO-001", "2026-03-10T00:00:00", "供应商甲", "交换机", "S5735-24P", "台", 2, 1250.5, 2501],
+          ["1002", 1, "SP-001", "", "示例项目A", "PO-002", "2026-03-15T00:00:00", "供应商乙", "光模块", "SFP-10G", "个", 10, 86.125, 861.25],
         ];
       }
-      return [
-        ["SP-001", "示例子项目A", "示例项目A", "PO-002", "2026-03-15T00:00:00", "供应商乙", "光模块", "SFP-10G", "个", 10, 86.125, 861.25],
-      ];
+      return [];
     },
   };
   const engine = new QueryEngine({
@@ -910,20 +929,21 @@ test("paginates completed subproject purchase list rows, calculates totals, and 
     tool: "subproject_purchase_list",
     arguments: { subprojectNumber: "SP-001", limit: 1 },
   });
-  assert.equal(requests.length, 2);
   assert.equal(webResult.tool, "subproject_purchase_list");
   assert.equal(webResult.rows.length, 3);
   assert.equal(webResult.count, 3);
   assert.equal(webResult.truncated, false);
   assert.deepEqual(webResult.columns, ["销售子项目编码", "项目名称", "采购订单号", "采购日期", "供应商", "物料名称", "规格型号", "单位", "数量", "单价", "合价"]);
   assert.equal(webResult.rows[0]["采购日期"], "2026-03-10");
-  assert.equal(webResult.rows[1]["项目名称"], "示例项目A");
+  assert.equal(webResult.rows[1]["采购订单号"], "PO-BIND");
+  assert.equal(webResult.rows[1]["供应商"], "供应商丙");
+  assert.equal(webResult.rows[2]["项目名称"], "示例项目A");
   assert.equal(webResult.rows[2]["单价"], 86.125);
-  assert.equal(webResult.statistics.orderCount, 2);
-  assert.equal(webResult.statistics.supplierCount, 2);
+  assert.equal(webResult.statistics.orderCount, 3);
+  assert.equal(webResult.statistics.supplierCount, 3);
   assert.equal(webResult.statistics.subprojectCount, 1);
-  assert.equal(webResult.statistics.totalQuantity, 16);
-  assert.equal(webResult.statistics.totalAmount, 4562.25);
+  assert.equal(webResult.statistics.totalQuantity, 13);
+  assert.equal(webResult.statistics.totalAmount, 13362.25);
 
   const mcpResult = await engine.execute({ ...identity, channel: "mcp" }, {
     tool: "subproject_purchase_list",
@@ -932,5 +952,5 @@ test("paginates completed subproject purchase list rows, calculates totals, and 
   assert.equal(mcpResult.rows.length, 2);
   assert.equal(mcpResult.count, 3);
   assert.equal(mcpResult.truncated, true);
-  assert.equal(mcpResult.statistics.totalAmount, 4562.25);
+  assert.equal(mcpResult.statistics.totalAmount, 13362.25);
 });

@@ -748,11 +748,13 @@
   },
   "subproject_purchase_list": {
     "label": "子项目采购清单表",
-    "description": "以销售子项目为维度，查询该子项目下已审核的采购订单清单（不限关闭状态），包含供应商、项目名称、物料名称、规格型号、数量、单价和合价",
+    "description": "以销售子项目为维度，查询该子项目下已审核且关联/绑定的采购订单清单（含集采采购绑定，不限关闭状态），包含供应商、项目名称、物料名称、规格型号、数量、单价和合价",
     "formId": "PUR_PurchaseOrder",
     "queryType": "subproject_purchase_list",
     "maxRows": 5000,
     "fields": [
+      ["FPOOrderEntry_FENTRYID", "采购订单分录Id"],
+      ["FPOOrderEntry_FSeq", "采购明细行号"],
       ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
       ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
       ["F_PARA_SaleProId.FName", "销售项目名称"],
@@ -766,6 +768,35 @@
       ["FTaxPrice", "单价"],
       ["FAllAmount", "合价"]
     ],
+    "bindingSource": {
+      "formId": "PARA_SaleSubProject",
+      "fields": [
+        ["FBillNo", "销售子项目编码"],
+        ["FName", "销售子项目名称"],
+        ["FSaleProjectId.FName", "销售项目名称"],
+        ["FPurOrderNo", "采购订单号"],
+        ["FPurSeq", "采购明细行号"],
+        ["FPurOrderEntryId", "采购订单分录Id"],
+        ["FPurMaterialId.FName", "物料名称"],
+        ["FPurMaterialId.FSpecification", "规格型号"],
+        ["FPurUnitID.FName", "单位"],
+        ["FPurQty", "数量"],
+        ["FPurPrice", "单价"],
+        ["FPurAllAmount", "合价"]
+      ],
+      "defaultOrder": "FBillNo ASC,FPurOrderNo ASC,FPurSeq ASC"
+    },
+    "orderMetaSource": {
+      "formId": "PUR_PurchaseOrder",
+      "fields": [
+        ["FBillNo", "采购订单号"],
+        ["FDate", "采购日期"],
+        ["FSupplierId.FName", "供应商"],
+        ["FPOOrderEntry_FENTRYID", "采购订单分录Id"],
+        ["FPOOrderEntry_FSeq", "采购明细行号"]
+      ],
+      "defaultOrder": "FBillNo ASC,FPOOrderEntry_FSeq ASC"
+    },
     "publicColumns": [
       "销售子项目编码",
       "项目名称",

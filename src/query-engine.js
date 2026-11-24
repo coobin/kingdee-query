@@ -446,6 +446,15 @@ function buildSubprojectPurchaseListFilter(item, args = {}) {
     "FMRPTerminateStatus='A'",
     "F_PARA_SaleSubProId.FNumber<>''",
   ];
+  const bindingClauses = [
+    "FPurBindStatus='A'",
+    "FPurOrderNo<>''",
+  ];
+  const orderMetaClauses = [
+    "FDocumentStatus='C'",
+    "FCancelStatus='A'",
+    "FMRPTerminateStatus='A'",
+  ];
   const accepted = {};
   const subprojectNumber = String(args.subprojectNumber || "").trim();
   const subprojectName = String(args.subprojectName || "").trim();
@@ -461,71 +470,143 @@ function buildSubprojectPurchaseListFilter(item, args = {}) {
     throw Object.assign(new Error("开始日期不能晚于结束日期。"), { statusCode: 400 });
   }
   if (subprojectNumber) {
-    clauses.push(`${item.filterFields.subprojectNumber} LIKE '%${escapeValue(subprojectNumber)}%'`);
+    const escaped = escapeValue(subprojectNumber);
+    clauses.push(`${item.filterFields.subprojectNumber} LIKE '%${escaped}%'`);
+    bindingClauses.push(`FBillNo LIKE '%${escaped}%'`);
     accepted.subprojectNumber = subprojectNumber;
   }
   if (subprojectName) {
     const escaped = escapeValue(subprojectName);
     clauses.push(`(${item.filterFields.subprojectName} LIKE '%${escaped}%' OR F_PARA_SaleProId.FName LIKE '%${escaped}%')`);
+    bindingClauses.push(`(FName LIKE '%${escaped}%' OR FSaleProjectId.FName LIKE '%${escaped}%')`);
     accepted.subprojectName = subprojectName;
   }
   if (supplierName) {
-    clauses.push(`${item.filterFields.supplierName} LIKE '%${escapeValue(supplierName)}%'`);
+    const escaped = escapeValue(supplierName);
+    clauses.push(`${item.filterFields.supplierName} LIKE '%${escaped}%'`);
+    orderMetaClauses.push(`${item.filterFields.supplierName} LIKE '%${escaped}%'`);
     accepted.supplierName = supplierName;
   }
   if (materialName) {
-    clauses.push(`${item.filterFields.materialName} LIKE '%${escapeValue(materialName)}%'`);
+    const escaped = escapeValue(materialName);
+    clauses.push(`${item.filterFields.materialName} LIKE '%${escaped}%'`);
+    bindingClauses.push(`FPurMaterialId.FName LIKE '%${escaped}%'`);
     accepted.materialName = materialName;
   }
   if (dateFrom) {
     clauses.push(`${item.filterFields.dateFrom}>='${dateFrom}'`);
+    orderMetaClauses.push(`${item.filterFields.dateFrom}>='${dateFrom}'`);
     accepted.dateFrom = dateFrom;
   }
   if (dateTo) {
     clauses.push(`${item.filterFields.dateTo}<'${nextDay(dateTo)}'`);
+    orderMetaClauses.push(`${item.filterFields.dateTo}<'${nextDay(dateTo)}'`);
     accepted.dateTo = dateTo;
   }
-  return { filter: clauses.join(" AND "), accepted };
+  return {
+    filter: clauses.join(" AND "),
+    bindingFilter: bindingClauses.join(" AND "),
+    orderMetaClauses,
+    accepted,
+  };
 }
 
-function formatSubprojectPurchaseList(rawRows, item, { truncated = false } = {}) {
-  const objects = rowsToObjects(rawRows, item.fields, item.valueMappings);
+function normalizeSubprojectPurchaseDate(value) {
+  const rawDate = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}T/.test(rawDate) ? rawDate.slice(0, 10) : rawDate;
+}
+
+function subprojectPurchaseKey(subprojectNumber, orderNumber, entryId, seq) {
+  const normalizedSub = String(subprojectNumber || "").normalize("NFKC").trim().toUpperCase();
+  const normalizedEntry = String(entryId == null ? "" : entryId).trim();
+  if (normalizedEntry && normalizedEntry !== "0") return `${normalizedSub}::entry:${normalizedEntry}`;
+  return `${normalizedSub}::line:${String(orderNumber || "").trim().toUpperCase()}#${String(seq == null ? "" : seq).trim()}`;
+}
+
+function formatSubprojectPurchaseList(bindingObjects, orderMetaObjects, directOrderObjects, { truncated = false } = {}) {
+  const metaByEntryId = new Map();
+  const metaByBillSeq = new Map();
+  for (const meta of orderMetaObjects || []) {
+    const entryId = String(meta["采购订单分录Id"] == null ? "" : meta["采购订单分录Id"]).trim();
+    const orderNumber = String(meta["采购订单号"] || "").trim();
+    const seq = String(meta["采购明细行号"] == null ? "" : meta["采购明细行号"]).trim();
+    if (entryId && entryId !== "0") metaByEntryId.set(entryId, meta);
+    if (orderNumber) metaByBillSeq.set(`${orderNumber.toUpperCase()}#${seq}`, meta);
+  }
+
+  const seen = new Set();
+  const records = [];
+
+  const pushRecord = (row, meta = null) => {
+    const subprojectNumber = String(row["销售子项目编码"] || "").trim();
+    const projectName = String(row["销售子项目名称"] || row["销售项目名称"] || "").trim();
+    const orderNumber = String(row["采购订单号"] || "").trim();
+    const seq = Number(row["采购明细行号"]) || 0;
+    const entryId = String(row["采购订单分录Id"] == null ? "" : row["采购订单分录Id"]).trim();
+    const key = subprojectPurchaseKey(subprojectNumber, orderNumber, entryId, seq);
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const purchaseDate = normalizeSubprojectPurchaseDate(meta ? meta["采购日期"] : row["采购日期"]);
+    const supplier = String(meta ? meta["供应商"] : row["供应商"] || "").trim();
+    const quantity = roundQuantity(row["数量"]);
+    const unitPrice = roundUnitPrice(row["单价"]);
+    const amount = roundMoney(Number(row["合价"]) || 0);
+
+    records.push({
+      sortSubproject: subprojectNumber,
+      sortDate: purchaseDate,
+      sortOrder: orderNumber,
+      sortSeq: seq,
+      row: {
+        销售子项目编码: subprojectNumber,
+        项目名称: projectName,
+        采购订单号: orderNumber,
+        采购日期: purchaseDate,
+        供应商: supplier,
+        物料名称: String(row["物料名称"] || "").trim(),
+        规格型号: String(row["规格型号"] || "").trim(),
+        单位: String(row["单位"] || "").trim(),
+        数量: quantity,
+        单价: unitPrice,
+        合价: amount,
+      },
+    });
+  };
+
+  for (const row of bindingObjects || []) {
+    const entryId = String(row["采购订单分录Id"] == null ? "" : row["采购订单分录Id"]).trim();
+    const orderNumber = String(row["采购订单号"] || "").trim();
+    const seq = String(row["采购明细行号"] == null ? "" : row["采购明细行号"]).trim();
+    const meta = (entryId && entryId !== "0" ? metaByEntryId.get(entryId) : null)
+      || metaByBillSeq.get(`${orderNumber.toUpperCase()}#${seq}`);
+    if (!meta) continue;
+    pushRecord(row, meta);
+  }
+
+  for (const row of directOrderObjects || []) {
+    pushRecord(row, null);
+  }
+
+  records.sort((left, right) => (
+    left.sortSubproject.localeCompare(right.sortSubproject, "zh-CN")
+    || left.sortDate.localeCompare(right.sortDate)
+    || left.sortOrder.localeCompare(right.sortOrder, "zh-CN")
+    || left.sortSeq - right.sortSeq
+  ));
+
   const subprojects = new Set();
   const orders = new Set();
   const suppliers = new Set();
   let totalQuantity = 0;
   let totalAmount = 0;
-
-  const rows = objects.map((row) => {
-    const subprojectNumber = String(row["销售子项目编码"] || "").trim();
-    const projectName = String(row["销售子项目名称"] || row["销售项目名称"] || "").trim();
-    const orderNumber = String(row["采购订单号"] || "").trim();
-    const rawDate = String(row["采购日期"] || "").trim();
-    const purchaseDate = /^\d{4}-\d{2}-\d{2}T/.test(rawDate) ? rawDate.slice(0, 10) : rawDate;
-    const supplier = String(row["供应商"] || "").trim();
-    const quantity = roundQuantity(row["数量"]);
-    const unitPrice = roundUnitPrice(row["单价"]);
-    const amount = roundMoney(Number(row["合价"]) || 0);
-
-    if (subprojectNumber) subprojects.add(subprojectNumber);
-    if (orderNumber) orders.add(orderNumber);
-    if (supplier) suppliers.add(supplier);
-    totalQuantity += quantity;
-    totalAmount += amount;
-
-    return {
-      销售子项目编码: subprojectNumber,
-      项目名称: projectName,
-      采购订单号: orderNumber,
-      采购日期: purchaseDate,
-      供应商: supplier,
-      物料名称: String(row["物料名称"] || "").trim(),
-      规格型号: String(row["规格型号"] || "").trim(),
-      单位: String(row["单位"] || "").trim(),
-      数量: quantity,
-      单价: unitPrice,
-      合价: amount,
-    };
+  const rows = records.map(({ row }) => {
+    if (row["销售子项目编码"]) subprojects.add(row["销售子项目编码"]);
+    if (row["采购订单号"]) orders.add(row["采购订单号"]);
+    if (row["供应商"]) suppliers.add(row["供应商"]);
+    totalQuantity += Number(row["数量"]) || 0;
+    totalAmount += Number(row["合价"]) || 0;
+    return row;
   });
 
   const statistics = {
@@ -840,36 +921,74 @@ class QueryEngine {
   }
 
   async subprojectPurchaseList(identity, item, args) {
-    const { filter, accepted } = buildSubprojectPurchaseListFilter(item, args);
+    const { filter, bindingFilter, orderMetaClauses, accepted } = buildSubprojectPurchaseListFilter(item, args);
     const maxRows = Math.min(Math.max(Number(item.maxRows) || this.config.kingdee.aggregationMaxRows || 5000, 1), 10000);
     const pageSize = Math.min(this.config.kingdee.queryPageSize || 5000, maxRows);
-    const request = {
-      FormId: item.formId,
-      FieldKeys: item.fields.map(([key]) => key).join(","),
-      FilterString: filter,
-      OrderString: item.defaultOrder || "F_PARA_SaleSubProId.FNumber ASC,FDate ASC,FBillNo ASC,FPOOrderEntry_FSeq ASC",
-      TopRowCount: 0,
+    const queryCapped = async (request) => {
+      const rows = [];
+      let startRow = 0;
+      let capped = false;
+      while (rows.length < maxRows) {
+        const remaining = maxRows - rows.length;
+        const batchSize = Math.min(pageSize, remaining);
+        const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+          ...request,
+          StartRow: startRow,
+          Limit: batchSize,
+        });
+        rows.push(...page);
+        if (page.length < batchSize) break;
+        startRow += page.length;
+        if (rows.length >= maxRows) {
+          capped = true;
+          break;
+        }
+      }
+      return { rows, capped };
     };
-    const rawRows = [];
-    let startRow = 0;
-    let capped = false;
-    while (rawRows.length < maxRows) {
-      const remaining = maxRows - rawRows.length;
-      const batchSize = Math.min(pageSize, remaining);
-      const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
-        ...request,
-        StartRow: startRow,
-        Limit: batchSize,
-      });
-      rawRows.push(...page);
-      if (page.length < batchSize) break;
-      startRow += page.length;
-      if (rawRows.length >= maxRows) {
-        capped = true;
-        break;
+
+    const [bindingResult, directResult] = await Promise.all([
+      item.bindingSource
+        ? queryCapped({
+            FormId: item.bindingSource.formId,
+            FieldKeys: item.bindingSource.fields.map(([key]) => key).join(","),
+            FilterString: bindingFilter,
+            OrderString: item.bindingSource.defaultOrder || "FBillNo ASC,FPurOrderNo ASC,FPurSeq ASC",
+            TopRowCount: 0,
+          })
+        : Promise.resolve({ rows: [], capped: false }),
+      queryCapped({
+        FormId: item.formId,
+        FieldKeys: item.fields.map(([key]) => key).join(","),
+        FilterString: filter,
+        OrderString: item.defaultOrder || "F_PARA_SaleSubProId.FNumber ASC,FDate ASC,FBillNo ASC,FPOOrderEntry_FSeq ASC",
+        TopRowCount: 0,
+      }),
+    ]);
+
+    const bindingObjects = item.bindingSource
+      ? rowsToObjects(bindingResult.rows, item.bindingSource.fields)
+      : [];
+    const directObjects = rowsToObjects(directResult.rows, item.fields, item.valueMappings);
+
+    const orderMetaObjects = [];
+    if (bindingObjects.length && item.orderMetaSource) {
+      const billNos = [...new Set(bindingObjects.map((row) => String(row["采购订单号"] || "").trim()).filter(Boolean))];
+      const metaPageSize = this.config.kingdee.queryPageSize || 5000;
+      for (const batch of chunkValues(billNos, 100)) {
+        const rawMeta = await this.queryAllPages(identity, {
+          FormId: item.orderMetaSource.formId,
+          FieldKeys: item.orderMetaSource.fields.map(([key]) => key).join(","),
+          FilterString: [...orderMetaClauses, buildInFilter("FBillNo", batch)].join(" AND "),
+          OrderString: item.orderMetaSource.defaultOrder || "FBillNo ASC,FPOOrderEntry_FSeq ASC",
+          TopRowCount: 0,
+        }, metaPageSize);
+        orderMetaObjects.push(...rowsToObjects(rawMeta, item.orderMetaSource.fields));
       }
     }
-    const formatted = formatSubprojectPurchaseList(rawRows, item, { truncated: capped });
+
+    const capped = bindingResult.capped || directResult.capped;
+    const formatted = formatSubprojectPurchaseList(bindingObjects, orderMetaObjects, directObjects, { truncated: capped });
     const mcpLimit = identity?.channel === "mcp" && Number.isInteger(Number(args.limit)) && Number(args.limit) > 0
       ? Number(args.limit)
       : null;

@@ -5,7 +5,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 工具 ID | `subproject_purchase_list` |
-| 金蝶表单 | `PUR_PurchaseOrder` |
+| 金蝶表单 | `PARA_SaleSubProject`（`FPurDetails` 采购明细）+ `PUR_PurchaseOrder` |
 | 数据粒度 | 销售子项目下已审核的采购订单明细行（`FPOOrderEntry`，不限关闭状态） |
 | 默认排序 | `F_PARA_SaleSubProId.FNumber ASC,FDate ASC,FBillNo ASC,FPOOrderEntry_FSeq ASC` |
 | 页面入口 | 销售子项目编码或项目名称至少填写一项，可选补充供应商名称、物料名称和采购日期范围 |
@@ -39,7 +39,7 @@
 
 ## 口径、权限和限制
 
-- **单据状态口径**：服务端固定附加 `FDocumentStatus='C' AND FCancelStatus='A' AND FMRPTerminateStatus='A' AND F_PARA_SaleSubProId.FNumber<>''`，仅返回已审核、未作废且未业务终止并关联销售子项目的采购订单明细行，不限关闭状态。
+- **双来源合并与去重**：主读取销售子项目 `PARA_SaleSubProject` 的 `FPurDetails`（`FPurBindStatus='A'` 绑定状态，覆盖项目级/集采采购绑定场景，保留绑定数量与含税单价/合价），批量关联 `PUR_PurchaseOrder` 补齐供应商和采购日期，并校验采购订单满足 `FDocumentStatus='C' AND FCancelStatus='A' AND FMRPTerminateStatus='A'`（不限关闭状态）；同时补充合并 `PUR_PurchaseOrder` 中直接填写 `F_PARA_SaleSubProId` 但未出现在 `FPurDetails` 的明细，按「销售子项目编码 + 采购订单分录内码」去重。
 - **金额口径**：单价取含税单价 `FTaxPrice`，合价取明细价税合计 `FAllAmount`，与合同含税单价 × 数量对齐。
 - **分页与上限**：服务端使用 `TopRowCount=0` 完整分页读取，单次最多读取 5000 行；达到上限时返回 `truncated=true` 与 `partial=true` 并提示缩小查询范围。MCP 调用显式传入 `limit` 时，明细行按 `limit` 截取，同时保留全量汇总统计。
 - **权限边界**：沿用当前登录用户的金蝶权限与 Query Hub 模块访问名单约束，不开放未授权单据。
