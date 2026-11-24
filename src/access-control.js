@@ -58,12 +58,12 @@ function parseCookies(header) {
 }
 
 class AccessControl {
-  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [], restrictedModuleIds = [] }) {
+  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [] }) {
     this.dataPath = dataPath;
     this.sessionHours = sessionHours;
     this.cookieSecure = cookieSecure;
     this.moduleIds = [...new Set(moduleIds)];
-    this.restrictedModuleIds = new Set(restrictedModuleIds);
+
     this.sessions = new Map();
     this.passkeyChallenges = new Map();
     this.loginAttempts = new Map();
@@ -76,6 +76,7 @@ class AccessControl {
       state = JSON.parse(fs.readFileSync(this.dataPath, "utf8"));
     }
     if (!Array.isArray(state.admins)) state.admins = [];
+    state.moduleDevAccess ||= {};
     if (!state.moduleAccess || typeof state.moduleAccess !== "object") state.moduleAccess = {};
     if (!state.settings || typeof state.settings !== "object" || Array.isArray(state.settings)) state.settings = {};
     for (const moduleId of this.moduleIds) {
@@ -345,7 +346,13 @@ class AccessControl {
     return enabled;
   }
 
-  setModuleAccess(moduleAccess) {
+  getModuleDevAccess() {
+    return Object.fromEntries(this.moduleIds.map(id => [id, [...(this.state.moduleDevAccess[id] || [])]]));
+  }
+
+  setModuleAccess(moduleAccess, devAccess = {}) {
+    const nextAccess = this.getModuleAccess();
+    const nextDev = this.getModuleDevAccess();
     for (const moduleId of this.moduleIds) {
       if (!(moduleId in moduleAccess)) continue;
       if (!Array.isArray(moduleAccess[moduleId])) throw Object.assign(new Error("模块人员名单格式不正确。"), { statusCode: 400 });
@@ -354,16 +361,32 @@ class AccessControl {
         return [normalizeIdentifier(display), display];
       }).filter(([key]) => key)).values()];
       if (unique.length > 200) throw Object.assign(new Error("每个模块最多配置 200 人。"), { statusCode: 400 });
-      this.state.moduleAccess[moduleId] = unique;
+      const devUsers = devAccess[moduleId] ?? nextDev[moduleId];
+      if (!Array.isArray(devUsers) || devUsers.some(name => typeof name !== "string")) {
+        throw Object.assign(new Error("查询身份名单格式不正确。"), { statusCode: 400 });
+      }
+      const devKeys = new Set(devUsers.map(normalizeIdentifier));
+      nextAccess[moduleId] = unique;
+      nextDev[moduleId] = unique.filter(name => devKeys.has(normalizeIdentifier(name)));
     }
-    this.persist();
+    const previous = this.state;
+    this.state = { ...previous, moduleAccess: nextAccess, moduleDevAccess: nextDev };
+    try { this.persist(); } catch (error) { this.state = previous; throw error; }
     return this.getModuleAccess();
   }
 
+  queryIdentity(identity, moduleId) {
+    if (!this.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
+    const actor = normalizeIdentifier(identity.kingdeeUsername);
+    const allData = (this.state.moduleDevAccess[moduleId] || []).some(name => normalizeIdentifier(name) === actor);
+    return { ...identity, kingdeeUsername: allData ? "dev" : identity.kingdeeUsername, allData };
+  }
+
   canAccess(identity, moduleId) {
+    if (!this.moduleIds.includes(moduleId)) return false;
     if (identity?.isSuperAdmin) return true;
     const allowed = this.state.moduleAccess[moduleId] || [];
-    if (!allowed.length) return !this.restrictedModuleIds.has(moduleId);
+    if (!allowed.length) return false;
     const identifiers = identityIdentifiers(identity);
     return allowed.some((value) => identifiers.has(normalizeIdentifier(value)));
   }

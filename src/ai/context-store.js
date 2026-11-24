@@ -15,6 +15,7 @@ function compactResult(result, maxRows) {
   const storedTruncated = Boolean(result.truncated || sourceRows.length > maxRows || Number(result.count) > maxRows);
   return {
     tool: result.tool,
+    queryMode: result.queryMode || "self",
     label: result.label,
     query: result.query || {},
     columns: Array.isArray(result.columns) ? result.columns : [],

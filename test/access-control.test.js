@@ -57,13 +57,29 @@ test("normalizes and deduplicates multiline Kingdee user lists", (t) => {
   assert.deepEqual(saved.inventory, ["张三", "李四"]);
 });
 
-test("blank access list is open while a super administrator always bypasses module restrictions", (t) => {
+test("blank access lists deny employees while super administrators retain module access", (t) => {
   const { directory, access } = fixture();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  assert.equal(access.canAccess({ userId: "anyone" }, "inventory"), true);
+  assert.equal(access.canAccess({ userId: "anyone" }, "inventory"), false);
   access.setModuleAccess({ inventory: ["someone-else"] });
   assert.equal(access.canAccess({ userId: "anyone" }, "inventory"), false);
   assert.equal(access.canAccess({ userId: "admin", isSuperAdmin: true }, "inventory"), true);
+});
+
+test("query identity follows the saved employee and module grant through reload and removal", (t) => {
+  const { directory, dataPath, access } = fixture();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const actor = { kingdeeUsername: "Alice", userId: "employee-1", channel: "browser" };
+  access.setModuleAccess({ inventory: ["Alice", "Bob"], sales_orders: ["Alice"] }, { inventory: ["alice"] });
+  const restored = new AccessControl({ dataPath, moduleIds: ["inventory", "sales_orders"] });
+  assert.deepEqual(restored.queryIdentity(actor, "inventory"), { ...actor, kingdeeUsername: "dev", allData: true });
+  assert.equal(restored.queryIdentity(actor, "sales_orders").kingdeeUsername, "Alice");
+  assert.equal(restored.queryIdentity({ kingdeeUsername: "Bob" }, "inventory").allData, false);
+  assert.equal(restored.queryIdentity({ ...actor, isSuperAdmin: true }, "sales_orders").allData, false);
+  restored.setModuleAccess({ inventory: ["Bob"] });
+  assert.throws(() => restored.queryIdentity(actor, "inventory"), { statusCode: 403 });
+  restored.setModuleAccess({ inventory: ["Alice"] });
+  assert.equal(restored.queryIdentity(actor, "inventory").allData, false);
 });
 
 test("sensitive modules are closed by default until an explicit Kingdee user is listed", (t) => {
@@ -72,7 +88,7 @@ test("sensitive modules are closed by default until an explicit Kingdee user is 
   const access = new AccessControl({
     dataPath: path.join(directory, "access-control.json"),
     moduleIds: ["personnel_cost"],
-    restrictedModuleIds: ["personnel_cost"],
+
   });
   const employee = { kingdeeUsername: "240001" };
   assert.equal(access.canAccess(employee, "personnel_cost"), false);

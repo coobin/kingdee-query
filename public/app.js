@@ -13,8 +13,8 @@ const TOOL_META = {
   subproject_purchase_list: { action: "查询子项目采购清单", conditionLabels: { subprojectNumber: "销售子项目编码", subprojectName: "项目名称", supplierName: "供应商名称", materialName: "物料名称", dateFrom: "采购开始日期", dateTo: "采购结束日期" } },
   supplier_purchase_analysis: { action: "分析供应商采购", conditionLabels: { supplierNumber: "供应商编码", supplierName: "供应商名称", organizationName: "组织名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
-  expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
-  workflow_progress: { action: "查询我发起的流程", conditionLabels: { billNumber: "单据编号" } },
+  expense_claims: { action: "查询费用报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
+  workflow_progress: { action: "查询审批进度", conditionLabels: { billNumber: "单据编号" } },
 };
 const state = { selectedTool: readSelectedTool(), resultViews: new Map(), loadingTools: new Set(), tools: [], accessibleTools: new Set(), aiAnalysis: { enabled: false }, projectOwnershipOptions: [], selectedProjectOwnerships: new Set(), exactSubprojectNumber: "" };
 const els = {
@@ -26,7 +26,7 @@ const els = {
   aiSelected: document.querySelector("#ai-selected-button"), aiPanel: document.querySelector("#ai-analysis-panel"),
 };
 
-initialize();
+
 
 async function initialize() {
   setDefaultDates();
@@ -288,7 +288,7 @@ function renderResult(view) {
   const { payload } = view;
   const { result, plan } = payload;
   els.tool.textContent = `${result.label || plan.tool} · ${String(result.count ?? 0).padStart(2, "0")} ROWS`;
-  els.summary.textContent = result.summary || "查询完成";
+  els.summary.textContent = (result.queryMode === "dev" ? "以 dev 账号查询。 " : "") + (result.summary || "查询完成");
   const labels = TOOL_META[plan.tool]?.conditionLabels || {};
   els.plan.replaceChildren(...Object.entries(plan.arguments || {}).filter(([key, value]) => key !== "limit" && key !== "exactSubproject" && value !== "" && value != null && (!Array.isArray(value) || value.length)).map(([key, value]) => {
     const readable = key === "projectOwnerships" && Array.isArray(value)
@@ -1292,6 +1292,8 @@ function dateSpanDays(from, to) { const start = Date.parse(`${from}T00:00:00Z`);
 
 const DATE_PAIR_MAP = { dateFrom: "dateTo", dateTo: "dateFrom", bizDateFrom: "bizDateTo", bizDateTo: "bizDateFrom" };
 const datePickerState = { popover: null, activeInput: null, viewYear: 0, viewMonth: 0, yearSelect: null, monthSelect: null, grid: null };
+
+initialize();
 
 function formatIsoDate(year, month, day) {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;

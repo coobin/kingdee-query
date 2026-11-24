@@ -86,7 +86,7 @@
             <span>个人</span><strong>费用报销</strong>
           </button>
           <button type="button" role="tab" aria-selected="false" aria-controls="panel-workflow_progress" id="tab-workflow_progress" data-tool="workflow_progress">
-            <span>流程</span><strong>我发起的流程</strong>
+            <span>流程</span><strong>审批进度</strong>
           </button>
         </div>
 
@@ -308,9 +308,9 @@
           </section>
 
           <section class="query-panel" id="panel-workflow_progress" role="tabpanel" aria-labelledby="tab-workflow_progress" data-panel="workflow_progress" hidden>
-            <div class="panel-copy"><h3>我发起的流程</h3><p>查看在审流程的当前节点和处理人。</p></div>
+            <div class="panel-copy"><h3>审批进度</h3><p>查看在审流程的当前节点和处理人。</p></div>
             <div class="field-grid one-column">
-              <label class="field"><span>单据编号</span><input name="billNumber" type="text" maxlength="80" placeholder="不填则显示全部本人在审流程" autocomplete="off"></label>
+              <label class="field"><span>单据编号</span><input name="billNumber" type="text" maxlength="80" placeholder="不填则显示查询范围内的在审流程" autocomplete="off"></label>
             </div>
           </section>
 
@@ -338,6 +338,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20261124-datepicker" defer></script>
+  <script src="/app.js?v=module-identity-1" defer></script>
 </body>
 </html>

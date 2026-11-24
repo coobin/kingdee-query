@@ -317,6 +317,23 @@ test("queries my workflows without requiring a bill number", async () => {
   assert.equal(result.rows[0].当前处理人, "李四");
 });
 
+test("delegated expense and workflow queries use dev and retain business filters", async () => {
+  const requests = [];
+  const engine = new QueryEngine({ catalog, config: { ...config, kingdee: { maxRows: 100 } },
+    kingdee: { executeBillQuery: async (username, request) => {
+      assert.equal(username, "dev");
+      requests.push(request);
+      return [];
+    } } });
+  const delegated = { ...identity, kingdeeUsername: "dev", allData: true };
+  await engine.execute(delegated, { tool: "expense_claims", arguments: { dateFrom: "2026-11-01" } });
+  const workflow = await engine.execute(delegated, { tool: "workflow_progress", arguments: {} });
+  assert.match(requests[0].FilterString, /2026-11-01/);
+  assert.doesNotMatch(requests[0].FilterString, /FProposerID/);
+  assert.equal(requests[1].FilterString, "FStatus='2'");
+  assert.equal(workflow.query.scope, "all");
+});
+
 test("filters workflow rows by bill number without accepting arbitrary fields", async () => {
   let request;
   const engine = new QueryEngine({

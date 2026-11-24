@@ -212,7 +212,8 @@ function renderModules() {
     title.append(strong, description); head.append(number, title);
     const names = state.settings.moduleAccess[module.id] || [];
     const summary = document.createElement("p"); summary.className = "module-access-summary";
-    summary.textContent = names.length ? `已选 ${names.length} 人` : module.restrictedByDefault ? "仅超级管理员可见" : "所有已登录员工可见";
+    const devNames = state.settings.moduleDevAccess[module.id] || [];
+    summary.textContent = names.length ? `已授权 ${names.length} 人，其中 ${devNames.length} 人使用 dev` : "仅超级管理员可见";
     const list = document.createElement("div"); list.className = "module-people";
     names.slice(0, 6).forEach((name) => { const chip = document.createElement("span"); chip.textContent = name; list.append(chip); });
     if (names.length > 6) { const more = document.createElement("span"); more.textContent = `另有 ${names.length - 6} 人`; list.append(more); }
@@ -335,11 +336,10 @@ function adminField(labelText, name, value, placeholder = "", type = "text") {
 async function openPeoplePicker(module) {
   accessMessage.hidden = true;
   state.picker = { module, scope: "all", selected: new Map((state.settings.moduleAccess[module.id] || []).map((name) => [personKey(name), name])) };
+  state.picker.dev = new Set((state.settings.moduleDevAccess[module.id] || []).map(personKey));
   peopleSearch.value = "";
   document.querySelector("#people-picker-title").textContent = `${module.label} · 选择查看人员`;
-  document.querySelector("#picker-subtitle").textContent = module.restrictedByDefault
-    ? "名单为空时仅超级管理员可见。选择人员后，名单中的人员也可查看。"
-    : "名单为空时所有已登录员工可见。按组织、部门选择，可跨部门多选。";
+  document.querySelector("#picker-subtitle").textContent = "勾选人员以开放模块。每人默认使用本人金蝶账号，可单独改为 dev 查询该账号可见的全部相关数据。";
   document.querySelector("#picker-message").textContent = "正在读取组织架构…";
   pickerDialog.showModal();
   try {
@@ -419,17 +419,33 @@ function renderPeopleList() {
   document.querySelector("#picker-selected-count").textContent = `已选 ${state.picker.selected.size} 人`;
   const departmentById = new Map(state.directory.departments.map((dept) => [dept.id, dept]));
   const rows = people.map((person) => {
-    const row = document.createElement("label"); row.className = "person-row";
+    const row = document.createElement("div"); row.className = "person-row";
+    const label = document.createElement("label"); label.className = "person-choice";
+    const key = personKey(person.username);
+    const mode = document.createElement("select");
+    mode.setAttribute("aria-label", `${person.username}的查询身份`);
+    mode.append(new Option("本人金蝶账号", "self"), new Option("全部相关数据（dev）", "dev"));
+    mode.value = state.picker.dev.has(key) ? "dev" : "self";
+    mode.disabled = !state.picker.selected.has(key);
+    mode.addEventListener("change", () => {
+      if (mode.value === "dev") state.picker.dev.add(key);
+      else state.picker.dev.delete(key);
+    });
     const check = document.createElement("input"); check.type = "checkbox"; check.checked = state.picker.selected.has(personKey(person.username));
     check.addEventListener("change", () => {
       if (check.checked) state.picker.selected.set(personKey(person.username), person.username);
-      else state.picker.selected.delete(personKey(person.username));
+      else {
+        state.picker.selected.delete(key);
+        state.picker.dev.delete(key);
+        mode.value = "self";
+      }
+      mode.disabled = !check.checked;
       document.querySelector("#picker-selected-count").textContent = `已选 ${state.picker.selected.size} 人`;
     });
     const body = document.createElement("span");
     const name = document.createElement("strong"); name.textContent = person.username;
     const detail = document.createElement("small"); detail.textContent = [person.account, ...person.departmentIds.map((id) => departmentById.get(id)?.fullName || departmentById.get(id)?.name).filter(Boolean)].join(" · ") || "未归属部门";
-    body.append(name, detail); row.append(check, body); return row;
+    body.append(name, detail); label.append(check, body); row.append(label, mode); return row;
   });
   if (!rows.length) { const empty = document.createElement("p"); empty.className = "picker-empty"; empty.textContent = "当前范围没有符合条件的人员。"; rows.push(empty); }
   document.querySelector("#people-list").replaceChildren(...rows);
@@ -454,12 +470,15 @@ for (const [id, selected] of [["select-visible", true], ["deselect-visible", fal
     if (!state.directory || !state.picker) return;
     for (const person of visiblePeople()) {
       if (selected) state.picker.selected.set(personKey(person.username), person.username);
-      else state.picker.selected.delete(personKey(person.username));
+      else {
+        state.picker.selected.delete(personKey(person.username));
+        state.picker.dev.delete(personKey(person.username));
+      }
     }
     renderPeopleList();
   });
 }
-document.querySelector("#clear-selection").addEventListener("click", () => { if (state.picker) { state.picker.selected.clear(); renderPeopleList(); } });
+document.querySelector("#clear-selection").addEventListener("click", () => { if (state.picker) { state.picker.selected.clear(); state.picker.dev.clear(); renderPeopleList(); } });
 document.querySelector("#save-module-access").addEventListener("click", async (event) => {
   if (!state.picker || !state.directory) return;
   const button = event.currentTarget;
@@ -467,7 +486,10 @@ document.querySelector("#save-module-access").addEventListener("click", async (e
   button.disabled = true;
   const module = state.picker.module;
   try {
-    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify({ moduleAccess: { [module.id]: [...state.picker.selected.values()] } }) });
+    const names = [...state.picker.selected.values()];
+    const devNames = names.filter(name => state.picker.dev.has(personKey(name)));
+    const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify({ moduleAccess: { [module.id]: names }, moduleDevAccess: { [module.id]: devNames } }) });
+    state.settings.moduleDevAccess = payload.moduleDevAccess;
     state.settings.moduleAccess = payload.moduleAccess;
     renderModules();
     pickerDialog.close();

@@ -22,8 +22,7 @@ const {
 
 const catalog = loadCatalog(config.catalogPath);
 const moduleIds = [...Object.keys(catalog), "workflow_progress"];
-const restrictedModuleIds = Object.entries(catalog).filter(([, item]) => item.restrictedByDefault).map(([id]) => id);
-const accessControl = new AccessControl({ ...config.localAuth, moduleIds, restrictedModuleIds });
+const accessControl = new AccessControl({ ...config.localAuth, moduleIds });
 config.ai.analysis.enabled = accessControl.getAiAnalysisEnabled(config.ai.analysis.enabled);
 const kingdee = new KingdeeClient(config.kingdee);
 const personnelDirectory = new PersonnelDirectory(kingdee);
@@ -213,9 +212,10 @@ admin.get("/settings", (req, res) => res.json({
     label: id === "workflow_progress" ? "审批进度" : catalog[id].label,
     description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description,
     selfScoped: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
-    restrictedByDefault: Boolean(catalog[id]?.restrictedByDefault),
+    restrictedByDefault: true,
   })),
   moduleAccess: accessControl.getModuleAccess(),
+  moduleDevAccess: accessControl.getModuleDevAccess(),
 }));
 admin.get("/personnel-directory", asyncRoute(async (req, res) => {
   const directory = await personnelDirectory.get(req.identity.kingdeeUsername, { refresh: req.query.refresh === "1" });
@@ -300,9 +300,9 @@ admin.put("/admins/:username/passkey-policy", requireSameOrigin, (req, res) => {
   res.json({ ok: true, admin: updated });
 });
 admin.put("/module-access", requireSameOrigin, (req, res) => {
-  const moduleAccess = accessControl.setModuleAccess(req.body?.moduleAccess || {});
+  const moduleAccess = accessControl.setModuleAccess(req.body?.moduleAccess || {}, req.body?.moduleDevAccess || {});
   audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "module_access.update", ip: req.ip });
-  res.json({ ok: true, moduleAccess });
+  res.json({ ok: true, moduleAccess, moduleDevAccess: accessControl.getModuleDevAccess() });
 });
 admin.post("/admins", requireSameOrigin, (req, res) => {
   const created = accessControl.createAdmin(req.body || {});
@@ -390,8 +390,9 @@ app.get("/openapi.json", (req, res) => res.json(require("./src/openapi")(config)
 async function executeAndAudit(req, plan, question) {
   const started = Date.now();
   try {
-    enforceModuleAccess(req.identity, plan.tool);
-    const result = await engine.execute(req.identity, plan);
+    const identity = resolveQueryIdentity(req, plan.tool);
+    const result = await engine.execute(identity, plan);
+    result.queryMode = identity.allData ? "dev" : "self";
     audit({ ...identityAudit(req), action: "query", outcome: "success", tool: plan.tool, arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(plan.arguments), question, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
@@ -408,11 +409,12 @@ async function executeAiAnalysisAndAudit(req, body, { onDelta = null } = {}) {
   let context;
   try {
     context = analysisContextStore.get(contextId, req.identity);
-    enforceModuleAccess(req.identity, context.tool);
+    const queryIdentity = resolveQueryIdentity(req, context.tool);
+    if (context.result.queryMode !== (queryIdentity.allData ? "dev" : "self")) throw Object.assign(new Error("查询身份已变更，请重新查询。"), { statusCode: 403 });
     const output = await aiAnalysis.analyze(req.identity, {
       contextId,
       subprojectNumbers: selected,
-    }, { onDelta });
+    }, { onDelta, queryIdentity });
     audit({
       ...identityAudit(req),
       action: "ai.analysis",
@@ -446,8 +448,8 @@ async function executeExpenseDetailsAndAudit(req, billNumber) {
   const started = Date.now();
   const args = { billNumber: String(billNumber || "").slice(0, 80) };
   try {
-    enforceModuleAccess(req.identity, "expense_claims");
-    const result = await engine.expenseDetails(req.identity, args.billNumber);
+    const identity = resolveQueryIdentity(req, "expense_claims");
+    const result = await engine.expenseDetails(identity, args.billNumber);
     audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "expense_claims", arguments: req.identity.channel === "mcp" ? {} : args, count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
   } catch (error) {
@@ -469,8 +471,8 @@ async function executeSalesBusinessDetailsAndAudit(req, subprojectNumber, body =
     limit: 1,
   };
   try {
-    enforceModuleAccess(req.identity, "sales_business_analysis");
-    const result = await engine.salesBusinessAnalysis(req.identity, catalog.sales_business_analysis, args, { includeDetails: true });
+    const identity = resolveQueryIdentity(req, "sales_business_analysis");
+    const result = await engine.salesBusinessAnalysis(identity, catalog.sales_business_analysis, args, { includeDetails: true });
     if (!result.rows.length) throw Object.assign(new Error("没有找到这条销售子项目，或当前账号无权查看。"), { statusCode: 404 });
     audit({ ...identityAudit(req), action: "query.detail", outcome: "success", tool: "sales_business_analysis", arguments: req.identity.channel === "mcp" ? {} : sanitizeArguments(args), count: result.count, truncated: Boolean(result.truncated), durationMs: Date.now() - started });
     return result;
@@ -489,8 +491,10 @@ function requirePasskeyAvailable() {
 }
 function toBase64Url(value) { return Buffer.from(value).toString("base64url"); }
 function fromBase64Url(value) { return new Uint8Array(Buffer.from(String(value), "base64url")); }
-function enforceModuleAccess(identity, moduleId) {
-  if (!accessControl.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
+function resolveQueryIdentity(req, moduleId) {
+  const identity = accessControl.queryIdentity(req.identity, moduleId);
+  req.queryAccount = identity.kingdeeUsername;
+  return identity;
 }
 function requestUserAgent(req) { return String(req.headers["user-agent"] || "").slice(0, 300); }
 function identityAudit(req) {
@@ -499,6 +503,7 @@ function identityAudit(req) {
     channel: req.identity.channel,
     user: req.identity.kingdeeUsername || req.identity.adminUsername || req.identity.userId,
     userId: req.identity.userId || "",
+    ...(req.queryAccount ? { queryAccount: req.queryAccount } : {}),
     userName: req.identity.name || "",
     ip: req.ip,
     userAgent: requestUserAgent(req),

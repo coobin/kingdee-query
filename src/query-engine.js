@@ -37,7 +37,7 @@ function buildFilter(item, args, identity, config) {
     accepted[key] = raw;
   }
 
-  if (item.forceSelfScope && !config.scopeAdmins.has(identity.kingdeeUsername)) {
+  if (item.forceSelfScope && !identity.allData) {
     const source = item.selfValueSource || "kingdeeUsername";
     const ownValue = escapeValue(identity[source] || identity.kingdeeUsername);
     clauses.push(`${item.selfField}='${ownValue}'`);
@@ -1685,10 +1685,8 @@ class QueryEngine {
   async workflow(identity, args) {
     const billNumber = String(args.billNumber || "").trim();
     const limit = normalizeLimit(args.limit, this.config.kingdee.maxRows);
-    const filters = [
-      `FOriginatorId.FUserAccount='${escapeValue(identity.kingdeeUsername)}'`,
-      "FStatus='2'",
-    ];
+    const filters = ["FStatus='2'"];
+    if (!identity.allData) filters.unshift(`FOriginatorId.FUserAccount='${escapeValue(identity.kingdeeUsername)}'`);
     if (billNumber) filters.push(`FNumber LIKE '${escapeValue(billNumber)}%'`);
     const rawRows = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
       FormId: "WF_ProcInstBill",
@@ -1701,16 +1699,16 @@ class QueryEngine {
     });
     const truncated = rawRows.length > limit;
     const rows = workflowRows(rawRows.slice(0, limit));
-    const query = { scope: "mine", status: "审批中", ...(billNumber ? { billNumber } : {}) };
+    const query = { scope: identity.allData ? "all" : "mine", status: "审批中", ...(billNumber ? { billNumber } : {}) };
     return {
       tool: "workflow_progress",
-      label: "我发起的流程",
+      label: identity.allData ? "审批进度" : "我发起的流程",
       query,
       columns: workflowColumns,
       rows,
       count: rows.length,
       truncated,
-      summary: rows.length ? `找到 ${rows.length}${truncated ? " 条以上" : " 条"}我发起且正在审批的流程。` : "没有找到正在审批的流程。",
+      summary: rows.length ? `找到 ${rows.length}${truncated ? " 条以上" : " 条"}正在审批的流程。` : "没有找到正在审批的流程。",
     };
   }
 }

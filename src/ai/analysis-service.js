@@ -171,7 +171,7 @@ class AIAnalysisService {
     this.rateEntries.set(key, entries);
   }
 
-  async analyze(identity, { contextId, subprojectNumbers = [] } = {}, { onDelta = null } = {}) {
+  async analyze(identity, { contextId, subprojectNumbers = [] } = {}, { onDelta = null, queryIdentity = identity } = {}) {
     this.ensureReady();
     const context = this.contextStore.get(contextId, identity);
     const profile = getAnalysisProfile(context.tool);
@@ -205,7 +205,7 @@ class AIAnalysisService {
       for (const code of selectedCodes) {
         details.push(await profile.loadProjectDetails({
           engine: this.engine,
-          identity,
+          identity: queryIdentity,
           context,
           code,
           maxDetailRows: this.config.detailRows,

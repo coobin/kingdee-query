@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>超级管理员设置 · Kingdee Query Hub</title>
-  <link rel="stylesheet" href="/auth.css?v=20260929-2">
+  <link rel="stylesheet" href="/auth.css?v=module-identity-1">
 </head>
 <body class="admin-page">
   <header class="admin-topbar">
@@ -16,7 +16,7 @@
 
   <main class="admin-shell">
     <section class="admin-heading">
-      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>模块名单直接匹配员工的金蝶用户名。普通模块名单为空时向所有已登录员工开放；敏感模块会明确标注并默认关闭。</p></div>
+      <div><p class="auth-eyebrow">ACCESS LEDGER · 查询权限定册</p><h1>把数据交给<em>该看到的人。</em></h1><p>模块名单直接匹配员工的金蝶用户名。所有模块默认关闭。请按模块选择人员，并设置每人的查询身份。</p></div>
       <div class="admin-identity"><span>当前超级管理员</span><strong id="current-admin">读取中</strong></div>
     </section>
 
@@ -35,7 +35,7 @@
 
     <section class="settings-section" aria-labelledby="module-title">
       <div class="section-heading"><div><p class="auth-eyebrow">MODULE ACCESS</p><h2 id="module-title">模块查看人员</h2></div><span class="read-only-badge">按组织架构选择 · 支持多选</span></div>
-      <div class="module-explainer"><span class="access-state open">名单为空</span><p>普通模块对所有已登录员工开放；敏感模块仅超级管理员可见</p><span class="access-state restricted">已选人员</span><p>只允许选中人员和超级管理员查看；跨部门选择会合并保存</p></div>
+      <div class="module-explainer"><span class="access-state open">名单为空</span><p>仅超级管理员可见</p><span class="access-state restricted">已选人员</span><p>只允许选中人员和超级管理员查看；跨部门选择会合并保存</p></div>
       <div class="module-grid" id="module-grid" aria-live="polite"></div>
       <div class="admin-message" id="access-message" role="status" hidden></div>
     </section>
@@ -79,6 +79,6 @@
     <div class="picker-footer"><div><strong id="picker-selected-count">已选 0 人</strong><p id="picker-message" class="picker-message" role="status"></p></div><div class="picker-footer-actions"><button id="clear-selection" class="secondary-action" type="button">清空名单</button><button id="save-module-access" class="primary-action" type="button">保存该模块权限</button></div></div>
   </dialog>
   <script src="/passkey.js?v=20260813-1" defer></script>
-  <script src="/admin.js?v=20260929-2" defer></script>
+  <script src="/admin.js?v=module-identity-1" defer></script>
 </body>
 </html>

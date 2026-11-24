@@ -118,6 +118,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .people-list { flex: 1; }
 .person-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 18px; border-top: 1px solid var(--line); cursor: pointer; }
 .person-row:hover { background: var(--paper); }
+.person-choice { flex: 1; min-width: 0; display: flex; gap: 12px; cursor: pointer; }
+.person-row select { align-self: center; max-width: 48%; }
 .person-row input { width: 17px; height: 17px; flex: none; margin: 2px 0 0; accent-color: var(--forest); }
 .person-row strong, .person-row small { display: block; }
 .person-row strong { font-size: 12px; }
