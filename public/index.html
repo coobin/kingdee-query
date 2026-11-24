@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#123f31">
   <title>Kingdee Query Hub · 金蝶数据查询台</title>
-  <link rel="stylesheet" href="/styles.css?v=20261124-fuzzy">
+  <link rel="stylesheet" href="/styles.css?v=20261124-datepicker">
 </head>
 <body>
   <a class="skip-link" href="#query-form">跳到查询条件</a>
@@ -125,8 +125,8 @@
             <div class="field-grid">
               <label class="field"><span>销售订单编号</span><input name="billNumber" type="text" maxlength="40" placeholder="完整单据编号" autocomplete="off"></label>
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
-              <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
+              <label class="field"><span>开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
             </div>
           </section>
 
@@ -142,8 +142,8 @@
               <div><span>04</span><strong>回款闭环</strong><small>收款 / 退款 / 覆盖率</small></div>
             </div>
             <div class="field-grid">
-              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
-              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
               <label class="field"><span>客户名称</span><input name="customerName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>销售项目编码</span><input name="projectNumber" type="text" maxlength="60" placeholder="可选，精确项目范围" autocomplete="off"></label>
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，支持包含匹配" autocomplete="off"></label>
@@ -162,8 +162,8 @@
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，精确子项目范围" autocomplete="off"></label>
               <label class="field"><span>销售部门编码</span><input name="departmentNumber" type="text" maxlength="40" placeholder="可选，例如：D-001" autocomplete="off"></label>
               <label class="field"><span>客户编码</span><input name="customerNumber" type="text" maxlength="60" placeholder="可选，例如：C-001" autocomplete="off"></label>
-              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>签订结束日期</span><input name="dateTo" type="date"></label>
+              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>签订结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
               <label class="field"><span>每页行数</span><input name="limit" type="number" min="1" max="1000" step="1" value="200" inputmode="numeric"></label>
               <label class="field"><span>页码</span><input name="page" type="number" min="1" max="100000" step="1" value="1"></label>
             </div>
@@ -178,10 +178,10 @@
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，精确子项目范围" autocomplete="off"></label>
               <label class="field"><span>销售部门编码</span><input name="departmentNumber" type="text" maxlength="40" placeholder="可选，例如：D-001" autocomplete="off"></label>
               <label class="field"><span>客户编码</span><input name="customerNumber" type="text" maxlength="60" placeholder="可选，例如：C-001" autocomplete="off"></label>
-              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>签订结束日期</span><input name="dateTo" type="date"></label>
-              <label class="field"><span>业务开始日期</span><input name="bizDateFrom" type="date"></label>
-              <label class="field"><span>业务结束日期</span><input name="bizDateTo" type="date"></label>
+              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>签订结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>业务开始日期</span><input name="bizDateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>业务结束日期</span><input name="bizDateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
               <label class="field"><span>每页行数</span><input name="limit" type="number" min="1" max="1000" step="1" value="200" inputmode="numeric"></label>
               <label class="field"><span>页码</span><input name="page" type="number" min="1" max="100000" step="1" value="1"></label>
             </div>
@@ -195,10 +195,10 @@
               <label class="field"><span>销售子项目编码</span><input name="subprojectNumber" type="text" maxlength="60" placeholder="可选，精确子项目范围" autocomplete="off"></label>
               <label class="field"><span>销售部门编码</span><input name="departmentNumber" type="text" maxlength="40" placeholder="可选，例如：D-001" autocomplete="off"></label>
               <label class="field"><span>客户编码</span><input name="customerNumber" type="text" maxlength="60" placeholder="可选，例如：C-001" autocomplete="off"></label>
-              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>签订结束日期</span><input name="dateTo" type="date"></label>
-              <label class="field"><span>业务开始日期</span><input name="bizDateFrom" type="date"></label>
-              <label class="field"><span>业务结束日期</span><input name="bizDateTo" type="date"></label>
+              <label class="field"><span>签订开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>签订结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>业务开始日期</span><input name="bizDateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>业务结束日期</span><input name="bizDateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
               <label class="field"><span>每页行数</span><input name="limit" type="number" min="1" max="1000" step="1" value="200" inputmode="numeric"></label>
               <label class="field"><span>页码</span><input name="page" type="number" min="1" max="100000" step="1" value="1"></label>
             </div>
@@ -240,8 +240,8 @@
             <div class="field-grid">
               <label class="field"><span>采购订单编号</span><input name="billNumber" type="text" maxlength="40" placeholder="完整单据编号" autocomplete="off"></label>
               <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
-              <label class="field"><span>开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>结束日期</span><input name="dateTo" type="date"></label>
+              <label class="field"><span>开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
             </div>
           </section>
 
@@ -252,8 +252,8 @@
               <label class="field"><span>项目名称</span><input name="subprojectName" type="text" maxlength="100" placeholder="支持模糊匹配（如：长沙6号线），多项目时自动提醒" autocomplete="off"></label>
               <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="可选，支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>物料名称</span><input name="materialName" type="text" maxlength="80" placeholder="可选，支持包含匹配" autocomplete="off"></label>
-              <label class="field"><span>采购开始日期</span><input name="dateFrom" type="date"></label>
-              <label class="field"><span>采购结束日期</span><input name="dateTo" type="date"></label>
+              <label class="field"><span>采购开始日期</span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
+              <label class="field"><span>采购结束日期</span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input></label>
             </div>
             <div class="scope-lock"><span aria-hidden="true">✓</span><div><strong>含销售子项目采购绑定明细 · 已审核且不限关闭状态</strong><small>合并销售子项目「采购明细」绑定记录（含集采绑定）与采购订单直接关联明细，并校验采购订单已审核、未作废且未业务终止；单价取含税单价，合价取明细价税合计。</small></div></div>
           </section>
@@ -270,8 +270,8 @@
               <div><span>04</span><strong>付款与质量</strong><small>付款覆盖 / 可用质检</small></div>
             </div>
             <div class="field-grid">
-              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
-              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
               <label class="field"><span>供应商编码</span><input name="supplierNumber" type="text" maxlength="60" placeholder="不填则汇总全部供应商" autocomplete="off"></label>
               <label class="field"><span>供应商名称</span><input name="supplierName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>组织名称</span><input name="organizationName" type="text" maxlength="80" placeholder="按各来源组织包含匹配" autocomplete="off"></label>
@@ -289,8 +289,8 @@
               <div class="cost-formula-total"><span>PEOPLE COST</span><strong>人员成本</strong><small>按员工编号归集</small></div>
             </div>
             <div class="field-grid">
-              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
-              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
               <label class="field"><span>员工编号</span><input name="employeeNumber" type="text" maxlength="40" placeholder="完整员工编号" autocomplete="off"></label>
               <label class="field"><span>员工姓名</span><input name="employeeName" type="text" maxlength="40" placeholder="支持包含匹配" autocomplete="off"></label>
               <label class="field"><span>所属部门</span><input name="departmentName" type="text" maxlength="80" placeholder="支持包含匹配" autocomplete="off"></label>
@@ -301,8 +301,8 @@
           <section class="query-panel" id="panel-expense_claims" role="tabpanel" aria-labelledby="tab-expense_claims" data-panel="expense_claims" hidden>
             <div class="panel-copy"><h3>费用报销</h3><p>按申请日期查询报销单。</p></div>
             <div class="field-grid">
-              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="date" required></label>
-              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="date" required></label>
+              <label class="field"><span>开始日期 <b>必填</b></span><input name="dateFrom" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
+              <label class="field"><span>结束日期 <b>必填</b></span><input name="dateTo" type="text" inputmode="numeric" maxlength="10" placeholder="请选择日期" autocomplete="off" data-date-input required></label>
             </div>
             <label class="check-field"><input name="aggregation" type="checkbox" value="sum_amount" checked><span><strong>计算区间总金额</strong><small>同时展示报销单数量与整单金额合计</small></span></label>
           </section>
@@ -338,6 +338,6 @@
   </main>
 
   <template id="empty-template"><div class="empty-state"><span aria-hidden="true">∅</span><h3>没有找到符合条件的数据</h3><p>请核对编码或调整日期范围后再查。</p></div></template>
-  <script src="/app.js?v=20261124-fuzzy" defer></script>
+  <script src="/app.js?v=20261124-datepicker" defer></script>
 </body>
 </html>

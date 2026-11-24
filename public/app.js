@@ -30,6 +30,7 @@ initialize();
 
 async function initialize() {
   setDefaultDates();
+  initDatePickers();
   selectTool(state.selectedTool, false);
   try {
     const [session, catalog] = await Promise.all([api("/api/session"), api("/api/catalog")]);
@@ -81,6 +82,7 @@ els.aiSelected.addEventListener("click", () => {
 function selectTool(tool, focus = true) {
   if (!TOOL_META[tool]) return;
   if (state.accessibleTools.size && !state.accessibleTools.has(tool)) return;
+  closeDatePicker();
   state.selectedTool = tool;
   persistSelectedTool(tool);
   els.tabs.forEach((tab) => { const active = tab.dataset.tool === tool; tab.setAttribute("aria-selected", String(active)); tab.tabIndex = active ? 0 : -1; });
@@ -125,6 +127,7 @@ function applyCatalogAccess(tools) {
 
 async function runQuery(event) {
   event.preventDefault();
+  closeDatePicker();
   const tool = state.selectedTool;
   const activePanel = els.panels.find((panel) => panel.dataset.panel === tool);
   const invalid = activePanel.querySelector(":invalid");
@@ -159,7 +162,17 @@ function collectArguments(panel) {
   const args = { limit: 100 };
   panel.querySelectorAll("input[name]").forEach((input) => {
     if (input.type === "checkbox") { if (input.checked) args[input.name] = input.value; return; }
-    const value = input.value.trim(); if (value) args[input.name] = value;
+    const rawValue = input.value.trim();
+    if (!rawValue) return;
+    if (input.hasAttribute("data-date-input")) {
+      const normalized = normalizeDateText(rawValue);
+      if (normalized) {
+        setDateInputValue(input, normalized);
+        args[input.name] = normalized;
+        return;
+      }
+    }
+    args[input.name] = rawValue;
   });
   if (panel.dataset.panel === "overdue_risk_combined" && state.selectedProjectOwnerships.size) args.projectOwnerships = [...state.selectedProjectOwnerships];
   if (panel.dataset.panel === "subproject_purchase_list" && state.exactSubprojectNumber && args.subprojectNumber === state.exactSubprojectNumber && !args.subprojectName) {
@@ -195,6 +208,12 @@ function renderProjectOwnershipSummary() {
 }
 
 function validateArguments(tool, args) {
+  for (const field of ["dateFrom", "dateTo", "bizDateFrom", "bizDateTo"]) {
+    if (args[field] && !isValidIsoDate(args[field])) {
+      const label = TOOL_META[tool]?.conditionLabels?.[field] || "日期";
+      return `${label}格式不正确，请点击日历选择日期。`;
+    }
+  }
   if (args.dateFrom && args.dateTo && args.dateFrom > args.dateTo) return "开始日期不能晚于结束日期。";
   if (args.bizDateFrom && args.bizDateTo && args.bizDateFrom > args.bizDateTo) return "业务开始日期不能晚于结束日期。";
   if (tool === "inventory" && !args.materialNumber) return "请输入完整物料编码。";
@@ -1270,6 +1289,358 @@ function formatUnitPrice(value) { return new Intl.NumberFormat("zh-CN", { style:
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
 function dateSpanDays(from, to) { const start = Date.parse(`${from}T00:00:00Z`); const end = Date.parse(`${to}T00:00:00Z`); return Number.isFinite(start) && Number.isFinite(end) ? Math.floor((end - start) / 86400000) + 1 : 0; }
+
+const DATE_PAIR_MAP = { dateFrom: "dateTo", dateTo: "dateFrom", bizDateFrom: "bizDateTo", bizDateTo: "bizDateFrom" };
+const datePickerState = { popover: null, activeInput: null, viewYear: 0, viewMonth: 0, yearSelect: null, monthSelect: null, grid: null };
+
+function formatIsoDate(year, month, day) {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function parseIsoDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return { year, month, day };
+}
+
+function isValidIsoDate(value) {
+  return Boolean(parseIsoDate(value));
+}
+
+function normalizeDateText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  let match = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/.exec(text);
+  if (!match) match = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+  if (!match) return null;
+  const candidate = formatIsoDate(Number(match[1]), Number(match[2]), Number(match[3]));
+  return isValidIsoDate(candidate) ? candidate : null;
+}
+
+function syncDateClearButton(input) {
+  const wrap = input?.closest(".date-input-wrap");
+  if (!wrap) return;
+  const hasValue = Boolean(input.value.trim());
+  wrap.classList.toggle("has-value", hasValue);
+  const clearBtn = wrap.querySelector(".date-clear-btn");
+  if (clearBtn) clearBtn.hidden = !hasValue;
+}
+
+function setDateInputValue(input, value) {
+  if (!input) return;
+  input.value = value;
+  syncDateClearButton(input);
+}
+
+function initDatePickers() {
+  const inputs = [...document.querySelectorAll('input[data-date-input], input[type="date"]')];
+  if (!inputs.length) return;
+  inputs.forEach((input) => {
+    if (input.type === "date") input.type = "text";
+    input.setAttribute("data-date-input", "");
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("inputmode", "numeric");
+    if (!input.placeholder) input.placeholder = "请选择日期";
+    if (!input.closest(".date-input-wrap")) {
+      const wrap = document.createElement("span");
+      wrap.className = "date-input-wrap";
+      input.parentNode.insertBefore(wrap, input);
+      wrap.append(input);
+
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "date-clear-btn";
+      clearBtn.setAttribute("aria-label", "清空日期");
+      clearBtn.title = "清空日期";
+      clearBtn.textContent = "×";
+      clearBtn.hidden = true;
+      clearBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDateInputValue(input, "");
+        if (datePickerState.activeInput === input) renderDatePickerGrid();
+      });
+
+      const triggerBtn = document.createElement("button");
+      triggerBtn.type = "button";
+      triggerBtn.className = "date-trigger-btn";
+      triggerBtn.setAttribute("aria-label", "选择日期");
+      triggerBtn.title = "选择日期";
+      triggerBtn.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12.5" rx="1"></rect><path d="M6.5 2.5v3M13.5 2.5v3M3 8.5h14"></path></svg>';
+      triggerBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (datePickerState.activeInput === input && datePickerState.popover && !datePickerState.popover.hidden) {
+          closeDatePicker();
+        } else {
+          openDatePicker(input);
+        }
+      });
+
+      wrap.append(clearBtn, triggerBtn);
+    }
+
+    syncDateClearButton(input);
+    input.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDatePicker(input);
+    });
+    input.addEventListener("input", () => {
+      syncDateClearButton(input);
+      const normalized = normalizeDateText(input.value);
+      if (normalized && datePickerState.activeInput === input && datePickerState.popover && !datePickerState.popover.hidden) {
+        const parsed = parseIsoDate(normalized);
+        if (parsed) {
+          datePickerState.viewYear = parsed.year;
+          datePickerState.viewMonth = parsed.month;
+          renderDatePickerGrid();
+        }
+      }
+    });
+    input.addEventListener("blur", () => {
+      const normalized = normalizeDateText(input.value);
+      if (normalized) setDateInputValue(input, normalized);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        openDatePicker(input);
+      } else if (event.key === "Escape") {
+        closeDatePicker();
+      } else if (event.key === "Enter") {
+        const normalized = normalizeDateText(input.value);
+        if (normalized) setDateInputValue(input, normalized);
+        closeDatePicker();
+      }
+    });
+  });
+
+  ensureDatePopover();
+}
+
+function ensureDatePopover() {
+  if (datePickerState.popover) return datePickerState.popover;
+  const popover = document.createElement("div");
+  popover.className = "date-popover";
+  popover.id = "date-popover";
+  popover.setAttribute("role", "dialog");
+  popover.setAttribute("aria-label", "选择日期");
+  popover.hidden = true;
+
+  const head = document.createElement("div");
+  head.className = "date-popover-head";
+
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.className = "date-nav-btn";
+  prevBtn.setAttribute("aria-label", "上个月");
+  prevBtn.textContent = "‹";
+  prevBtn.addEventListener("click", () => shiftDatePickerMonth(-1));
+
+  const yearSelect = document.createElement("select");
+  yearSelect.className = "date-select";
+  yearSelect.setAttribute("aria-label", "选择年份");
+  yearSelect.addEventListener("change", () => {
+    datePickerState.viewYear = Number(yearSelect.value);
+    renderDatePickerGrid();
+  });
+
+  const monthSelect = document.createElement("select");
+  monthSelect.className = "date-select";
+  monthSelect.setAttribute("aria-label", "选择月份");
+  for (let month = 1; month <= 12; month += 1) {
+    const option = document.createElement("option");
+    option.value = String(month);
+    option.textContent = `${month}月`;
+    monthSelect.append(option);
+  }
+  monthSelect.addEventListener("change", () => {
+    datePickerState.viewMonth = Number(monthSelect.value);
+    renderDatePickerGrid();
+  });
+
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.className = "date-nav-btn";
+  nextBtn.setAttribute("aria-label", "下个月");
+  nextBtn.textContent = "›";
+  nextBtn.addEventListener("click", () => shiftDatePickerMonth(1));
+
+  head.append(prevBtn, yearSelect, monthSelect, nextBtn);
+
+  const weekdays = document.createElement("div");
+  weekdays.className = "date-weekdays";
+  ["一", "二", "三", "四", "五", "六", "日"].forEach((label) => {
+    const item = document.createElement("span");
+    item.textContent = label;
+    weekdays.append(item);
+  });
+
+  const grid = document.createElement("div");
+  grid.className = "date-grid";
+  grid.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-date]");
+    if (!button || !datePickerState.activeInput) return;
+    setDateInputValue(datePickerState.activeInput, button.dataset.date);
+    closeDatePicker();
+  });
+
+  const foot = document.createElement("div");
+  foot.className = "date-popover-foot";
+
+  const clearFootBtn = document.createElement("button");
+  clearFootBtn.type = "button";
+  clearFootBtn.className = "date-foot-btn";
+  clearFootBtn.textContent = "清空";
+  clearFootBtn.addEventListener("click", () => {
+    if (datePickerState.activeInput) setDateInputValue(datePickerState.activeInput, "");
+    closeDatePicker();
+  });
+
+  const todayFootBtn = document.createElement("button");
+  todayFootBtn.type = "button";
+  todayFootBtn.className = "date-foot-btn is-primary";
+  todayFootBtn.textContent = "今天";
+  todayFootBtn.addEventListener("click", () => {
+    if (datePickerState.activeInput) setDateInputValue(datePickerState.activeInput, localDate(new Date()));
+    closeDatePicker();
+  });
+
+  foot.append(clearFootBtn, todayFootBtn);
+  popover.append(head, weekdays, grid, foot);
+  document.body.append(popover);
+
+  document.addEventListener("pointerdown", (event) => {
+    if (popover.hidden) return;
+    const activeWrap = datePickerState.activeInput?.closest(".date-input-wrap");
+    if (popover.contains(event.target) || activeWrap?.contains(event.target)) return;
+    closeDatePicker();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !popover.hidden) {
+      const input = datePickerState.activeInput;
+      closeDatePicker();
+      input?.focus();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (!popover.hidden && datePickerState.activeInput) positionDatePicker(datePickerState.activeInput);
+  });
+  window.addEventListener("scroll", () => {
+    if (!popover.hidden && datePickerState.activeInput) positionDatePicker(datePickerState.activeInput);
+  }, true);
+
+  datePickerState.popover = popover;
+  datePickerState.yearSelect = yearSelect;
+  datePickerState.monthSelect = monthSelect;
+  datePickerState.grid = grid;
+  return popover;
+}
+
+function openDatePicker(input) {
+  const popover = ensureDatePopover();
+  datePickerState.activeInput = input;
+  const normalized = normalizeDateText(input.value);
+  const parsed = parseIsoDate(normalized);
+  const peerName = DATE_PAIR_MAP[input.name];
+  const peerInput = peerName ? input.closest(".query-panel")?.querySelector(`input[name="${peerName}"]`) : null;
+  const peerParsed = parseIsoDate(normalizeDateText(peerInput?.value));
+  const anchor = parsed || peerParsed;
+  const today = new Date();
+  datePickerState.viewYear = anchor ? anchor.year : today.getFullYear();
+  datePickerState.viewMonth = anchor ? anchor.month : today.getMonth() + 1;
+  popover.hidden = false;
+  renderDatePickerGrid();
+  positionDatePicker(input);
+}
+
+function closeDatePicker() {
+  if (datePickerState.popover) datePickerState.popover.hidden = true;
+  datePickerState.activeInput = null;
+}
+
+function shiftDatePickerMonth(delta) {
+  const next = new Date(datePickerState.viewYear, datePickerState.viewMonth - 1 + delta, 1);
+  datePickerState.viewYear = next.getFullYear();
+  datePickerState.viewMonth = next.getMonth() + 1;
+  renderDatePickerGrid();
+}
+
+function syncDateYearOptions(selectedYear) {
+  const currentYear = new Date().getFullYear();
+  const minYear = Math.min(2018, selectedYear - 2);
+  const maxYear = Math.max(currentYear + 5, selectedYear + 2);
+  const options = [];
+  for (let year = minYear; year <= maxYear; year += 1) {
+    const option = document.createElement("option");
+    option.value = String(year);
+    option.textContent = `${year}年`;
+    options.push(option);
+  }
+  datePickerState.yearSelect.replaceChildren(...options);
+  datePickerState.yearSelect.value = String(selectedYear);
+}
+
+function renderDatePickerGrid() {
+  const { viewYear, viewMonth, activeInput, grid, monthSelect } = datePickerState;
+  if (!grid || !activeInput) return;
+  syncDateYearOptions(viewYear);
+  monthSelect.value = String(viewMonth);
+
+  const selectedIso = normalizeDateText(activeInput.value) || "";
+  const peerName = DATE_PAIR_MAP[activeInput.name];
+  const peerInput = peerName ? activeInput.closest(".query-panel")?.querySelector(`input[name="${peerName}"]`) : null;
+  const peerIso = normalizeDateText(peerInput?.value) || "";
+  const rangeStart = selectedIso && peerIso ? (selectedIso <= peerIso ? selectedIso : peerIso) : "";
+  const rangeEnd = selectedIso && peerIso ? (selectedIso <= peerIso ? peerIso : selectedIso) : "";
+  const todayIso = localDate(new Date());
+
+  const firstWeekday = (new Date(viewYear, viewMonth - 1, 1).getDay() + 6) % 7;
+  const cells = [];
+  for (let offset = 0; offset < 42; offset += 1) {
+    const cellDate = new Date(viewYear, viewMonth - 1, 1 - firstWeekday + offset);
+    const cellIso = formatIsoDate(cellDate.getFullYear(), cellDate.getMonth() + 1, cellDate.getDate());
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "date-day";
+    button.dataset.date = cellIso;
+    button.textContent = String(cellDate.getDate());
+    button.setAttribute("aria-label", `${cellDate.getFullYear()}年${cellDate.getMonth() + 1}月${cellDate.getDate()}日`);
+    if (cellDate.getMonth() + 1 !== viewMonth) button.classList.add("is-outside");
+    if (cellIso === todayIso) button.classList.add("is-today");
+    if (rangeStart && rangeEnd && cellIso > rangeStart && cellIso < rangeEnd) button.classList.add("is-in-range");
+    if (peerIso && cellIso === peerIso && cellIso !== selectedIso) button.classList.add("is-range-peer");
+    if (selectedIso && cellIso === selectedIso) {
+      button.classList.add("is-selected");
+      button.setAttribute("aria-pressed", "true");
+    }
+    cells.push(button);
+  }
+  grid.replaceChildren(...cells);
+}
+
+function positionDatePicker(input) {
+  const popover = datePickerState.popover;
+  const anchor = input.closest(".date-input-wrap") || input;
+  if (!popover || !anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const popWidth = popover.offsetWidth || 284;
+  const popHeight = popover.offsetHeight || 316;
+  const margin = 8;
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const placeAbove = spaceBelow < popHeight + margin && rect.top > popHeight + margin;
+  const top = placeAbove
+    ? Math.max(margin, rect.top - popHeight - 6)
+    : Math.min(window.innerHeight - popHeight - margin, rect.bottom + 6);
+  const left = Math.min(Math.max(margin, rect.left), Math.max(margin, window.innerWidth - popWidth - margin));
+  popover.style.top = `${Math.round(top)}px`;
+  popover.style.left = `${Math.round(left)}px`;
+}
 async function api(url, options = {}) { const response = await fetch(url, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options }); const payload = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(payload.message || `请求失败 (${response.status})`), payload); return payload; }
 function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char])); }
 function exportCsv() { const view = state.resultViews.get(state.selectedTool); const result = view?.payload?.result; const rows = Array.isArray(view?.tableRows) ? view.tableRows : result?.rows; if (!result?.columns?.length || !rows?.length) return; const cells = (values) => values.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(","); const csv = "\ufeff" + [cells(result.columns), ...rows.map((row) => cells(result.columns.map((column) => row[column])))].join("\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${result.label || "kingdee-query"}${result.reportFormId && result.truncated ? `-第${result.page}页` : ""}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url); }
