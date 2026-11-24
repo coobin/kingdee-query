@@ -12,6 +12,7 @@ function localPlan(question) {
   else if (/审批|审核|流程|到哪|进度/.test(text)) tool = "workflow_progress";
   else if (/人员成本|人力成本|工资.*报销|报销.*工资|工资单/.test(text)) tool = "personnel_cost";
   else if (/报销|费用单/.test(text)) tool = "expense_claims";
+  else if (/子项目采购清单|采购清单表|(?:销售)?子项目.*采购(?:订单)?清单/.test(text)) tool = "subproject_purchase_list";
   else if (/(?:供应商.*(?:采购|金额|订单|入库|到货|付款|应付|发票|交付|质量|风险))|(?:采购.*供应商)|供应商采购分析/.test(text)) tool = "supplier_purchase_analysis";
   else if (/采购|供应商/.test(text)) tool = "purchase_orders";
   else if (/库存周期|库存库龄|库存账龄|呆在仓库|呆滞物料|待签收/.test(text)) tool = "inventory_cycle";
@@ -67,10 +68,21 @@ function localPlan(question) {
   if (supplierNumber) arguments_.supplierNumber = supplierNumber[1];
   else if (tool === "supplier_purchase_analysis" && supplierName) arguments_.supplierName = supplierName[1];
   else if (tool === "supplier_purchase_analysis" && quoted[0]) arguments_.supplierName = quoted[0];
+  if (tool === "subproject_purchase_list") {
+    const projectName = text.match(/(?:销售子项目|子项目|项目)名称\s*[：:=是为]?\s*([^，。,.;；\s]{1,80})/);
+    const materialName = text.match(/物料(?:名称)?\s*[：:=是为]\s*([^，。,.;；\s]{1,80})/);
+    if (projectName) arguments_.subprojectName = projectName[1];
+    else if (quoted[0]) arguments_.subprojectName = quoted[0];
+    if (supplierName) arguments_.supplierName = supplierName[1];
+    if (materialName) arguments_.materialName = materialName[1];
+  }
   const subproject = text.match(/(?:销售)?子项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
   const genericProject = text.match(/项目(?:编码|编号)?\s*[：:=是为]?\s*([A-Za-z0-9._-]{2,60})/i);
   if (subproject) arguments_.subprojectNumber = subproject[1];
   else if (genericProject && tool !== "sales_business_analysis") arguments_.subprojectNumber = genericProject[1];
+  if (tool === "subproject_purchase_list" && arguments_.subprojectNumber && arguments_.subprojectName === arguments_.subprojectNumber) {
+    delete arguments_.subprojectName;
+  }
   if (tool === "sales_business_analysis") {
     if (projectNumber || genericProject) arguments_.projectNumber = (projectNumber || genericProject)[1];
     if (salespersonName) arguments_.salespersonName = salespersonName[1];

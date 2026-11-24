@@ -16,6 +16,8 @@ const {
   aggregatePersonnelCost,
   mapExpenseDetailRows,
   workflowRows,
+  buildSubprojectPurchaseListFilter,
+  formatSubprojectPurchaseList,
 } = require("../src/query-engine");
 const catalog = require("../config/query-catalog.json");
 
@@ -847,4 +849,88 @@ test("project financial reports use employee identity, organization IDs, separat
     kingdee.getSysReportData = async () => ({ Rows: [["缺列"]], RowCount: 1 });
     await assert.rejects(engine.execute(identity, { tool }), /列数/);
   }
+});
+
+test("builds completed subproject purchase list filter and requires a subproject identifier", () => {
+  const entry = catalog.subproject_purchase_list;
+  assert.throws(
+    () => buildSubprojectPurchaseListFilter(entry, { supplierName: "示例供应商" }),
+    /销售子项目编码或项目名称/,
+  );
+  assert.throws(
+    () => buildSubprojectPurchaseListFilter(entry, { subprojectNumber: "SP-001", dateFrom: "2026-05-02", dateTo: "2026-05-01" }),
+    /开始日期不能晚于结束日期/,
+  );
+  const result = buildSubprojectPurchaseListFilter(entry, {
+    subprojectNumber: "SP-001",
+    subprojectName: "示例项目",
+    supplierName: "供应商A",
+    materialName: "交换机",
+    dateFrom: "2026-01-01",
+    dateTo: "2026-06-30",
+  });
+  assert.match(result.filter, /FDocumentStatus='C'/);
+  assert.match(result.filter, /FCancelStatus='A'/);
+  assert.doesNotMatch(result.filter, /FMRPCloseStatus|FCloseStatus/);
+  assert.match(result.filter, /FMRPTerminateStatus='A'/);
+  assert.match(result.filter, /F_PARA_SaleSubProId\.FNumber<>''/);
+  assert.match(result.filter, /F_PARA_SaleSubProId\.FNumber LIKE '%SP-001%'/);
+  assert.match(result.filter, /\(F_PARA_SaleSubProId\.FName LIKE '%示例项目%' OR F_PARA_SaleProId\.FName LIKE '%示例项目%'\)/);
+  assert.match(result.filter, /FSupplierId\.FName LIKE '%供应商A%'/);
+  assert.match(result.filter, /FMaterialId\.FName LIKE '%交换机%'/);
+  assert.match(result.filter, /FDate>='2026-01-01'/);
+  assert.match(result.filter, /FDate<'2026-07-01'/);
+});
+
+test("paginates completed subproject purchase list rows, calculates totals, and respects MCP limit", async () => {
+  const entry = catalog.subproject_purchase_list;
+  const requests = [];
+  const kingdee = {
+    async executeBillQuery(user, request) {
+      assert.equal(user, identity.kingdeeUsername);
+      assert.equal(request.FormId, "PUR_PurchaseOrder");
+      requests.push(request);
+      if (request.StartRow === 0) {
+        return [
+          ["SP-001", "示例子项目A", "示例项目A", "PO-001", "2026-03-10T00:00:00", "供应商甲", "交换机", "S5735-24P", "台", 2, 1250.5, 2501],
+          ["SP-001", "", "示例项目A", "PO-002", "2026-03-15T00:00:00", "供应商乙", "电源模块", "PWR-500", "个", 4, 300, 1200],
+        ];
+      }
+      return [
+        ["SP-001", "示例子项目A", "示例项目A", "PO-002", "2026-03-15T00:00:00", "供应商乙", "光模块", "SFP-10G", "个", 10, 86.125, 861.25],
+      ];
+    },
+  };
+  const engine = new QueryEngine({
+    catalog,
+    kingdee,
+    config: { scopeAdmins: new Set(), kingdee: { maxRows: 100, queryPageSize: 2, aggregationMaxRows: 5000 } },
+  });
+  const webResult = await engine.execute(identity, {
+    tool: "subproject_purchase_list",
+    arguments: { subprojectNumber: "SP-001", limit: 1 },
+  });
+  assert.equal(requests.length, 2);
+  assert.equal(webResult.tool, "subproject_purchase_list");
+  assert.equal(webResult.rows.length, 3);
+  assert.equal(webResult.count, 3);
+  assert.equal(webResult.truncated, false);
+  assert.deepEqual(webResult.columns, ["销售子项目编码", "项目名称", "采购订单号", "采购日期", "供应商", "物料名称", "规格型号", "单位", "数量", "单价", "合价"]);
+  assert.equal(webResult.rows[0]["采购日期"], "2026-03-10");
+  assert.equal(webResult.rows[1]["项目名称"], "示例项目A");
+  assert.equal(webResult.rows[2]["单价"], 86.125);
+  assert.equal(webResult.statistics.orderCount, 2);
+  assert.equal(webResult.statistics.supplierCount, 2);
+  assert.equal(webResult.statistics.subprojectCount, 1);
+  assert.equal(webResult.statistics.totalQuantity, 16);
+  assert.equal(webResult.statistics.totalAmount, 4562.25);
+
+  const mcpResult = await engine.execute({ ...identity, channel: "mcp" }, {
+    tool: "subproject_purchase_list",
+    arguments: { subprojectNumber: "SP-001", limit: 2 },
+  });
+  assert.equal(mcpResult.rows.length, 2);
+  assert.equal(mcpResult.count, 3);
+  assert.equal(mcpResult.truncated, true);
+  assert.equal(mcpResult.statistics.totalAmount, 4562.25);
 });

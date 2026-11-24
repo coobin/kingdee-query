@@ -17,7 +17,7 @@ const named = {
 
 const grains = {
   inventory: "库存明细行", inventory_cycle: "当前库存明细行", sales_orders: "销售订单头",
-  purchase_orders: "采购订单头", sales_business_analysis: "销售子项目",
+  purchase_orders: "采购订单头", subproject_purchase_list: "销售子项目已审核采购订单明细行", sales_business_analysis: "销售子项目",
   project_pur_sale_consistency: "项目及关联单据展开行", overdue_receivables: "销售子项目（发票口径）",
   receivable_aging: "销售子项目（应收口径）", overdue_risk_combined: "销售子项目（双口径）",
   supplier_purchase_analysis: "供应商汇总", personnel_cost: "人员期间汇总",

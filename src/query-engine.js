@@ -431,6 +431,120 @@ function aggregatePersonnelCost(payrollRows, expenseRows, range) {
   return { rows, statistics, summary };
 }
 
+function roundQuantity(value) {
+  return Math.round(((Number(value) || 0) + Number.EPSILON) * 1e6) / 1e6;
+}
+
+function roundUnitPrice(value) {
+  return Math.round(((Number(value) || 0) + Number.EPSILON) * 10000) / 10000;
+}
+
+function buildSubprojectPurchaseListFilter(item, args = {}) {
+  const clauses = [
+    "FDocumentStatus='C'",
+    "FCancelStatus='A'",
+    "FMRPTerminateStatus='A'",
+    "F_PARA_SaleSubProId.FNumber<>''",
+  ];
+  const accepted = {};
+  const subprojectNumber = String(args.subprojectNumber || "").trim();
+  const subprojectName = String(args.subprojectName || "").trim();
+  const supplierName = String(args.supplierName || "").trim();
+  const materialName = String(args.materialName || "").trim();
+  const dateFrom = args.dateFrom ? isoDate(args.dateFrom) : "";
+  const dateTo = args.dateTo ? isoDate(args.dateTo) : "";
+
+  if (!subprojectNumber && !subprojectName) {
+    throw Object.assign(new Error("请至少填写销售子项目编码或项目名称。"), { statusCode: 400 });
+  }
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw Object.assign(new Error("开始日期不能晚于结束日期。"), { statusCode: 400 });
+  }
+  if (subprojectNumber) {
+    clauses.push(`${item.filterFields.subprojectNumber} LIKE '%${escapeValue(subprojectNumber)}%'`);
+    accepted.subprojectNumber = subprojectNumber;
+  }
+  if (subprojectName) {
+    const escaped = escapeValue(subprojectName);
+    clauses.push(`(${item.filterFields.subprojectName} LIKE '%${escaped}%' OR F_PARA_SaleProId.FName LIKE '%${escaped}%')`);
+    accepted.subprojectName = subprojectName;
+  }
+  if (supplierName) {
+    clauses.push(`${item.filterFields.supplierName} LIKE '%${escapeValue(supplierName)}%'`);
+    accepted.supplierName = supplierName;
+  }
+  if (materialName) {
+    clauses.push(`${item.filterFields.materialName} LIKE '%${escapeValue(materialName)}%'`);
+    accepted.materialName = materialName;
+  }
+  if (dateFrom) {
+    clauses.push(`${item.filterFields.dateFrom}>='${dateFrom}'`);
+    accepted.dateFrom = dateFrom;
+  }
+  if (dateTo) {
+    clauses.push(`${item.filterFields.dateTo}<'${nextDay(dateTo)}'`);
+    accepted.dateTo = dateTo;
+  }
+  return { filter: clauses.join(" AND "), accepted };
+}
+
+function formatSubprojectPurchaseList(rawRows, item, { truncated = false } = {}) {
+  const objects = rowsToObjects(rawRows, item.fields, item.valueMappings);
+  const subprojects = new Set();
+  const orders = new Set();
+  const suppliers = new Set();
+  let totalQuantity = 0;
+  let totalAmount = 0;
+
+  const rows = objects.map((row) => {
+    const subprojectNumber = String(row["销售子项目编码"] || "").trim();
+    const projectName = String(row["销售子项目名称"] || row["销售项目名称"] || "").trim();
+    const orderNumber = String(row["采购订单号"] || "").trim();
+    const rawDate = String(row["采购日期"] || "").trim();
+    const purchaseDate = /^\d{4}-\d{2}-\d{2}T/.test(rawDate) ? rawDate.slice(0, 10) : rawDate;
+    const supplier = String(row["供应商"] || "").trim();
+    const quantity = roundQuantity(row["数量"]);
+    const unitPrice = roundUnitPrice(row["单价"]);
+    const amount = roundMoney(Number(row["合价"]) || 0);
+
+    if (subprojectNumber) subprojects.add(subprojectNumber);
+    if (orderNumber) orders.add(orderNumber);
+    if (supplier) suppliers.add(supplier);
+    totalQuantity += quantity;
+    totalAmount += amount;
+
+    return {
+      销售子项目编码: subprojectNumber,
+      项目名称: projectName,
+      采购订单号: orderNumber,
+      采购日期: purchaseDate,
+      供应商: supplier,
+      物料名称: String(row["物料名称"] || "").trim(),
+      规格型号: String(row["规格型号"] || "").trim(),
+      单位: String(row["单位"] || "").trim(),
+      数量: quantity,
+      单价: unitPrice,
+      合价: amount,
+    };
+  });
+
+  const statistics = {
+    type: "subproject_purchase_list",
+    rowCount: rows.length,
+    subprojectCount: subprojects.size,
+    orderCount: orders.size,
+    supplierCount: suppliers.size,
+    totalQuantity: roundQuantity(totalQuantity),
+    totalAmount: roundMoney(totalAmount),
+    partial: truncated,
+  };
+  const formattedAmount = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(statistics.totalAmount);
+  const summary = rows.length
+    ? `共${truncated ? "读取前" : "找到"} ${rows.length} 条已审核采购订单明细（${statistics.subprojectCount} 个销售子项目、${statistics.orderCount} 张采购订单、${statistics.supplierCount} 家供应商），合价合计 ¥${formattedAmount}${truncated ? "；结果达到上限，请缩小查询范围" : ""}。`
+    : "没有找到符合条件的已审核采购订单明细。";
+  return { rows, statistics, summary };
+}
+
 class QueryEngine {
   constructor({ catalog, kingdee, config, now = () => new Date() }) {
     this.catalog = catalog;
@@ -449,6 +563,7 @@ class QueryEngine {
     if (item.queryType === "overdue_risk_combined") return this.overdueRiskCombined(identity, item, args);
     if (item.queryType === "inventory_cycle") return this.inventoryCycle(identity, item, args);
     if (item.queryType === "personnel_cost") return this.personnelCost(identity, item, args);
+    if (item.queryType === "subproject_purchase_list") return this.subprojectPurchaseList(identity, item, args);
     if (item.queryType === "supplier_purchase_analysis") return this.supplierPurchaseAnalysis(identity, item, args);
     if (item.queryType === "sales_business_analysis") return this.salesBusinessAnalysis(identity, item, args);
     if (item.queryType === "system_report") return this.systemReport(identity, plan.tool, item, args);
@@ -721,6 +836,56 @@ class QueryEngine {
       partial: false,
       statistics: aggregated.statistics,
       summary: aggregated.summary,
+    };
+  }
+
+  async subprojectPurchaseList(identity, item, args) {
+    const { filter, accepted } = buildSubprojectPurchaseListFilter(item, args);
+    const maxRows = Math.min(Math.max(Number(item.maxRows) || this.config.kingdee.aggregationMaxRows || 5000, 1), 10000);
+    const pageSize = Math.min(this.config.kingdee.queryPageSize || 5000, maxRows);
+    const request = {
+      FormId: item.formId,
+      FieldKeys: item.fields.map(([key]) => key).join(","),
+      FilterString: filter,
+      OrderString: item.defaultOrder || "F_PARA_SaleSubProId.FNumber ASC,FDate ASC,FBillNo ASC,FPOOrderEntry_FSeq ASC",
+      TopRowCount: 0,
+    };
+    const rawRows = [];
+    let startRow = 0;
+    let capped = false;
+    while (rawRows.length < maxRows) {
+      const remaining = maxRows - rawRows.length;
+      const batchSize = Math.min(pageSize, remaining);
+      const page = await this.kingdee.executeBillQuery(identity.kingdeeUsername, {
+        ...request,
+        StartRow: startRow,
+        Limit: batchSize,
+      });
+      rawRows.push(...page);
+      if (page.length < batchSize) break;
+      startRow += page.length;
+      if (rawRows.length >= maxRows) {
+        capped = true;
+        break;
+      }
+    }
+    const formatted = formatSubprojectPurchaseList(rawRows, item, { truncated: capped });
+    const mcpLimit = identity?.channel === "mcp" && Number.isInteger(Number(args.limit)) && Number(args.limit) > 0
+      ? Number(args.limit)
+      : null;
+    const visibleRows = mcpLimit ? formatted.rows.slice(0, mcpLimit) : formatted.rows;
+    const truncated = capped || visibleRows.length < formatted.rows.length;
+    return {
+      tool: "subproject_purchase_list",
+      label: item.label,
+      query: { ...accepted, status: "已审核" },
+      columns: item.publicColumns,
+      rows: visibleRows,
+      count: formatted.rows.length,
+      truncated,
+      partial: capped,
+      statistics: formatted.statistics,
+      summary: formatted.summary,
     };
   }
 
@@ -2079,4 +2244,6 @@ module.exports = {
   salesBusinessDateRange,
   buildSalesBusinessSourceFilter,
   aggregateSalesBusiness,
+  buildSubprojectPurchaseListFilter,
+  formatSubprojectPurchaseList,
 };

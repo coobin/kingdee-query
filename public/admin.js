@@ -37,6 +37,7 @@ const TOOL_LABELS = {
   receivable_aging: "应收账龄",
   overdue_risk_combined: "超期风险",
   purchase_orders: "采购订单",
+  subproject_purchase_list: "子项目采购清单表",
   expense_claims: "本人费用报销",
   workflow_progress: "审批进度",
 };

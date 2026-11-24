@@ -746,6 +746,53 @@
     },
     "requiresFilter": true
   },
+  "subproject_purchase_list": {
+    "label": "子项目采购清单表",
+    "description": "以销售子项目为维度，查询该子项目下已审核的采购订单清单（不限关闭状态），包含供应商、项目名称、物料名称、规格型号、数量、单价和合价",
+    "formId": "PUR_PurchaseOrder",
+    "queryType": "subproject_purchase_list",
+    "maxRows": 5000,
+    "fields": [
+      ["F_PARA_SaleSubProId.FNumber", "销售子项目编码"],
+      ["F_PARA_SaleSubProId.FName", "销售子项目名称"],
+      ["F_PARA_SaleProId.FName", "销售项目名称"],
+      ["FBillNo", "采购订单号"],
+      ["FDate", "采购日期"],
+      ["FSupplierId.FName", "供应商"],
+      ["FMaterialId.FName", "物料名称"],
+      ["FMaterialId.FSpecification", "规格型号"],
+      ["FUnitId.FName", "单位"],
+      ["FQty", "数量"],
+      ["FTaxPrice", "单价"],
+      ["FAllAmount", "合价"]
+    ],
+    "publicColumns": [
+      "销售子项目编码",
+      "项目名称",
+      "采购订单号",
+      "采购日期",
+      "供应商",
+      "物料名称",
+      "规格型号",
+      "单位",
+      "数量",
+      "单价",
+      "合价"
+    ],
+    "filterFields": {
+      "subprojectNumber": "F_PARA_SaleSubProId.FNumber",
+      "subprojectName": "F_PARA_SaleSubProId.FName",
+      "supplierName": "FSupplierId.FName",
+      "materialName": "FMaterialId.FName",
+      "dateFrom": "FDate",
+      "dateTo": "FDate"
+    },
+    "defaultOrder": "F_PARA_SaleSubProId.FNumber ASC,FDate ASC,FBillNo ASC,FPOOrderEntry_FSeq ASC",
+    "requiresFilter": true,
+    "mcp": {
+      "grain": "销售子项目已审核采购订单明细行"
+    }
+  },
   "supplier_purchase_analysis": {
     "label": "供应商采购分析",
     "description": "按供应商汇总采购订单、到货、入库、退料、交付、应付、发票、付款、主数据画像和可用的质量指标",

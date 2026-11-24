@@ -148,3 +148,11 @@ test("plans project purchase-sales consistency queries with base-data codes", ()
   assert.equal(plan.arguments.subprojectNumber, "SP-001");
   assert.equal(plan.arguments.organizationNumber, "100");
 });
+
+test("plans subproject purchase list queries before generic purchase orders", () => {
+  const plan = localPlan("查询销售子项目编码：SP-2026-01 的子项目采购清单表，供应商：示例科技，物料：交换机");
+  assert.equal(plan.tool, "subproject_purchase_list");
+  assert.equal(plan.arguments.subprojectNumber, "SP-2026-01");
+  assert.equal(plan.arguments.supplierName, "示例科技");
+  assert.equal(plan.arguments.materialName, "交换机");
+});

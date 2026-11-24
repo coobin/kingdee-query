@@ -10,6 +10,7 @@ const TOOL_META = {
   receivable_aging: { action: "统计应收账龄", conditionLabels: { minimumDays: "超过天数", customerName: "客户名称", subprojectNumber: "销售子项目编码" } },
   overdue_risk_combined: { action: "统计超期风险", conditionLabels: { invoiceDays: "发票超期天数", receivableDays: "应收超期天数", customerName: "客户名称", subprojectNumber: "销售子项目编码", projectOwnership: "项目归属", projectOwnerships: "项目归属" } },
   purchase_orders: { action: "查询采购订单", conditionLabels: { billNumber: "单据编号", supplierName: "供应商名称", dateFrom: "开始日期", dateTo: "结束日期" } },
+  subproject_purchase_list: { action: "查询子项目采购清单", conditionLabels: { subprojectNumber: "销售子项目编码", subprojectName: "项目名称", supplierName: "供应商名称", materialName: "物料名称", dateFrom: "采购开始日期", dateTo: "采购结束日期" } },
   supplier_purchase_analysis: { action: "分析供应商采购", conditionLabels: { supplierNumber: "供应商编码", supplierName: "供应商名称", organizationName: "组织名称", dateFrom: "开始日期", dateTo: "结束日期" } },
   personnel_cost: { action: "计算人员成本", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", employeeNumber: "员工编号", employeeName: "员工姓名", departmentName: "所属部门" } },
   expense_claims: { action: "查询我的报销", conditionLabels: { dateFrom: "开始日期", dateTo: "结束日期", aggregation: "金额汇总" } },
@@ -202,6 +203,7 @@ function validateArguments(tool, args) {
   if (["overdue_receivables", "receivable_aging"].includes(tool) && (!Number.isInteger(Number(args.minimumDays)) || Number(args.minimumDays) < 1 || Number(args.minimumDays) > 3650)) return "超过天数应为 1 到 3650 之间的整数。";
   if (tool === "overdue_risk_combined" && (!["invoiceDays", "receivableDays"].every((key) => Number.isInteger(Number(args[key])) && Number(args[key]) >= 1 && Number(args[key]) <= 3650))) return "发票和应收超期天数都应为 1 到 3650 之间的整数。";
   if (tool === "purchase_orders" && !args.billNumber && !args.supplierName && !args.dateFrom && !args.dateTo) return "请至少填写单据编号、供应商名称或日期范围中的一项。";
+  if (tool === "subproject_purchase_list" && !args.subprojectNumber && !args.subprojectName) return "请至少填写销售子项目编码或项目名称。";
   if (tool === "supplier_purchase_analysis" && (!args.dateFrom || !args.dateTo)) return "请选择供应商采购分析的开始日期和结束日期。";
   if (tool === "supplier_purchase_analysis" && dateSpanDays(args.dateFrom, args.dateTo) > 366) return "供应商采购分析查询范围最多为 366 天。";
   if (tool === "personnel_cost" && (!args.dateFrom || !args.dateTo)) return "请选择人员成本的开始日期和结束日期。";
@@ -1038,7 +1040,7 @@ function compareCell(left, right, column) {
     const rightTime = Date.parse(String(right));
     if (Number.isFinite(leftTime) && Number.isFinite(rightTime)) return leftTime - rightTime;
   }
-  if (/金额|数量|天数|发票数|单数|内码|库存/.test(column)) {
+  if (/金额|数量|天数|发票数|单数|内码|库存|单价|合价/.test(column)) {
     const leftNumber = Number(left);
     const rightNumber = Number(right);
     if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
@@ -1047,6 +1049,10 @@ function compareCell(left, right, column) {
 }
 
 function renderStatistics(statistics, tool = "") {
+  if (tool === "subproject_purchase_list" || statistics.type === "subproject_purchase_list") {
+    renderSubprojectPurchaseListStatistics(statistics);
+    return;
+  }
   if (tool === "personnel_cost" || statistics.type === "personnel_cost") {
     renderPersonnelCostStatistics(statistics);
     return;
@@ -1104,6 +1110,28 @@ function renderPersonnelCostStatistics(statistics) {
   items.forEach(([label, value, note, variant]) => {
     const item = document.createElement("div");
     item.className = `cost-stat${variant ? ` ${variant}` : ""}`;
+    const labelNode = document.createElement("span"); labelNode.textContent = label;
+    const valueNode = document.createElement("strong"); valueNode.textContent = value;
+    const noteNode = document.createElement("small"); noteNode.textContent = note;
+    item.append(labelNode, valueNode, noteNode); strip.append(item);
+  });
+  els.table.append(strip);
+}
+
+function renderSubprojectPurchaseListStatistics(statistics) {
+  const strip = document.createElement("section");
+  strip.className = "aging-summary";
+  strip.setAttribute("aria-label", "子项目采购清单汇总");
+  const items = [
+    ["采购合价合计", formatMoney(statistics.totalAmount), `${statistics.rowCount} 条已审核明细`, "primary"],
+    ["销售子项目", `${statistics.subprojectCount} 个`, "已关联销售子项目"],
+    ["采购订单", `${statistics.orderCount} 张`, "已审核且未作废（不限关闭状态）"],
+    ["供应商", `${statistics.supplierCount} 家`, "去重统计"],
+    ["采购总数量", formatQuantity(statistics.totalQuantity), statistics.partial ? "已达上限，请缩小范围" : "明细数量合计", statistics.partial ? "caution" : ""],
+  ];
+  items.forEach(([label, value, note, variant]) => {
+    const item = document.createElement("div");
+    item.className = `aging-stat${variant ? ` ${variant}` : ""}`;
     const labelNode = document.createElement("span"); labelNode.textContent = label;
     const valueNode = document.createElement("strong"); valueNode.textContent = value;
     const noteNode = document.createElement("small"); noteNode.textContent = note;
@@ -1185,8 +1213,9 @@ function renderInventoryCycleStatistics(statistics) {
 }
 
 function syncLoadingState() { const loading = state.loadingTools.has(state.selectedTool); els.button.disabled = loading; els.button.querySelector("span").textContent = loading ? "正在查询" : TOOL_META[state.selectedTool].action; }
-function formatCell(value, column) { if (value == null || value === "") return "—"; if (/(率|变化|占比)/.test(column) && Number.isFinite(Number(value))) return `${Number(value).toFixed(2)}%`; if (/(?:金额|税额)/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
+function formatCell(value, column) { if (value == null || value === "") return "—"; if (/(率|变化|占比)/.test(column) && Number.isFinite(Number(value))) return `${Number(value).toFixed(2)}%`; if (column === "单价" && Number.isFinite(Number(value))) return formatUnitPrice(value); if (/(?:金额|税额|合价)/.test(column) && Number.isFinite(Number(value))) return formatMoney(value); if (/(库龄|待签收|库存周期)/.test(column) && Number.isFinite(Number(value))) return `${value} 天`; if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10); if (typeof value === "object") return JSON.stringify(value); return String(value); }
 function formatMoney(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2 }).format(Number(value) || 0); }
+function formatUnitPrice(value) { return new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(value) || 0); }
 function formatQuantity(value) { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 6 }).format(Number(value) || 0); }
 function localDate(date) { const offset = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return offset.toISOString().slice(0, 10); }
 function dateSpanDays(from, to) { const start = Date.parse(`${from}T00:00:00Z`); const end = Date.parse(`${to}T00:00:00Z`); return Number.isFinite(start) && Number.isFinite(end) ? Math.floor((end - start) / 86400000) + 1 : 0; }
