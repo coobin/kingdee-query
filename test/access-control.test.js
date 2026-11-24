@@ -97,6 +97,61 @@ test("sensitive modules are closed by default until an explicit Kingdee user is 
   assert.equal(access.canAccess(employee, "personnel_cost"), true);
 });
 
+test("default-open modules allow all employees while supporting admin mode switches and dev grants", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kqh-access-modes-"));
+  const dataPath = path.join(directory, "access-control.json");
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const moduleIds = ["inventory", "expense_claims", "workflow_progress"];
+  const openByDefaultModuleIds = ["expense_claims", "workflow_progress"];
+  const access = new AccessControl({ dataPath, moduleIds, openByDefaultModuleIds });
+
+  const employee = { kingdeeUsername: "employee_a" };
+  const other = { kingdeeUsername: "employee_b" };
+  assert.deepEqual(access.getModuleAccessModes(), {
+    inventory: "restricted",
+    expense_claims: "all",
+    workflow_progress: "all",
+  });
+  assert.equal(access.canAccess(employee, "expense_claims"), true);
+  assert.equal(access.canAccess(employee, "workflow_progress"), true);
+  assert.equal(access.canAccess(employee, "inventory"), false);
+  assert.equal(access.queryIdentity(employee, "expense_claims").allData, false);
+  assert.equal(access.queryIdentity(employee, "expense_claims").kingdeeUsername, "employee_a");
+
+  access.setModuleAccess({}, { expense_claims: ["employee_a"] }, { expense_claims: "all" });
+  assert.equal(access.queryIdentity(employee, "expense_claims").kingdeeUsername, "dev");
+  assert.equal(access.queryIdentity(employee, "expense_claims").allData, true);
+  assert.equal(access.queryIdentity(other, "expense_claims").kingdeeUsername, "employee_b");
+  assert.equal(access.queryIdentity(other, "expense_claims").allData, false);
+
+  access.setModuleAccess({ inventory: ["employee_a"] }, { inventory: ["employee_a"] });
+  access.setModuleAccess({}, {}, { inventory: "all" });
+  assert.equal(access.canAccess(other, "inventory"), true);
+  assert.equal(access.queryIdentity(other, "inventory").allData, false);
+  assert.equal(access.queryIdentity(employee, "inventory").allData, true);
+
+  access.setModuleAccess({}, { inventory: ["employee_a", "employee_b"] }, { inventory: "all" });
+  assert.equal(access.queryIdentity(other, "inventory").allData, true);
+
+  access.setModuleAccess({}, {}, { inventory: "restricted", expense_claims: "restricted" });
+  assert.equal(access.canAccess(employee, "inventory"), true);
+  assert.equal(access.canAccess(other, "inventory"), false);
+  assert.deepEqual(access.getModuleDevAccess().inventory, ["employee_a"]);
+  assert.equal(access.canAccess(employee, "expense_claims"), false);
+  assert.deepEqual(access.getModuleDevAccess().expense_claims, []);
+
+  assert.throws(() => access.setModuleAccess({}, {}, { inventory: "invalid" }), { statusCode: 400 });
+
+  const reloaded = new AccessControl({ dataPath, moduleIds, openByDefaultModuleIds });
+  assert.deepEqual(reloaded.getModuleAccessModes(), {
+    inventory: "restricted",
+    expense_claims: "restricted",
+    workflow_progress: "all",
+  });
+  assert.equal(reloaded.canAccess(employee, "expense_claims"), false);
+  assert.equal(reloaded.canAccess(employee, "workflow_progress"), true);
+});
+
 test("prevents deleting the last administrator and keeps the current session after a password change", (t) => {
   const { directory, access } = fixture();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

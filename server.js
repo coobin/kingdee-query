@@ -22,7 +22,8 @@ const {
 
 const catalog = loadCatalog(config.catalogPath);
 const moduleIds = [...Object.keys(catalog), "workflow_progress"];
-const accessControl = new AccessControl({ ...config.localAuth, moduleIds });
+const openByDefaultModuleIds = moduleIds.filter((id) => id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope));
+const accessControl = new AccessControl({ ...config.localAuth, moduleIds, openByDefaultModuleIds });
 config.ai.analysis.enabled = accessControl.getAiAnalysisEnabled(config.ai.analysis.enabled);
 const kingdee = new KingdeeClient(config.kingdee);
 const personnelDirectory = new PersonnelDirectory(kingdee);
@@ -212,10 +213,11 @@ admin.get("/settings", (req, res) => res.json({
     label: id === "workflow_progress" ? "审批进度" : catalog[id].label,
     description: id === "workflow_progress" ? "查询单据当前审批节点和历史" : catalog[id].description,
     selfScoped: id === "workflow_progress" || Boolean(catalog[id]?.forceSelfScope),
-    restrictedByDefault: true,
+    defaultAccessMode: accessControl.defaultModuleAccessMode(id),
   })),
   moduleAccess: accessControl.getModuleAccess(),
   moduleDevAccess: accessControl.getModuleDevAccess(),
+  moduleAccessModes: accessControl.getModuleAccessModes(),
 }));
 admin.get("/personnel-directory", asyncRoute(async (req, res) => {
   const directory = await personnelDirectory.get(req.identity.kingdeeUsername, { refresh: req.query.refresh === "1" });
@@ -300,9 +302,18 @@ admin.put("/admins/:username/passkey-policy", requireSameOrigin, (req, res) => {
   res.json({ ok: true, admin: updated });
 });
 admin.put("/module-access", requireSameOrigin, (req, res) => {
-  const moduleAccess = accessControl.setModuleAccess(req.body?.moduleAccess || {}, req.body?.moduleDevAccess || {});
+  const moduleAccess = accessControl.setModuleAccess(
+    req.body?.moduleAccess || {},
+    req.body?.moduleDevAccess || {},
+    req.body?.moduleAccessModes || {},
+  );
   audit({ requestId: req.requestId, outcome: "success", channel: "local_admin", user: req.identity.adminUsername, action: "module_access.update", ip: req.ip });
-  res.json({ ok: true, moduleAccess, moduleDevAccess: accessControl.getModuleDevAccess() });
+  res.json({
+    ok: true,
+    moduleAccess,
+    moduleDevAccess: accessControl.getModuleDevAccess(),
+    moduleAccessModes: accessControl.getModuleAccessModes(),
+  });
 });
 admin.post("/admins", requireSameOrigin, (req, res) => {
   const created = accessControl.createAdmin(req.body || {});

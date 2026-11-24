@@ -81,16 +81,23 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .access-state.restricted { color: white; background: var(--amber); }
 .module-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .module-card { min-width: 0; padding: 18px; background: var(--paper); transition: background .16s ease; }
+.module-card.open { background: var(--paper); box-shadow: inset 3px 0 var(--jade); }
 .module-card.restricted { background: #f7f1e3; box-shadow: inset 3px 0 var(--amber); }
 .module-card-head { min-height: 58px; display: grid; grid-template-columns: 28px 1fr; gap: 10px; }
 .module-card-head > span { color: var(--jade); font-family: var(--utility); font-size: 10px; font-weight: 700; }
 .module-card-head strong, .module-card-head small { display: block; }
 .module-card-head strong { font-size: 13px; }
 .module-card-head small { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.module-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+.module-mode-switch button { min-height: 32px; padding: 4px 8px; border: 1px solid var(--line); color: var(--muted); background: white; font-size: 10px; font-weight: 700; transition: background .16s ease, color .16s ease, border-color .16s ease; }
+.module-mode-switch button[data-mode="all"][aria-pressed="true"] { border-color: var(--jade); color: var(--forest); background: var(--mint); }
+.module-mode-switch button[data-mode="restricted"][aria-pressed="true"] { border-color: var(--amber); color: white; background: var(--amber); }
 .module-card label { display: grid; gap: 7px; }
 .module-access-summary { margin: 12px 0 10px; color: var(--forest); font-size: 12px; font-weight: 700; }
 .module-people { min-height: 42px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5px; }
 .module-people span { padding: 4px 7px; border: 1px solid var(--line); color: var(--forest); background: white; font-size: 10px; }
+.module-people span.is-dev { border-color: var(--jade); background: var(--mint); font-weight: 700; }
+.module-people span.module-people-empty { border-style: dashed; color: var(--muted); background: transparent; }
 .module-pick-action { width: 100%; margin-top: 13px; color: var(--forest); border-color: var(--jade); font-weight: 700; }
 .people-picker { width: min(980px, calc(100vw - 28px)); max-height: min(830px, calc(100vh - 28px)); padding: 0; border: 1px solid var(--line); color: var(--ink); background: white; box-shadow: var(--shadow); }
 .people-picker::backdrop { background: rgba(11, 34, 27, .62); }

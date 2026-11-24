@@ -5,6 +5,7 @@ const path = require("path");
 const COOKIE_NAME = "kqh_admin_session";
 const PASSKEY_CHALLENGE_COOKIE = "kqh_passkey_challenge";
 const PASSWORD_MIN_LENGTH = 10;
+const MODULE_ACCESS_MODES = new Set(["all", "restricted"]);
 
 function normalizeIdentifier(value) {
   return String(value || "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
@@ -46,6 +47,22 @@ function cleanText(value, maximum = 100) {
   return String(value || "").normalize("NFKC").trim().slice(0, maximum);
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeUserList(list, errorMessage) {
+  if (!Array.isArray(list) || list.some((name) => typeof name !== "string")) {
+    throw Object.assign(new Error(errorMessage), { statusCode: 400 });
+  }
+  const unique = [...new Map(list.map((value) => {
+    const display = cleanText(value, 100);
+    return [normalizeIdentifier(display), display];
+  }).filter(([key]) => key)).values()];
+  if (unique.length > 200) throw Object.assign(new Error("每个模块最多配置 200 人。"), { statusCode: 400 });
+  return unique;
+}
+
 function parseCookies(header) {
   return Object.fromEntries(String(header || "").split(";").map((part) => {
     const index = part.indexOf("=");
@@ -58,11 +75,12 @@ function parseCookies(header) {
 }
 
 class AccessControl {
-  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [] }) {
+  constructor({ dataPath, sessionHours = 8, cookieSecure = false, moduleIds = [], openByDefaultModuleIds = [] }) {
     this.dataPath = dataPath;
     this.sessionHours = sessionHours;
     this.cookieSecure = cookieSecure;
     this.moduleIds = [...new Set(moduleIds)];
+    this.openByDefaultModuleIds = new Set(openByDefaultModuleIds.filter((id) => this.moduleIds.includes(id)));
 
     this.sessions = new Map();
     this.passkeyChallenges = new Map();
@@ -70,17 +88,26 @@ class AccessControl {
     this.state = this.load();
   }
 
+  defaultModuleAccessMode(moduleId) {
+    return this.openByDefaultModuleIds.has(moduleId) ? "all" : "restricted";
+  }
+
   load() {
-    let state = { version: 1, admins: [], moduleAccess: {}, settings: {} };
+    let state = { version: 1, admins: [], moduleAccess: {}, moduleDevAccess: {}, moduleAccessModes: {}, settings: {} };
     if (fs.existsSync(this.dataPath)) {
       state = JSON.parse(fs.readFileSync(this.dataPath, "utf8"));
     }
     if (!Array.isArray(state.admins)) state.admins = [];
-    state.moduleDevAccess ||= {};
-    if (!state.moduleAccess || typeof state.moduleAccess !== "object") state.moduleAccess = {};
-    if (!state.settings || typeof state.settings !== "object" || Array.isArray(state.settings)) state.settings = {};
+    if (!isPlainObject(state.moduleAccess)) state.moduleAccess = {};
+    if (!isPlainObject(state.moduleDevAccess)) state.moduleDevAccess = {};
+    if (!isPlainObject(state.moduleAccessModes)) state.moduleAccessModes = {};
+    if (!isPlainObject(state.settings)) state.settings = {};
     for (const moduleId of this.moduleIds) {
       if (!Array.isArray(state.moduleAccess[moduleId])) state.moduleAccess[moduleId] = [];
+      if (!Array.isArray(state.moduleDevAccess[moduleId])) state.moduleDevAccess[moduleId] = [];
+      if (!MODULE_ACCESS_MODES.has(state.moduleAccessModes[moduleId])) {
+        state.moduleAccessModes[moduleId] = this.defaultModuleAccessMode(moduleId);
+      }
     }
     return state;
   }
@@ -350,27 +377,45 @@ class AccessControl {
     return Object.fromEntries(this.moduleIds.map(id => [id, [...(this.state.moduleDevAccess[id] || [])]]));
   }
 
-  setModuleAccess(moduleAccess, devAccess = {}) {
+  getModuleAccessMode(moduleId) {
+    const mode = this.state.moduleAccessModes?.[moduleId];
+    return MODULE_ACCESS_MODES.has(mode) ? mode : this.defaultModuleAccessMode(moduleId);
+  }
+
+  getModuleAccessModes() {
+    return Object.fromEntries(this.moduleIds.map((moduleId) => [moduleId, this.getModuleAccessMode(moduleId)]));
+  }
+
+  setModuleAccess(moduleAccess = {}, devAccess = {}, accessModes = {}) {
+    if (!isPlainObject(moduleAccess)) throw Object.assign(new Error("模块人员名单格式不正确。"), { statusCode: 400 });
+    if (!isPlainObject(devAccess)) throw Object.assign(new Error("查询身份名单格式不正确。"), { statusCode: 400 });
+    if (!isPlainObject(accessModes)) throw Object.assign(new Error("模块访问范围格式不正确。"), { statusCode: 400 });
     const nextAccess = this.getModuleAccess();
     const nextDev = this.getModuleDevAccess();
+    const nextModes = this.getModuleAccessModes();
     for (const moduleId of this.moduleIds) {
-      if (!(moduleId in moduleAccess)) continue;
-      if (!Array.isArray(moduleAccess[moduleId])) throw Object.assign(new Error("模块人员名单格式不正确。"), { statusCode: 400 });
-      const unique = [...new Map(moduleAccess[moduleId].map((value) => {
-        const display = cleanText(value, 100);
-        return [normalizeIdentifier(display), display];
-      }).filter(([key]) => key)).values()];
-      if (unique.length > 200) throw Object.assign(new Error("每个模块最多配置 200 人。"), { statusCode: 400 });
-      const devUsers = devAccess[moduleId] ?? nextDev[moduleId];
-      if (!Array.isArray(devUsers) || devUsers.some(name => typeof name !== "string")) {
-        throw Object.assign(new Error("查询身份名单格式不正确。"), { statusCode: 400 });
+      const hasMode = moduleId in accessModes;
+      const hasAccess = moduleId in moduleAccess;
+      const hasDev = moduleId in devAccess;
+      if (!hasMode && !hasAccess && !hasDev) continue;
+      if (hasMode) {
+        const mode = accessModes[moduleId];
+        if (!MODULE_ACCESS_MODES.has(mode)) throw Object.assign(new Error("模块访问范围格式不正确。"), { statusCode: 400 });
+        nextModes[moduleId] = mode;
       }
-      const devKeys = new Set(devUsers.map(normalizeIdentifier));
-      nextAccess[moduleId] = unique;
-      nextDev[moduleId] = unique.filter(name => devKeys.has(normalizeIdentifier(name)));
+      if (hasAccess) {
+        nextAccess[moduleId] = normalizeUserList(moduleAccess[moduleId], "模块人员名单格式不正确。");
+      }
+      if (hasDev) {
+        nextDev[moduleId] = normalizeUserList(devAccess[moduleId], "查询身份名单格式不正确。");
+      }
+      if (nextModes[moduleId] === "restricted") {
+        const allowedKeys = new Set(nextAccess[moduleId].map(normalizeIdentifier));
+        nextDev[moduleId] = nextDev[moduleId].filter((name) => allowedKeys.has(normalizeIdentifier(name)));
+      }
     }
     const previous = this.state;
-    this.state = { ...previous, moduleAccess: nextAccess, moduleDevAccess: nextDev };
+    this.state = { ...previous, moduleAccess: nextAccess, moduleDevAccess: nextDev, moduleAccessModes: nextModes };
     try { this.persist(); } catch (error) { this.state = previous; throw error; }
     return this.getModuleAccess();
   }
@@ -378,13 +423,14 @@ class AccessControl {
   queryIdentity(identity, moduleId) {
     if (!this.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
     const actor = normalizeIdentifier(identity.kingdeeUsername);
-    const allData = (this.state.moduleDevAccess[moduleId] || []).some(name => normalizeIdentifier(name) === actor);
+    const allData = Boolean(actor) && (this.state.moduleDevAccess[moduleId] || []).some(name => normalizeIdentifier(name) === actor);
     return { ...identity, kingdeeUsername: allData ? "dev" : identity.kingdeeUsername, allData };
   }
 
   canAccess(identity, moduleId) {
     if (!this.moduleIds.includes(moduleId)) return false;
     if (identity?.isSuperAdmin) return true;
+    if (this.getModuleAccessMode(moduleId) === "all") return true;
     const allowed = this.state.moduleAccess[moduleId] || [];
     if (!allowed.length) return false;
     const identifiers = identityIdentifiers(identity);
