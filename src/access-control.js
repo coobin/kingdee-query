@@ -104,6 +104,7 @@ class AccessControl {
     if (!isPlainObject(state.moduleAccessModes)) state.moduleAccessModes = {};
     if (!isPlainObject(state.moduleQueryModes)) state.moduleQueryModes = {};
     if (!isPlainObject(state.settings)) state.settings = {};
+    let removedOpenDev = false;
     for (const moduleId of this.moduleIds) {
       if (!Array.isArray(state.moduleAccess[moduleId])) state.moduleAccess[moduleId] = [];
       if (!Array.isArray(state.moduleDevAccess[moduleId])) state.moduleDevAccess[moduleId] = [];
@@ -113,14 +114,20 @@ class AccessControl {
       if (!MODULE_QUERY_MODES.has(state.moduleQueryModes[moduleId])) {
         state.moduleQueryModes[moduleId] = "self";
       }
+      if (state.moduleAccessModes[moduleId] === "all" && (state.moduleQueryModes[moduleId] === "dev" || state.moduleDevAccess[moduleId].length)) {
+        state.moduleQueryModes[moduleId] = "self";
+        state.moduleDevAccess[moduleId] = [];
+        removedOpenDev = true;
+      }
     }
+    if (removedOpenDev) this.persist(state);
     return state;
   }
 
-  persist() {
+  persist(state = this.state) {
     fs.mkdirSync(path.dirname(this.dataPath), { recursive: true });
     const temporary = `${this.dataPath}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(this.state, null, 2)}\n`, { mode: 0o600 });
+    fs.writeFileSync(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(temporary, this.dataPath);
     fs.chmodSync(this.dataPath, 0o600);
   }
@@ -431,7 +438,13 @@ class AccessControl {
       if (hasDev) {
         nextDev[moduleId] = normalizeUserList(devAccess[moduleId], "查询身份名单格式不正确。");
       }
-      if (nextModes[moduleId] === "restricted") {
+      if (nextModes[moduleId] === "all") {
+        if ((hasQueryMode && nextQueryModes[moduleId] === "dev") || (hasDev && nextDev[moduleId].length)) {
+          throw Object.assign(new Error("全员可见的模块只能使用本人金蝶账号查询。"), { statusCode: 400 });
+        }
+        nextQueryModes[moduleId] = "self";
+        nextDev[moduleId] = [];
+      } else {
         const allowedKeys = new Set(nextAccess[moduleId].map(normalizeIdentifier));
         nextDev[moduleId] = nextDev[moduleId].filter((name) => allowedKeys.has(normalizeIdentifier(name)));
       }
@@ -444,6 +457,7 @@ class AccessControl {
 
   queryIdentity(identity, moduleId) {
     if (!this.canAccess(identity, moduleId)) throw Object.assign(new Error("你没有查看该模块的权限。"), { statusCode: 403 });
+    if (this.getModuleAccessMode(moduleId) === "all") return { ...identity, allData: false };
     if (this.getModuleQueryMode(moduleId) === "dev") {
       return { ...identity, kingdeeUsername: "dev", allData: true };
     }

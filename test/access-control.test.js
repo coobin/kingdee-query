@@ -118,9 +118,8 @@ test("default-open modules allow all employees while supporting admin mode switc
   assert.equal(access.queryIdentity(employee, "expense_claims").allData, false);
   assert.equal(access.queryIdentity(employee, "expense_claims").kingdeeUsername, "employee_a");
 
-  access.setModuleAccess({}, { expense_claims: ["employee_a"] }, { expense_claims: "all" });
-  assert.equal(access.queryIdentity(employee, "expense_claims").kingdeeUsername, "dev");
-  assert.equal(access.queryIdentity(employee, "expense_claims").allData, true);
+  assert.throws(() => access.setModuleAccess({}, { expense_claims: ["employee_a"] }), { statusCode: 400 });
+  assert.equal(access.queryIdentity(employee, "expense_claims").allData, false);
   assert.equal(access.queryIdentity(other, "expense_claims").kingdeeUsername, "employee_b");
   assert.equal(access.queryIdentity(other, "expense_claims").allData, false);
 
@@ -128,15 +127,13 @@ test("default-open modules allow all employees while supporting admin mode switc
   access.setModuleAccess({}, {}, { inventory: "all" });
   assert.equal(access.canAccess(other, "inventory"), true);
   assert.equal(access.queryIdentity(other, "inventory").allData, false);
-  assert.equal(access.queryIdentity(employee, "inventory").allData, true);
-
-  access.setModuleAccess({}, { inventory: ["employee_a", "employee_b"] }, { inventory: "all" });
-  assert.equal(access.queryIdentity(other, "inventory").allData, true);
+  assert.equal(access.queryIdentity(employee, "inventory").allData, false);
+  assert.throws(() => access.setModuleAccess({}, {}, {}, { inventory: "dev" }), { statusCode: 400 });
 
   access.setModuleAccess({}, {}, { inventory: "restricted", expense_claims: "restricted" });
   assert.equal(access.canAccess(employee, "inventory"), true);
   assert.equal(access.canAccess(other, "inventory"), false);
-  assert.deepEqual(access.getModuleDevAccess().inventory, ["employee_a"]);
+  assert.deepEqual(access.getModuleDevAccess().inventory, []);
   assert.equal(access.canAccess(employee, "expense_claims"), false);
   assert.deepEqual(access.getModuleDevAccess().expense_claims, []);
 
@@ -221,7 +218,7 @@ test("filters the public catalog before it reaches the browser", () => {
   assert.deepEqual(visible.map((item) => item.id), ["sales_orders"]);
 });
 
-test("module query modes support uniform dev across restricted and open modules and persist through reload", (t) => {
+test("legacy open-module dev grants are removed on reload while restricted grants persist", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kqh-access-query-mode-"));
   const dataPath = path.join(directory, "access-control.json");
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -239,16 +236,23 @@ test("module query modes support uniform dev across restricted and open modules 
     { inventory: ["employee_a"] },
     {},
     { inventory: "restricted", expense_claims: "all" },
-    { inventory: "dev", expense_claims: "dev" },
+    { inventory: "dev" },
   );
 
+  const legacy = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+  legacy.moduleQueryModes.expense_claims = "dev";
+  legacy.moduleDevAccess.expense_claims = ["employee_b"];
+  fs.writeFileSync(dataPath, JSON.stringify(legacy));
   const restored = new AccessControl({ dataPath, moduleIds, openByDefaultModuleIds });
-  assert.deepEqual(restored.getModuleQueryModes(), { inventory: "dev", expense_claims: "dev" });
+  const migrated = JSON.parse(fs.readFileSync(dataPath, "utf8"));
+  assert.deepEqual(migrated.moduleDevAccess.expense_claims, []);
+  assert.equal(migrated.moduleQueryModes.expense_claims, "self");
+  assert.deepEqual(restored.getModuleQueryModes(), { inventory: "dev", expense_claims: "self" });
 
   assert.deepEqual(restored.queryIdentity(employeeA, "inventory"), { ...employeeA, kingdeeUsername: "dev", allData: true });
   assert.throws(() => restored.queryIdentity(employeeB, "inventory"), { statusCode: 403 });
   assert.deepEqual(restored.queryIdentity(admin, "inventory"), { ...admin, kingdeeUsername: "dev", allData: true });
-  assert.deepEqual(restored.queryIdentity(employeeB, "expense_claims"), { ...employeeB, kingdeeUsername: "dev", allData: true });
+  assert.deepEqual(restored.queryIdentity(employeeB, "expense_claims"), { ...employeeB, allData: false });
 
   restored.setModuleAccess({}, { inventory: ["employee_a"] }, {}, { inventory: "self", expense_claims: "self" });
   assert.equal(restored.queryIdentity(employeeA, "inventory").allData, true);

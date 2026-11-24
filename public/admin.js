@@ -242,6 +242,12 @@ function renderModules() {
   const checkedVisibleCount = visible.filter((module) => state.checkedModules.has(module.id)).length;
   selectAllModules.checked = visible.length > 0 && checkedVisibleCount === visible.length;
   selectAllModules.indeterminate = checkedVisibleCount > 0 && checkedVisibleCount < visible.length;
+  const includesOpen = modules.some((module) => state.checkedModules.has(module.id) && getModuleMode(module) === "all");
+  for (const id of ["batch-set-dev", "batch-add-people"]) {
+    const button = document.getElementById(id);
+    button.disabled = includesOpen;
+    button.title = includesOpen ? "仅适用于指定人员可见的模块" : "";
+  }
   moduleBatchBar.hidden = state.checkedModules.size === 0;
   document.querySelector("#batch-count").textContent = `已选 ${state.checkedModules.size} 项`;
 
@@ -307,29 +313,21 @@ function renderModules() {
 
     const queryCell = document.createElement("td");
     queryCell.className = "col-query";
-    const querySwitch = createSegSwitch(`${module.label}查询账号`, [
-      { value: "self", label: "本人", attr: "query", active: !isUniformDev },
-      { value: "dev", label: "统一 dev", attr: "query", active: isUniformDev },
-    ], (nextQueryMode, buttons) => updateModuleQueryMode(module, nextQueryMode, buttons));
-    queryCell.append(querySwitch);
+    if (isOpen) {
+      queryCell.textContent = "本人账号";
+    } else {
+      queryCell.append(createSegSwitch(`${module.label}查询账号`, [
+        { value: "self", label: "本人", attr: "query", active: !isUniformDev },
+        { value: "dev", label: "统一 dev", attr: "query", active: isUniformDev },
+      ], (nextMode, buttons) => updateModuleQueryMode(module, nextMode, buttons)));
+    }
 
     const rosterCell = document.createElement("td");
     rosterCell.className = "col-roster";
     const rosterWrap = document.createElement("div");
     rosterWrap.className = "roster-cell";
-    if (isOpen && isUniformDev) {
-      rosterWrap.append(createPill("全员 dev", "is-dev"));
-    } else if (isOpen) {
-      if (devNames.length) {
-        const trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.className = "roster-trigger is-dev";
-        trigger.textContent = `${devNames.length} 人 dev`;
-        trigger.addEventListener("click", () => openPeoplePicker(module, "selected"));
-        rosterWrap.append(trigger, createPreview(devNames));
-      } else {
-        rosterWrap.append(createPill("全员本人", "is-muted"));
-      }
+    if (isOpen) {
+      rosterWrap.append(createPill("全员", "is-muted"));
     } else {
       if (!names.length) {
         rosterWrap.append(createPill("仅超管", "is-muted"));
@@ -357,7 +355,7 @@ function renderModules() {
 
     const actionCell = document.createElement("td");
     actionCell.className = "col-action";
-    if (isOpen && isUniformDev) {
+    if (isOpen) {
       const dash = document.createElement("span");
       dash.className = "row-action-muted";
       dash.textContent = "—";
@@ -366,7 +364,7 @@ function renderModules() {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "row-action-btn";
-      button.textContent = isOpen ? "设 dev" : "选人";
+      button.textContent = "选人";
       button.addEventListener("click", () => openPeoplePicker(module, "all"));
       actionCell.append(button);
     }
@@ -839,6 +837,7 @@ function adminField(labelText, name, value, placeholder = "", type = "text") {
 }
 
 async function openPeoplePicker(module, initialScope = "all") {
+  if (getModuleMode(module) === "all") return;
   accessMessage.hidden = true;
   const mode = getModuleMode(module);
   const queryMode = getModuleQueryMode(module);
@@ -869,6 +868,7 @@ async function openPeoplePicker(module, initialScope = "all") {
 }
 
 async function openBatchPeoplePicker(modules) {
+  if (modules.some((module) => getModuleMode(module) === "all")) return;
   accessMessage.hidden = true;
   state.picker = {
     batch: true,
@@ -1304,16 +1304,11 @@ document.querySelector("#save-module-access").addEventListener("click", async (e
   button.disabled = true;
   const module = state.picker.module;
   try {
-    const body = isOpen
-      ? {
-        moduleAccessModes: { [module.id]: "all" },
-        moduleDevAccess: { [module.id]: [...state.picker.dev.values()] },
-      }
-      : {
-        moduleAccessModes: { [module.id]: "restricted" },
-        moduleAccess: { [module.id]: [...state.picker.selected.values()] },
-        moduleDevAccess: { [module.id]: [...state.picker.selected.values()].filter((name) => state.picker.dev.has(personKey(name))) },
-      };
+    const selected = [...state.picker.selected.values()];
+    const body = {
+      moduleAccess: { [module.id]: selected },
+      moduleDevAccess: { [module.id]: selected.filter((name) => state.picker.dev.has(personKey(name))) },
+    };
     const payload = await api("/api/admin/module-access", { method: "PUT", body: JSON.stringify(body) });
     applyModulePayload(payload);
     pickerDialog.close();
